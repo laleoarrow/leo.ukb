@@ -7,5 +7,13 @@
 leo.table1.help()
 }
 \description{
-This function provides help on how to use the Table 1 functions, including guidance on how to create Table 1 and select appropriate normality tests.
+This function provides help on how to use the leo.table1 functions and basic background knowledge.
+}
+\note{
+If you encounter a warning about an unknown RStudio theme when using \code{cli} functions, you can suppress it by setting:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{options(cli.ignore_unknown_rstudio_theme = TRUE)
+}\if{html}{\out{</div>}}
+
+This option should be set in your R session to avoid the warning.
 }

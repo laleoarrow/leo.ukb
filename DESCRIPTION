@@ -1,10 +1,10 @@
 Package: leo.ukb
-Title: LEO package for UKB database analysis
+Title: LEO package for UK Biobank database analysis
 Version: 0.0.1
 Authors@R: 
     person("Ao", "Lu", , "luao@stu.cqmu.edu.cn", role = c("aut", "cre"),
            comment = c(ORCID = "0009-0001-0927-4468"))
-Description: This package is used to analyze UKBB data.
+Description: This package is used to analyze UK Biobank data. But it may be extended to other clincial studies.
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
 Encoding: UTF-8

@@ -1,10 +1,17 @@
 # Here, we build table 1 for a clincial cohort study.
 
-##' Table 1 Help
+#' Table 1 Help
 #'
-#' This function provides help on how to use the Table 1 functions, including guidance on how to create Table 1 and select appropriate normality tests.
+#' This function provides help on how to use the leo.table1 functions and basic background knowledge.
+#
+#' @importFrom cli cli_h1 cli_h3 cat_line cat_bullet cli_code
+#' @note
+#' If you encounter a warning about an unknown RStudio theme when using `cli` functions, you can suppress it by setting:
 #'
-#' @importFrom cli cli_h1 cli_h3 cat_line cat_bullet
+#' ```r
+#' options(cli.ignore_unknown_rstudio_theme = TRUE)
+#' ```
+#' This option should be set in your R session to avoid the warning.
 #' @export
 leo.table1.help <- function() {
   cli::cli_h1("Table 1 Functions Overview & Background")
@@ -27,6 +34,23 @@ leo.table1.help <- function() {
   # step 3
   cli::cli_h3("\n3. `leo.table1.output`: Export")
   cli::cat_line("- Export the table as a Word document or CSV file.")
+  # example code
+  cli::cli_h3("\nExample Code: \n")
+  eg_code <- '
+    pacman::p_load(tableone, data.table)
+    cohort <- fread("xxx.csv")
+    cohort_num_var <- leo.table1.step1(cohort, num_var = c("age", "tdi", "TyG")) # check normality for numeric variables
+    table_1 <- leo.table1.step2(
+      cohort,
+      var_all = c("age", "gender", "ethnicity"),  # all variables to include in table 1
+      var_cat = c("gender", "ethnicity"),         # categorical variables (can also use set_diff)
+      var_non = c("age"),                         # non-normal continuous variables
+      strata = "exposure_status",                 # stratify by exposure status (optional)
+      compare_test = F, includeNA = F, showAllLevels = F)
+    leo.table1.save(table_1, "table1.csv")       # save table 1 as a CSV file
+    leo.table1.save(table_1, "table1.docx")      # save table 1 as a Word document
+    '
+  cli::cli_code(eg_code)
 }
 
 
