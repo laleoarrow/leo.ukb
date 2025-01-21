@@ -12,15 +12,21 @@ leo_TyG(triglycerides, glucose, ...)
 \item{glucose}{A numeric vector of glucose values (in mmol/L).}
 }
 \value{
-A numeric vector of TyG indices.
+A numeric vector of TyG index values.
 }
 \description{
-This function calculates the TyG index using triglyceride and glucose values.
-It works element-wise for vectors of triglycerides and glucose.
+This function calculates the Triglyceride-Glucose Index (TyG) using \code{triglyceride} and \code{glucose} values.
 }
 \note{
-TyG: triglyceride-glucose index
+The formula for TyG is:
+\deqn{TyG = \log \left( \frac{triglycerides \times glucose}{2} \right)}
+Triglycerides and glucose are converted from mmol/L to mg/dL using the factors:
+\itemize{
+\item Triglycerides: \deqn{mg/dL = mmol/L \times 88.5704}
+\item Glucose: \deqn{mg/dL = mmol/L \times 18.0168}
+-- In UKB, triglycerides (Field ID: 30870) and glucose (Field ID: 30740) are measured in mmol/L.
+}
 }
 \references{
-\url{https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3662289/}
+\url{https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3662289/} (Cardiovasc Diabetol, 2013)
 }

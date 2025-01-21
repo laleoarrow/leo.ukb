@@ -23,7 +23,8 @@
 #'   triglycerides = c(1.5, 1.8, 2.0),
 #'   glucose = c(5.0, 5.5, 6.0)
 #' )
-#' leo_new_clinical_indicators(df, types = c("eGDR", "TyG"))
+#' leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"))
+#' @seealso \code{\link{leo_eGDR}}, \code{\link{leo_TyG}} for Insulin Resistance indicators.
 leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = FALSE, remove_assist = TRUE, ...) {
   # Dictionary to map indicator types to required columns and calculation functions
   indicator_dict <- list(
@@ -82,17 +83,19 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
 #'
 #' @importFrom cli cli_alert_info
 #' @note
-#' eGDR: estimated glucose disposal rate
-#' - eGDR = 21.158 + (-0.09 * waist circumference [cm]) + (−3.407 * hypertension [yes=1/no=0]) + (−0.551 * HbA1c (%))
-#' -- Ref1: https://diabetesjournals.org/care/article/36/8/2280/32950/Use-of-the-Estimated-Glucose-Disposal-Rate-as-a (Diabetes Care, 2013 July)
-#' -- Ref2: https://pmc.ncbi.nlm.nih.gov/articles/PMC11439291/#Sec2 (Cardiovasc Diabetol, 2024 Sep)
-#' In UKB, the HbA1c is measured in mmol/mol (IFCC), so we need to convert it to % (NGSP)
-#' - HbA1c (mmol/mol) (Field ID: 30750)
-#' -- NGSP (%) = [0.09148 * IFCC] + 2.152 (Ref: https://ngsp.org/ifcc.asp)
-#' - waist circumference (Field ID: 48)
+#' ### eGDR: Estimated Glucose Disposal Rate:
+#' ```
+#' # eGDR is calculated using the following formula:
+#' eGDR = 21.158 + (-0.09 * waist circumference [cm]) + (−3.407 * hypertension [yes=1/no=0]) + (−0.551 * HbA1c (%))
+#' ```
+#' In UKB, HbA1c is measured in **mmol/mol (IFCC)**, and needs to be converted to **% (NGSP)**.
+#' - **HbA1c (mmol/mol)** (Field ID: 30750)
+#'    - Conversion formula: NGSP (%) = [0.09148 * IFCC] + 2.152 [Ref](https://ngsp.org/ifcc.asp)
+#' - **Waist circumference** (Field ID: 48)
+#' - **hypertension** need to extract from icd10 or first occurrence records
 #' @references
-#' 1. \url{https://diabetesjournals.org/care/article/36/8/2280/32950/Use-of-the-Estimated-Glucose-Disposal-Rate-as-a}
-#' 2. \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC11439291/#Sec2}
+#' 1. \url{https://diabetesjournals.org/care/article/36/8/2280/32950/Use-of-the-Estimated-Glucose-Disposal-Rate-as-a} (Diabetes Care, 2013 July)
+#' 2. \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC11439291/#Sec2} (Cardiovasc Diabetol, 2024 Sep)
 leo_eGDR <- function(hba1c, waist, hypertension, ...) {
   cli::cli_alert_info(" - Converting HbA1c from mmol/mol(IFCC) to %(NGSP) >>> {.code NGSP=[0.09148*IFCC]+2.152} {.url https://ngsp.org/ifcc.asp}")
   hba1c_percent <- 0.09148 * hba1c + 2.152
@@ -103,23 +106,22 @@ leo_eGDR <- function(hba1c, waist, hypertension, ...) {
 
 #' Calculate Triglyceride-Glucose Index (TyG)
 #'
-#' This function calculates the TyG index using triglyceride and glucose values.
-#' It works element-wise for vectors of triglycerides and glucose.
+#' This function calculates the Triglyceride-Glucose Index (TyG) using `triglyceride` and `glucose` values.
 #'
 #' @param triglycerides A numeric vector of triglyceride values (in mmol/L).
 #' @param glucose A numeric vector of glucose values (in mmol/L).
 #'
-#' @return A numeric vector of TyG indices.
+#' @return A numeric vector of TyG index values.
 #' @export
 #'
 #' @importFrom cli cli_alert_info
-#' @references
-#' \url{https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3662289/}
-#' @note
-#' TyG: triglyceride-glucose index
-# - TyG = ln [triglycerides (mg/dL) * glucose (mg/dL)/2]
-# - In UKB triglycerides (Field ID: 30870) and glucose (Field ID: 30740) are all measured in mmol/L, so we need to convert them to mg/dL.
-# -- Ref1: https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3662289/ (Cardiovasc Diabetol, 2013)
+#' @note The formula for TyG is:
+#' \deqn{TyG = \log \left( \frac{triglycerides \times glucose}{2} \right)}
+#' Triglycerides and glucose are converted from mmol/L to mg/dL using the factors:
+#' - Triglycerides: \deqn{mg/dL = mmol/L \times 88.5704}
+#' - Glucose: \deqn{mg/dL = mmol/L \times 18.0168}
+#' -- In UKB, triglycerides (Field ID: 30870) and glucose (Field ID: 30740) are measured in mmol/L.
+#' @references \url{https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3662289/} (Cardiovasc Diabetol, 2013)
 leo_TyG <- function(triglycerides, glucose, ...) {
   cli::cli_alert_info(" - Converting triglycerides and glucose from {.emph \"mmmol/L\"} (UKB default unit) to {.emph \"mg/dL\"}")
   # Convert triglycerides and glucose from mmol/L to mg/dL

@@ -36,5 +36,8 @@ df <- data.frame(
   triglycerides = c(1.5, 1.8, 2.0),
   glucose = c(5.0, 5.5, 6.0)
 )
-leo_new_clinical_indicators(df, types = c("eGDR", "TyG"))
+leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"))
+}
+\seealso{
+\code{\link{leo_eGDR}}, \code{\link{leo_TyG}} for Insulin Resistance indicators.
 }

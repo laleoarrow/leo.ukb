@@ -21,20 +21,26 @@ This function calculates the eGDR using waist circumference, hypertension status
 It works element-wise for vectors of HbA1c, waist, and hypertension.
 }
 \note{
-eGDR: estimated glucose disposal rate
+\subsection{eGDR: Estimated Glucose Disposal Rate:}{
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{# eGDR is calculated using the following formula:
+eGDR = 21.158 + (-0.09 * waist circumference [cm]) + (−3.407 * hypertension [yes=1/no=0]) + (−0.551 * HbA1c (\%))
+}\if{html}{\out{</div>}}
+
+In UKB, HbA1c is measured in \strong{mmol/mol (IFCC)}, and needs to be converted to \strong{\% (NGSP)}.
 \itemize{
-\item eGDR = 21.158 + (-0.09 * waist circumference \link{cm}) + (−3.407 * hypertension \link{yes=1/no=0}) + (−0.551 * HbA1c (\%))
--- Ref1: https://diabetesjournals.org/care/article/36/8/2280/32950/Use-of-the-Estimated-Glucose-Disposal-Rate-as-a (Diabetes Care, 2013 July)
--- Ref2: https://pmc.ncbi.nlm.nih.gov/articles/PMC11439291/#Sec2 (Cardiovasc Diabetol, 2024 Sep)
-In UKB, the HbA1c is measured in mmol/mol (IFCC), so we need to convert it to \% (NGSP)
-\item HbA1c (mmol/mol) (Field ID: 30750)
--- NGSP (\%) = \link{0.09148 * IFCC} + 2.152 (Ref: https://ngsp.org/ifcc.asp)
-\item waist circumference (Field ID: 48)
+\item \strong{HbA1c (mmol/mol)} (Field ID: 30750)
+\itemize{
+\item Conversion formula: NGSP (\%) = \link{0.09148 * IFCC} + 2.152 \href{https://ngsp.org/ifcc.asp}{Ref}
+}
+\item \strong{Waist circumference} (Field ID: 48)
+\item \strong{hypertension} need to extract from icd10 or first occurrence records
+}
 }
 }
 \references{
 \enumerate{
-\item \url{https://diabetesjournals.org/care/article/36/8/2280/32950/Use-of-the-Estimated-Glucose-Disposal-Rate-as-a}
-\item \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC11439291/#Sec2}
+\item \url{https://diabetesjournals.org/care/article/36/8/2280/32950/Use-of-the-Estimated-Glucose-Disposal-Rate-as-a} (Diabetes Care, 2013 July)
+\item \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC11439291/#Sec2} (Cardiovasc Diabetol, 2024 Sep)
 }
 }
