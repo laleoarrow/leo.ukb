@@ -32,13 +32,13 @@ leo.table1.help <- function() {
   cli::cat_line("- Chi-squared test: Used for comparing proportions of categorical variables between two or more independent groups.")
   cli::cat_line("- Fisher's exact test: Used for comparing proportions of categorical variables when sample size is small (expected cell count < 5).")
   # step 3
-  cli::cli_h3("\n3. `leo.table1.output`: Export")
+  cli::cli_h3("\n3. `leo.table1.save`: Export")
   cli::cat_line("- Export the table as a Word document or CSV file.")
   # example code
-  cli::cli_h3("\nExample Code: \n")
+  cli::cli_h1("\nExample Code: \n")
   eg_code <- '
     pacman::p_load(tableone, data.table)
-    cohort <- fread("xxx.csv")
+    cohort <- fread("xxx.csv") # clinical cohort
     cohort_num_var <- leo.table1.step1(cohort, num_var = c("age", "tdi", "TyG")) # check normality for numeric variables
     table_1 <- leo.table1.step2(
       cohort,
@@ -47,10 +47,10 @@ leo.table1.help <- function() {
       var_non = c("age"),                         # non-normal continuous variables
       strata = "exposure_status",                 # stratify by exposure status (optional)
       compare_test = F, includeNA = F, showAllLevels = F)
-    leo.table1.save(table_1, "table1.csv")       # save table 1 as a CSV file
-    leo.table1.save(table_1, "table1.docx")      # save table 1 as a Word document
+    leo.table1.save(table_1, "table1.csv")        # save table 1 as a CSV file
+    leo.table1.save(table_1, "table1.docx")       # save table 1 as a Word document
     '
-  cli::cli_code(eg_code)
+  cli::cli_code(eg_code, language = "R")
 }
 
 
