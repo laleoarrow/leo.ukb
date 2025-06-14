@@ -37,6 +37,11 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
       required_cols = c("triglycerides", "glucose"),
       required_cols_ukb = c("p30870_i0", "p30740_i0"),
       calc_function = leo_TyG
+    ),
+    "PhysicalActivity" = list(
+      required_cols    = c("p884_i0","p894_i0","p904_i0","p914_i0"),
+      required_cols_ukb= c("p884_i0","p894_i0","p904_i0","p914_i0"),
+      calc_function    = leo_physical_activity
     )
     # Add more indicator types here if needed
   )
@@ -133,3 +138,50 @@ leo_TyG <- function(triglycerides, glucose, ...) {
   return(TyG)
 }
 
+#' Calculate Physical Activity Indicator (with internal NA recoding)
+#'
+#' This function first recodes UKB special codes -3/-1 to NA, then determines
+#' if participants meet any of the recommended activity thresholds:
+#' - ≥150 min moderate/week,
+#' - ≥75 min vigorous/week,
+#' - ≥5 days moderate/week,
+#' - ≥1 day vigorous/week.
+#'
+#' @note This function is not ready; only adapted it based on code from 医工科研,
+#'       which needs further reference validation. (都还没找到参考文献 真是服了)
+#'
+#' @param p884_i0 Integer/numeric vector; days/week moderate activity (10+ min), codes -3/-1 → NA.
+#' @param p894_i0 Integer/numeric vector; minutes/week moderate activity, codes -3/-1 → NA.
+#' @param p904_i0 Integer/numeric vector; days/week vigorous activity (10+ min), codes -3/-1 → NA.
+#' @param p914_i0 Integer/numeric vector; minutes/week vigorous activity, codes -3/-1 → NA.
+#' @return Integer vector (1 = meets guideline, 0 = does not, NA = all missing).
+#' @export
+#' @importFrom cli cli_alert_info
+leo_physical_activity <- function(p884_i0, p894_i0, p904_i0, p914_i0, ...) {
+  cli::cli_alert_info(" - Recoding UKB special codes (-3/-1) to NA")
+
+  # helper to coerce to numeric and recode
+  recode_na <- function(x) {
+    x_num <- suppressWarnings(as.numeric(x))
+    x_num[x_num %in% c(-3, -1)] <- NA
+    x_num
+  }
+
+  p884_i0 <- recode_na(p884_i0)
+  p894_i0 <- recode_na(p894_i0)
+  p904_i0 <- recode_na(p904_i0)
+  p914_i0 <- recode_na(p914_i0)
+
+  cli::cli_alert_info(" - Evaluating against activity thresholds")
+  moderate_days    <- ifelse(!is.na(p884_i0) & p884_i0 >= 5,   1L, 0L)
+  moderate_minutes <- ifelse(!is.na(p894_i0) & p894_i0 >= 150, 1L, 0L)
+  vigorous_days    <- ifelse(!is.na(p904_i0) & p904_i0 >= 1,   1L, 0L)
+  vigorous_minutes <- ifelse(!is.na(p914_i0) & p914_i0 >= 75,  1L, 0L)
+
+  meets_any <- (moderate_days + moderate_minutes + vigorous_days + vigorous_minutes) >= 1
+
+  all_na <- is.na(p884_i0) & is.na(p894_i0) & is.na(p904_i0) & is.na(p914_i0)
+  result <- ifelse(all_na, NA_integer_, as.integer(meets_any))
+
+  return(result)
+}
