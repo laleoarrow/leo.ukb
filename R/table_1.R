@@ -135,19 +135,32 @@ leo.table1.step1 <- function(df, id_to_exclude = c("eid", "iri_time"), num_var =
 #' @importFrom tableone CreateTableOne
 #' @importFrom cli cli_alert_success cli_alert_info
 #' @export
-leo.table1.step2 <- function(df, var_all, var_cat, var_non, strata, var_exact = NULL,
+leo.table1.step2 <- function(df, var_all, var_cat, var_non, strata = NULL, var_exact = NULL,
                              compare_test = F, includeNA = F, showAllLevels = F, verbose = T) {
   cli::cli_alert_info("Generating tableone object...")
-  # Create the table
-  table <- tableone::CreateTableOne(
-    vars = var_all,
-    strata = if (strata == "none") NULL else strata,
-    data = df,
-    factorVars = var_cat,      # var that is num，but processed as cat
-    includeNA = includeNA,     # if TRUE, consider NA as a level
-    test = compare_test,       # if TRUE, perform group comparisons
+
+  # Build arguments for CreateTableOne
+  tbl_args <- list(
+    vars       = var_all,
+    data       = df,
+    factorVars = var_cat,       # var that is num，but processed as cat
+    includeNA  = includeNA,     # if TRUE, consider NA as a level
+    test       = compare_test,  # if TRUE, perform group comparisons
     addOverall = TRUE
   )
+  if (!is.null(strata)) tbl_args$strata <- strata # Conditionally add stratification
+
+  # Invoke CreateTableOne with dynamic args
+  table <- do.call(tableone::CreateTableOne, tbl_args)
+  # table <- tableone::CreateTableOne(
+  #   vars = var_all,
+  #   strata = if (strata == "none") NULL else strata,
+  #   data = df,
+  #   factorVars = var_cat,
+  #   includeNA = includeNA,
+  #   test = compare_test,
+  #   addOverall = TRUE
+  # )
 
   # Print tableone object --- this is where to adjust the non-normal vars and exact vars
   cli::cli_alert_info("Printing table 1...")

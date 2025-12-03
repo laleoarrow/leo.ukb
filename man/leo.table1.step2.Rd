@@ -9,7 +9,7 @@ leo.table1.step2(
   var_all,
   var_cat,
   var_non,
-  strata,
+  strata = NULL,
   var_exact = NULL,
   compare_test = F,
   includeNA = F,

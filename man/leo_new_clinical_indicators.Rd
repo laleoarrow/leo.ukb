@@ -7,17 +7,25 @@
 leo_new_clinical_indicators(
   df,
   types = c("eGDR", "TyG"),
-  type_id = FALSE,
+  type_id = TRUE,
   remove_assist = TRUE,
+  remove_other = TRUE,
   ...
 )
 }
 \arguments{
 \item{df}{A dataframe containing the required columns for calculation.}
 
-\item{types}{A vector of indicator types, options are "eGDR" or "TyG".}
+\item{types}{A vector of indicator types, options are "eGDR", "TyG", "PhysicalActivity", "LGI"...}
 
-\item{remove_assist}{Logical, whether to remove the assisting columns from the dataframe (default TRUE).}
+\item{type_id}{Logical; if \code{FALSE}, the function expects semantic column names (e.g. \code{"age"}, \code{"BMI"}).
+If \code{TRUE} (default), UKB field-id style names (e.g. \code{"p21003_i0"}) are used.}
+
+\item{remove_assist}{Logical, whether to remove the assisting columns (default \code{TRUE}).}
+
+\item{remove_other}{Logical, whether to keep only \code{eid} and the newly
+generated indicator columns in the returned dataframe (default \code{TRUE}).
+If \code{FALSE}, all original columns in \code{df} are kept.}
 
 \item{...}{Additional parameters passed to the specific indicator calculation functions.}
 }
