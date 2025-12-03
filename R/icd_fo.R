@@ -8,6 +8,16 @@
 #' @export
 #'
 #' @examples
+#' # Simulated UKB data
+#' ukb_df <- tibble::tibble(
+#'   eid = 1:6,
+#'   p53_i0 = as.Date(c("2006-01-01", "2007-05-15", "2008-03-20", "2009-07-30", "2010-11-11", "2011-12-25")),
+#'   p191 = as.Date(c("2020-01-01", "2021-06-15", NA, "2022-03-20", "2023-07-30", "2024-11-11")),
+#'   p40000_i0 = as.Date(c(NA, "2022-05-05", "2023-08-08", NA, "2024-09-09", NA)),
+#'   p40000_i1 = as.Date(c("2023-01-01", NA, NA, "2024-04-04", NA, "2025-12-12")),
+#'   p20002_0_0 = as.Date(c("2015-01-01", "2016-02-02", "1900-01-01", NA, "2018-03-03", "2019-04-04"))
+#' )
+#' data_process_fo(ukb_df, "p20002_0_0", censored = "2025-01-01")
 data_process_fo <- function(data, fo_date_col, censored = "2025-01-01") {
   # check required columns
   required_cols <- c("eid", "p53_i0", "p191", "p40000_i0", "p40000_i1", fo_date_col)
