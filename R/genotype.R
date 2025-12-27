@@ -78,9 +78,3 @@ ukb_hla_typing <- function(df, header, col = "p22182", q_threshold = 0.7) {
 
   list(calls = calls, genotype = genotype)
 }
-# Example usage:
-library(tidyverse)
-# x <- data.table::fread("HLA.csv")         # eid + p22182
-header <- ukb_hla_header()$hla_order
-res <- ukb_hla_typing(x, header)
-res$genotype %>% dplyr::filter(locus == "A") %>% dplyr::slice_head(n = 5)
