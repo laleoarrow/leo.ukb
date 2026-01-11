@@ -2,7 +2,7 @@
 % Please edit documentation in R/icd_fo.R
 \name{dignosis_process_icd}
 \alias{dignosis_process_icd}
-\title{Process UKB ICD data for survival analysis (retained for updates; will be deprecated in near future)}
+\title{Process UKB ICD data for survival analysis}
 \usage{
 dignosis_process_icd(
   data,

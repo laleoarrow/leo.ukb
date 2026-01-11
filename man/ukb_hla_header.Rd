@@ -2,19 +2,23 @@
 % Please edit documentation in R/genotype.R
 \name{ukb_hla_header}
 \alias{ukb_hla_header}
-\title{ukb_hla_header}
+\title{Read UK Biobank HLA v2 header (ukb_hla_v2.txt)}
 \usage{
 ukb_hla_header()
 }
 \value{
-A data.frame with one column \code{name}.
+A character vector of allele column names (e.g., "A_101", "B_2705", ...).
 }
 \description{
-Read UKB HLA v2 header line.
+Downloads and parses the HLA v2 header file used to decode UK Biobank
+Field 22182 (HLA imputation v2; best-guess probabilities).
 }
 \details{
-This function streams the UK Biobank HLA v2 header file, which is
-described at: https://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=2182
+The returned character vector is the column order (length typically 362)
+corresponding to the comma-separated values in field 22182.
+
+The function tries \code{readLines()} first. If that fails, it falls back to
+a system \code{wget} call (useful on clusters). If both fail, it errors.
 }
 \examples{
 ukb_hla_header <- ukb_hla_header()

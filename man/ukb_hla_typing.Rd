@@ -2,31 +2,36 @@
 % Please edit documentation in R/genotype.R
 \name{ukb_hla_typing}
 \alias{ukb_hla_typing}
-\title{ukb_hla_typing}
+\title{HLA Genotyping in UKB}
 \usage{
 ukb_hla_typing(df, header, col = "p22182", q_threshold = 0.7)
 }
 \arguments{
 \item{df}{A data.frame/tibble with \code{eid} and a compound column (default \code{p22182}).}
 
-\item{header}{Allele column order, e.g. \code{ukb_hla_header()$hla_order}.}
+\item{header}{Allele column order, e.g. \code{ukb_hla_header()} (character vector).}
 
 \item{col}{Compound column name. Default "p22182".}
 
 \item{q_threshold}{Posterior threshold (UKB commonly uses 0.7). Default 0.7.}
 }
 \value{
-A list with \code{calls} (long table) and \code{genotype} (eid x locus).
+A list with:
+\itemize{
+\item \code{calls}: data.table with per-allele calls (eid, locus, allele, allele_pretty, allele_copies, allele_q).
+\item \code{genotype}: data.table with per-locus genotype strings (eid, locus, genotype).
+}
 }
 \description{
-Parse UKB HLA v2 compound field (22182) and derive per-locus genotypes.
+Parse UK Biobank HLA v2 compound field (22182) and derive per-locus genotypes
 }
 \examples{
 \dontrun{
 library(tidyverse)
+# x <- data.table::fread("~/Project/UKB/data/HLA.csv")
 # x <- data.table::fread("HLA.csv")         # eid + p22182
-header <- ukb_hla_header()$hla_order
+header <- ukb_hla_header()
 res <- ukb_hla_typing(x, header)
-res$genotype \%>\% dplyr::filter(locus == "A") \%>\% dplyr::slice_head(n = 5)
+res$genotype \%>\% dplyr::filter(locus == "B") \%>\% dplyr::slice_head(n = 5)
 }
 }
