@@ -13,8 +13,8 @@
 #' @return A character vector of allele column names (e.g., "A_101", "B_2705", ...).
 #' @importFrom leo.basic leo_log
 #' @examples
-#' ukb_hla_header <- ukb_hla_header()
-#' head(ukb_hla_header)
+#' header <- ukb_hla_header()
+#' head(header)
 #' @export
 ukb_hla_header <- function() {
   leo.basic::leo_log("Loading UKB HLA header; description source:",
@@ -109,4 +109,104 @@ ukb_hla_typing <- function(df, header, col = "p22182", q_threshold = 0.7) {
   ]
 
   return(list(calls = calls_out, genotype = genotype_out))
+}
+
+#' Specify carrier status for given HLA allele(s) in UKB
+#'
+#' Extract per-individual carrier status (0/1/2 copies) for specified HLA allele(s)
+#' from \code{res} returned by [ukb_hla_typing()].
+#'
+#' @param res Output of [ukb_hla_typing()], i.e. \code{list(calls=..., genotype=...)}.
+#' @param specify_alleles Character vector. Examples:
+#' \itemize{
+#'   \item \code{"B27"}: any \code{HLA-B*27:xx}
+#'   \item \code{"HLA-B*27:05"} or \code{"B*27:05"}: exact allele
+#'   \item \code{"B_2705"}: exact allele (UKB header style)
+#' }
+#'
+#' @return A tibble with one row per \code{eid × query}:
+#' \itemize{
+#'   \item \code{eid}
+#'   \item \code{query}
+#'   \item \code{locus}
+#'   \item \code{copies} (0/1/2)
+#'   \item \code{carrier} (T/F)
+#'   \item \code{matched} (matched allele_pretty, ';' separated)
+#'   \item \code{max_q} (max allele_q among matched calls)
+#' }
+#'
+#' @importFrom leo.basic leo_log
+#' @importFrom dplyr %>% distinct filter mutate summarise left_join bind_rows arrange group_by
+#' @export
+ukb_hla_specify <- function(res, specify_alleles = "B27") {
+  leo.basic::leo_log("ukb_hla_specify(): extracting {paste(specify_alleles, collapse = ', ')}")
+
+  calls_df <- res$calls
+  eid_df <- res$genotype %>% dplyr::distinct(eid)
+  specify_alleles <- unique(as.character(specify_alleles))
+
+  parse_query <- function(query) {
+    # Return: query, locus, type, prefix, target
+    q <- trimws(query); q <- sub("^HLA-", "", q, ignore.case = T)
+
+    if (grepl("_", q, fixed = T)) {
+      locus <- sub("_.*$", "", q)
+      code <- sub("^.*_", "", q)
+      code <- sprintf("%04d", as.integer(code))
+      target <- paste0("HLA-", locus, "*", substr(code, 1, 2), ":", substr(code, 3, 4))
+      return(list(query = query, locus = locus, type = "exact", prefix = NA_character_, target = target))
+    }
+
+    if (grepl("\\*", q)) {
+      locus <- sub("\\*.*$", "", q)
+      rest <- sub("^.*\\*", "", q)
+      if (grepl("^\\d{2}$", rest) || grepl("^\\d{2}:$", rest)) {
+        fam <- sub(":$", "", rest)
+        return(list(query = query, locus = locus, type = "family",
+                    prefix = paste0("HLA-", locus, "*", fam, ":"), target = NA_character_))
+      }
+      if (grepl("^\\d{2}:\\d{2}$", rest)) {
+        return(list(query = query, locus = locus, type = "exact",
+                    prefix = NA_character_, target = paste0("HLA-", locus, "*", rest)))
+      }
+    }
+
+    if (grepl("^([A-Za-z0-9]+)(\\d{2})$", q)) {
+      locus <- sub("\\d{2}$", "", q)
+      fam <- sub("^.*?(\\d{2})$", "\\1", q)
+      return(list(query = query, locus = locus, type = "family",
+                  prefix = paste0("HLA-", locus, "*", fam, ":"), target = NA_character_))
+    }
+
+    stop("ukb_hla_specify(): cannot parse query: ", query)
+  }
+
+  result_list <- vector("list", length(specify_alleles))
+
+  for (i in seq_along(specify_alleles)) {
+    spec <- parse_query(specify_alleles[i])
+
+    matched_df <- if (spec$type == "exact") {
+      calls_df %>% dplyr::filter(locus == spec$locus, allele_pretty == spec$target)
+    } else {
+      calls_df %>% dplyr::filter(locus == spec$locus, startsWith(allele_pretty, spec$prefix))
+    }
+
+    summary_df <- matched_df %>%
+      dplyr::group_by(eid) %>%
+      dplyr::summarise(copies = sum(allele_copies), max_q = max(allele_q),
+                       matched = paste(sort(unique(allele_pretty)), collapse = ";"),
+                       .groups = "drop")
+
+    result_list[[i]] <- eid_df %>%
+      dplyr::left_join(summary_df, by = "eid") %>%
+      dplyr::mutate(query = spec$query, locus = spec$locus,
+                    copies = dplyr::if_else(is.na(copies), 0L, as.integer(copies)),
+                    carrier = copies > 0L,
+                    matched = dplyr::if_else(carrier, matched, NA_character_))
+  }
+
+  out_df <- dplyr::bind_rows(result_list) %>% dplyr::arrange(query, eid)
+  leo.basic::leo_log("ukb_hla_specify(): done")
+  return(out_df)
 }
