@@ -17,6 +17,7 @@ log/
 
 # User-specific files
 .Ruserdata
+.vscode/
 
 # Example code in package build process
 *-Ex.R
@@ -47,6 +48,16 @@ vignettes/*.pdf
 
 # R Environment Variables
 .Renviron
+.Renviron.*
+
+# Generic environment files
+.env
+.env.*
+.envrc
+
+# R profile files (often contain local IDs/keys)
+.Rprofile
+.Rprofile.*
 
 # pkgdown site
 docs/
