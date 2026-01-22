@@ -21,6 +21,6 @@ The function tries \code{readLines()} first. If that fails, it falls back to
 a system \code{wget} call (useful on clusters). If both fail, it errors.
 }
 \examples{
-ukb_hla_header <- ukb_hla_header()
-head(ukb_hla_header)
+header <- ukb_hla_header()
+head(header)
 }
