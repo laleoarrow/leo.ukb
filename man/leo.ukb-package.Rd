@@ -6,6 +6,8 @@
 \alias{leo.ukb-package}
 \title{leo.ukb: LEO package for UK Biobank database analysis}
 \description{
+\if{html}{\figure{logo.png}{options: style='float: right' alt='logo' width='120'}}
+
 This package is used to analyze UK Biobank data. But it may be extended to other clincial studies.
 }
 \author{
