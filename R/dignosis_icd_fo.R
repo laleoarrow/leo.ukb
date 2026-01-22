@@ -215,3 +215,46 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
 
   return(result)
 }
+
+
+#' Find the max date in given date columns
+#'
+#' Generate {icd_code}_status and {icd_code}_time from UKB ICD records.
+#'
+#' @param df A data.frame containing UKB statistics
+#' @param date_columns A character vector of column names or patterns to select date columns.
+get_max_date <- function(df, date_columns) {
+  if (length(date_columns) == 0L) stop("`date_columns` is empty.")
+  all_cols <- names(df)
+
+  resolve_selector <- function(sel) {
+    if (sel %in% all_cols) return(sel)
+    if (grepl("[*?]", sel)) return(grep(utils::glob2rx(sel), all_cols, value = TRUE))
+    grep(sel, all_cols, value = TRUE)
+  }
+
+  selected_cols <- unique(unlist(lapply(date_columns, resolve_selector), use.names = FALSE))
+  if (length(selected_cols) == 0L) stop("No columns matched `date_columns`.")
+
+  current_year <- as.integer(format(Sys.Date(), "%Y"))
+  keep_years <- (current_year - 4L):current_year
+
+  df_subset <- if (requireNamespace("data.table", quietly = TRUE) && data.table::is.data.table(df)) {
+    df[, ..selected_cols]
+  } else {
+    df[selected_cols]
+  }
+
+  parsed <- lapply(df_subset, function(x) {
+    d <- suppressWarnings(as.Date(as.character(x), format = "%Y-%m-%d"))
+    y <- as.integer(format(d, "%Y"))
+    d[is.na(d) | !(y %in% keep_years)] <- NA
+    d
+  })
+
+  dates <- unlist(parsed, use.names = FALSE)
+  if (length(dates) == 0L || all(is.na(dates))) return("None date in last 5 years")
+
+  overall_max <- max(dates, na.rm = TRUE)
+  return(format(as.Date(overall_max, origin = "1970-01-01"), "%F"))
+}
