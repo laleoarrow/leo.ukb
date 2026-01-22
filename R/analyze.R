@@ -1,10 +1,10 @@
 # Analyses ----
 
 #' @title Calculate P-value for Heterogeneity from Subgroup Summary Statistics
+#' `r lifecycle::badge('stable')`
 #' @description This function performs a test for heterogeneity (interaction)
 #'              based on summary statistics (Hazard Ratios and P-values) from
 #'              a subgroup analysis of a Cox model. It uses Cochran's Q test.
-#'
 #' @param hrs A numeric vector of Hazard Ratios (HR) for each subgroup.
 #' @param p_values A numeric vector of the corresponding P-values for each HR.
 #' @param subgroup_names An optional character vector of subgroup names for display.
@@ -12,7 +12,6 @@
 #' @return A list containing the Q statistic, degrees of freedom (df),
 #'         the P-value for heterogeneity, and the I-squared statistic.
 #'         It also prints a summary to the console.
-#'
 #' @examples
 #' # Example: Subgroup analysis by smoking status (Smoker vs. Non-smoker)
 #' hrs_example <- c(3.576652, 2.657723366)
@@ -247,6 +246,7 @@ format_p_value <- function(p_value) {
 
 # Linear regression analysis for PRS vs clinical outcomes
 #' Linear regression analysis
+#' `r lifecycle::badge('experimental')`
 #'
 #' This function performs linear regression analysis between PRS and clinical outcomes
 #' with options for handling missing values through complete-case analysis or imputation.
@@ -262,7 +262,6 @@ format_p_value <- function(p_value) {
 #' @return A list containing regression results including model, coefficients, and fit statistics
 #' @export
 #' @importFrom stats lm as.formula coef
-#'
 #' @examples
 #' # Complete case analysis
 #' result_cc <- leo_linear_regression(prs_zh8, "va1y", "PRS",
@@ -327,6 +326,7 @@ leo_linear_regression <- function(data, y_var, x_var, covariates = NULL,
 }
 
 #' Extract and format linear regression results for publication
+#' `r lifecycle::badge("experimental")`
 #'
 #' This function extracts key results from linear regression models and formats them
 #' in a publication-ready table with standardized effect sizes and confidence intervals.
@@ -340,7 +340,6 @@ leo_linear_regression <- function(data, y_var, x_var, covariates = NULL,
 #' @export
 #' @importFrom dplyr tibble
 #' @importFrom stats confint
-#'
 #' @examples
 #' # Run regression
 #' result <- leo_linear_regression(prs_zh8, "va1y", "PRS", covariates = c("age_onset", "gender"))

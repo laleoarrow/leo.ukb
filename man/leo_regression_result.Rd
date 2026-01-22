@@ -2,7 +2,8 @@
 % Please edit documentation in R/analyze.R
 \name{leo_regression_result}
 \alias{leo_regression_result}
-\title{Extract and format linear regression results for publication}
+\title{Extract and format linear regression results for publication
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}}
 \usage{
 leo_regression_result(
   regression_result,

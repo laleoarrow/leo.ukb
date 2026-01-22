@@ -13,6 +13,7 @@ RoxygenNote: 7.3.2
 Imports: 
     cli,
     dplyr,
-    leo.basic (>= 0.0.1)
+    leo.basic (>= 0.0.1),
+    lifecycle
 Remotes: 
     github::laleoarrow/leo.basic

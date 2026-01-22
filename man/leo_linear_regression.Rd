@@ -2,7 +2,8 @@
 % Please edit documentation in R/analyze.R
 \name{leo_linear_regression}
 \alias{leo_linear_regression}
-\title{Linear regression analysis}
+\title{Linear regression analysis
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}}
 \usage{
 leo_linear_regression(
   data,

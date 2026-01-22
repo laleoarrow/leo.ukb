@@ -2,7 +2,8 @@
 % Please edit documentation in R/dignosis_icd_fo.R
 \name{get_max_date}
 \alias{get_max_date}
-\title{Find the max date in given date columns}
+\title{Find the max date in given date columns
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#stable}{\figure{lifecycle-stable.svg}{options: alt='[Stable]'}}}{\strong{[Stable]}}}
 \usage{
 get_max_date(df, date_columns)
 }

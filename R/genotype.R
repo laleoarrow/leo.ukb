@@ -1,4 +1,5 @@
 #' Read UK Biobank HLA v2 header (ukb_hla_v2.txt)
+#' `r lifecycle::badge('stable')`
 #'
 #' Downloads and parses the HLA v2 header file used to decode UK Biobank
 #' Field 22182 (HLA imputation v2; best-guess probabilities).
@@ -34,6 +35,7 @@ ukb_hla_header <- function() {
 }
 
 #' HLA Genotyping in UKB
+#' `r lifecycle::badge('stable')`
 #'
 #' Parse UK Biobank HLA v2 compound field (22182) and derive per-locus genotypes
 #'
@@ -111,35 +113,89 @@ ukb_hla_typing <- function(df, header, col = "p22182", q_threshold = 0.7) {
   return(list(calls = calls_out, genotype = genotype_out))
 }
 
-#' Specify carrier status for given HLA allele(s) in UKB
+#' Specify carrier status for given HLA allele(s) in UK Biobank
+#' `r lifecycle::badge('stable')`
 #'
-#' Extract per-individual carrier status (0/1/2 copies) for specified HLA allele(s)
-#' from \code{res} returned by [ukb_hla_typing()].
+#' Extract per-individual carrier status (0/1/2 copies) for user-specified HLA allele queries
+#' from the output of [ukb_hla_typing()].
+#'
+#' This function searches within \code{res$calls} (already filtered by the posterior threshold
+#' in [ukb_hla_typing()]) and returns, for each query, the copy number carried by each individual.
 #'
 #' @param res Output of [ukb_hla_typing()], i.e. \code{list(calls=..., genotype=...)}.
-#' @param specify_alleles Character vector. Examples:
+#'
+#' @param specify_alleles Character vector of allele queries. Multiple formats are supported:
 #' \itemize{
-#'   \item \code{"B27"}: any \code{HLA-B*27:xx}
-#'   \item \code{"HLA-B*27:05"} or \code{"B*27:05"}: exact allele
-#'   \item \code{"B_2705"}: exact allele (UKB header style)
+#'   \item \strong{Family-level (2-digit) queries} (matches any \code{xx:yy} within the family):
+#'     \itemize{
+#'       \item \code{"B27"} or \code{"HLA-B27"} \cr
+#'             Matches any \code{HLA-B*27:xx}.
+#'       \item \code{"B*27"} or \code{"B*27:"} \cr
+#'             Matches any \code{HLA-B*27:xx}.
+#'       \item \code{"DQB1*06"} \cr
+#'             Matches any \code{HLA-DQB1*06:xx}.
+#'     }
+#'
+#'   \item \strong{Exact (4-digit) allele queries} (matches a specific \code{xx:yy} allele):
+#'     \itemize{
+#'       \item \code{"A*02:01"} or \code{"HLA-A*02:01"} \cr
+#'             Matches exactly \code{HLA-A*02:01}.
+#'       \item \code{"B*27:05"} or \code{"HLA-B*27:05"} \cr
+#'             Matches exactly \code{HLA-B*27:05}.
+#'     }
+#'
+#'   \item \strong{UK Biobank header-style queries} (column name in Field 22182 header):
+#'     \itemize{
+#'       \item \code{"DRB1_1501"}, \code{"B_2705"}, \code{"C_401"} \cr
+#'             Converted internally to \code{HLA-<locus>*xx:yy} (e.g. \code{"B_2705"} -> \code{"HLA-B*27:05"}).
+#'             Three-digit codes are left-padded to four digits (e.g. \code{"C_401"} -> \code{"HLA-C*04:01"}).
+#'     }
 #' }
 #'
-#' @return A tibble with one row per \code{eid × query}:
+#' @details
+#' The returned copy number (\code{copies}) is derived by summing \code{allele_copies} among the
+#' matched calls in \code{res$calls}. Since \code{res$calls} has already been filtered by the
+#' posterior threshold in [ukb_hla_typing()], this function reports carriers based on those
+#' retained (high-confidence) allele calls.
+#'
+#' @return A table with one row per \code{eid × query}, containing:
 #' \itemize{
-#'   \item \code{eid}
-#'   \item \code{query}
-#'   \item \code{locus}
-#'   \item \code{copies} (0/1/2)
-#'   \item \code{carrier} (T/F)
-#'   \item \code{matched} (matched allele_pretty, ';' separated)
-#'   \item \code{max_q} (max allele_q among matched calls)
+#'   \item \code{eid} Individual identifier (if the eid has HLA data).
+#'   \item \code{query} The original query string as provided in \code{specify_alleles}.
+#'   \item \code{locus} Parsed locus (e.g., \code{"B"}, \code{"A"}, \code{"DRB1"}).
+#'   \item \code{copies} Integer 0/1/2 indicating the total number of matched allele copies.
+#'   \item \code{carrier} Logical; \code{TRUE} if \code{copies > 0}.
+#'   \item \code{matched} Matched \code{allele_pretty} values (semicolon-separated); \code{NA} if non-carrier.
+#'   \item \code{max_q} Maximum posterior (per-allele) among matched calls; \code{NA} if non-carrier.
 #' }
+#' , which is recommend to use code in the examples to convert to a wide format for downstream analysis.
 #'
 #' @importFrom leo.basic leo_log
 #' @importFrom dplyr %>% distinct filter mutate summarise left_join bind_rows arrange group_by
 #' @export
+#' @examples
+#' # `res` are from ukb_hla_typing()
+#' # 1) Single query: family-level (2-digit)
+#' res_s1 <- ukb_hla_specify(res, "B27")
+#' # 2) Multiple queries: mixed formats
+#' res_s2 <- ukb_hla_specify(res, c("B27", "A*02:01", "DRB1_1501"))
+#' # 3) Queries with optional HLA- prefix and family-level with "*"
+#' res_s3 <- ukb_hla_specify(res, c("HLA-B27", "DQB1*06"))
+#'
+#' ### Now normally we only need to know if one is a carrier for each allele
+#' # Create a downstream-friendly wide table:
+#' # eid, <query1>, <query1>_carrier, <query2>, <query2>_carrier, ...
+#' carrier_wide <- res_s2 %>%
+#'   transmute(eid, query,
+#'             copies = as.integer(copies),
+#'             carrier01 = as.integer(carrier)) %>%
+#'   pivot_longer(c(copies, carrier01), names_to = "stat", values_to = "value") %>%
+#'   mutate(key = if_else(stat == "copies", query, paste0(query, "_carrier"))) %>%
+#'   select(eid, key, value) %>%
+#'   pivot_wider(names_from = key, values_from = value,
+#'               values_fill = list(value = 0L))
 ukb_hla_specify <- function(res, specify_alleles = "B27") {
-  leo.basic::leo_log("ukb_hla_specify(): extracting {paste(specify_alleles, collapse = ', ')}")
+  leo.basic::leo_log("ukb_hla_specify: extracting {paste(specify_alleles, collapse = ', ')}")
 
   calls_df <- res$calls
   eid_df <- res$genotype %>% dplyr::distinct(eid)
@@ -178,7 +234,7 @@ ukb_hla_specify <- function(res, specify_alleles = "B27") {
                   prefix = paste0("HLA-", locus, "*", fam, ":"), target = NA_character_))
     }
 
-    stop("ukb_hla_specify(): cannot parse query: ", query)
+    stop("ukb_hla_specify: cannot parse query: ", query)
   }
 
   result_list <- vector("list", length(specify_alleles))
@@ -207,6 +263,6 @@ ukb_hla_specify <- function(res, specify_alleles = "B27") {
   }
 
   out_df <- dplyr::bind_rows(result_list) %>% dplyr::arrange(query, eid)
-  leo.basic::leo_log("ukb_hla_specify(): done")
+  leo.basic::leo_log("ukb_hla_specify: done")
   return(out_df)
 }

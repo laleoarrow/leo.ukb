@@ -2,7 +2,8 @@
 % Please edit documentation in R/genotype.R
 \name{ukb_hla_header}
 \alias{ukb_hla_header}
-\title{Read UK Biobank HLA v2 header (ukb_hla_v2.txt)}
+\title{Read UK Biobank HLA v2 header (ukb_hla_v2.txt)
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#stable}{\figure{lifecycle-stable.svg}{options: alt='[Stable]'}}}{\strong{[Stable]}}}
 \usage{
 ukb_hla_header()
 }

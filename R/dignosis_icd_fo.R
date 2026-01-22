@@ -218,12 +218,12 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
 
 
 #' Find the max date in given date columns
+#' `r lifecycle::badge('stable')`
 #'
 #' Generate {icd_code}_status and {icd_code}_time from UKB ICD records.
 #'
 #' @param df A data.frame containing UKB statistics
 #' @param date_columns A character vector of column names or patterns to select date columns.
-#'
 #' @examples
 #' ukb_sim <- tibble::tibble(
 #'   eid = 1:8,
@@ -233,10 +233,10 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
 #'                    "2023-07-30", "2024-11-11", "2019-12-31", "2022-08-08")),
 #'   p40000_i0 = as.Date(c(NA, "2022-05-05", "2023-08-08", NA, "2024-09-09", NA, NA, "2021-01-01")),
 #'   p40000_i1 = as.Date(c("2023-01-01", NA, NA, "2024-04-04", NA, "2025-12-12", NA, NA)),
-#' 
+#'
 #'   # self-reported first occurrence (example; includes an abnormal placeholder)
 #'   p20002_0_0 = as.Date(c("2015-01-01", "2016-02-02", "1900-01-01", NA, "2018-03-03", "2019-04-04", "2020-06-06", "1901-01-01")),
-#' 
+#'
 #'   # ICD10 codes (pipe-separated) and corresponding diagnosis dates
 #'   p41270 = c(
 #'     "D261|E113|M102",
@@ -253,7 +253,7 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
 #'   p41280_a2 = as.Date(c("2015-08-15", NA, NA, "2015-09-10", NA, NA, NA, NA)),
 #'   p41280_a3 = as.Date(c(NA, NA, NA, NA, NA, NA, NA, NA))
 #' )
-#' 
+#'
 #' get_max_date(ukb_sim, date_columns = c("p41280_a*"))
 #' @export
 get_max_date <- function(df, date_columns) {
