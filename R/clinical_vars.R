@@ -20,6 +20,7 @@
 #'
 #' @importFrom cli cli_alert_info cli_alert_danger cli_alert_success
 #' @importFrom dplyr select all_of %>% mutate
+#' @importFrom leo.basic leo_time_elapsed
 #' @examples
 #' df <- data.frame(
 #'   hba1c = c(48, 55, 60),
@@ -31,6 +32,7 @@
 #' leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"))
 #' @seealso \code{\link{leo_eGDR}}, \code{\link{leo_TyG}} for Insulin Resistance indicators.
 leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = TRUE, remove_assist = TRUE, remove_other = TRUE, ...) {
+  t0 <- Sys.time()
   # Dictionary to map indicator types to required columns and calculation functions
   indicator_dict <- list(
     # Basics ----
@@ -52,27 +54,34 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
     "tdi" = list(required_cols     = c("tdi"),
                  required_cols_ukb = c("p22189"),     # Townsend index, recruitment
                  calc_function     = leo_tdi),
+
+    # Inflammation ----
+    "LGI" = list(required_cols      = c("crp", "wbc", "platelet", "neutrophil", "lymphocyte"),
+                 required_cols_ukb  = c("p30710_i0", "p30000_i0", "p30080_i0", "p30140_i0", "p30120_i0"),
+                 calc_function      = leo_LGI),
+    # Insulin Resistance ----
+    "hba1c" = list(required_cols      = c("hba1c"),
+                   required_cols_ukb  = c("p30750_i0"),  # HbA1c (mmol/mol, IFCC) instance 0
+                   calc_function      = leo_hba1c),
+    "hba1c_percent" = list(required_cols      = c("hba1c"),
+                           required_cols_ukb  = c("p30750_i0"),
+                           calc_function      = leo_hba1c_percent),
+    "eGDR" = list(required_cols = c("hba1c", "waist", "hypertension"),
+                  required_cols_ukb = c("p30750_i0", "p48_i0", "hypertension"),
+                  calc_function = leo_eGDR),
+    "TyG" = list(required_cols = c("triglycerides", "glucose"),
+                 required_cols_ukb = c("p30870_i0", "p30740_i0"),
+                 calc_function = leo_TyG),
+    # Life Style Indicators ----
     "smoking_status" = list(required_cols     = c("smoking_status"),
                             required_cols_ukb = c("p20116_i0"),  # smoking status (instance 0)
                             calc_function     = leo_smoking_status),
     "drinking_status" = list(required_cols     = c("drinking_status"),
                              required_cols_ukb = c("p20117_i0"),  # alcohol drinker status (instance 0)
                              calc_function     = leo_drinking_status),
-    # Inflammation ----
-    "LGI" = list(required_cols      = c("crp", "wbc", "platelet", "neutrophil", "lymphocyte"),
-                 required_cols_ukb  = c("p30710_i0", "p30000_i0", "p30080_i0", "p30140_i0", "p30120_i0"),
-                 calc_function      = leo_LGI),
-    # Insulin Resistance ----
-    "eGDR" = list(required_cols = c("hba1c", "waist", "hypertension"),
-                  required_cols_ukb = c("p30750_i0", "p48_i0", NULL),
-                  calc_function = leo_eGDR),
-    "TyG" = list(required_cols = c("triglycerides", "glucose"),
-                 required_cols_ukb = c("p30870_i0", "p30740_i0"),
-                 calc_function = leo_TyG),
-    # Life Style Indicators ----
-    "PhysicalActivity" = list(required_cols    = c("p884_i0","p894_i0","p904_i0","p914_i0"),
-                              required_cols_ukb= c("p884_i0","p894_i0","p904_i0","p914_i0"),
-                              calc_function    = leo_physical_activity)
+    "physical_activity" = list(required_cols    = c("p884_i0","p894_i0","p904_i0","p914_i0"),
+                               required_cols_ukb= c("p884_i0","p894_i0","p904_i0","p914_i0"),
+                               calc_function    = leo_physical_activity)
     # Add more indicator types here if needed
   )
 
@@ -83,28 +92,30 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
     cli::cat_rule(paste("Generating new clinical indicator:", type), col = "blue")
     # Retrieve the required columns and function from the dictionary
     indicator_info <- indicator_dict[[type]]
+    if (is.null(indicator_info)) { cli::cli_alert_danger("Unknown type: {type}. Skip."); next }
     required_cols <- switch(as.character(type_id),
                             "FALSE" = indicator_info$required_cols,    # use column name
                             "TRUE" = indicator_info$required_cols_ukb) # use ukb field id
     calc_function <- indicator_info$calc_function
     # check
-    cli::cli_alert_info(paste(" - Checking if all required column is valid for {type} calculation."))
+    cli::cli_alert_info(paste("Checking if all required column is valid for {type} calculation."))
     missing_cols <- required_cols[!required_cols %in% colnames(df)]
     if (length(missing_cols) > 0) {
-      cli::cli_alert_danger(" - Missing: {paste(missing_cols, collapse = ', ')}. Skip {type}"); next
-    } else { cli::cli_alert_success(" - Pass for required columns checking.") }
+      cli::cli_alert_danger("Missing: {paste(missing_cols, collapse = ', ')}. Skip {type}"); next
+    } else { cli::cli_alert_success("Pass for required columns checking.") }
 
     # Dynamically apply the function to calculate the indicator
-    cli::cli_alert_info(" - Calculating the {type} using the following columns: {.val {required_cols}}")
+    cli::cli_alert_info("Calculating the {type} using the following columns: {.val {required_cols}}")
     columns_to_pass <- lapply(required_cols, function(col) df[[col]])
     results <- results %>% mutate(!!type := do.call(calc_function, columns_to_pass))
 
     # remove assisting columns if requested
     generated_types <- c(generated_types, type)
     if (remove_assist) { results <- results %>% dplyr::select(-all_of(required_cols)) }
-    cli::cli_alert_success(paste(" - {type} calculation completed.")) # Remove assisting columns if requested
+    cli::cli_alert_success(paste("{type} calculation completed.")) # Remove assisting columns if requested
   }
   if (remove_other) { results <- results %>% dplyr::select(eid, all_of(generated_types)) }
+  leo.basic::leo_time_elapsed(t0)
   return(results)
 }
 
@@ -238,38 +249,6 @@ leo_tdi <- function(tdi, ...) {
   return(tdi_num)
 }
 
-#' Recode smoking status (0 = Never, 1 = Previous, 2 = Current)
-#' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20116
-#'
-#' @param smoking_status Numeric/character vector, usually from p20116.
-#'
-#' @return Integer vector (0/1/2; NA for negative/special codes or others).
-#' @export
-leo_smoking_status <- function(smoking_status, ...) {
-  # keep 0/1/2, recode -3/-1 and other values to NA
-  x <- suppressWarnings(as.numeric(smoking_status))
-  x[x %in% c(-3, -1)] <- NA
-  x[!is.na(x) & !(x %in% c(0, 1, 2))] <- NA
-  cli::cli_alert_info("Smoking status recoding:\n  -3  Prefer not to answer\n  0   Never\n  1   Previous\n  2   Current")
-  return(as.integer(x))
-}
-
-#' Recode drinking status (0 = Never, 1 = Previous, 2 = Current)
-#' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20117
-#'
-#' @param drinking_status Numeric/character vector, usually from p20117.
-#'
-#' @return Integer vector (0/1/2; NA for negative/special codes or others).
-#' @export
-leo_drinking_status <- function(drinking_status, ...) {
-  # keep 0/1/2, recode -3/-1 and other values to NA
-  x <- suppressWarnings(as.numeric(drinking_status))
-  x[x %in% c(-3, -1)] <- NA
-  x[!is.na(x) & !(x %in% c(0, 1, 2))] <- NA
-  cli::cli_alert_info("Drinking status recoding:\n  -3  Prefer not to answer\n  0   Never\n  1   Previous\n  2   Current")
-  return(as.integer(x))
-}
-
 # Inflammation ----
 #' Calculate Low-Grade Inflammation Score (LGI / INFLA-score)
 #'
@@ -348,6 +327,48 @@ leo_LGI <- function(crp, wbc, plt, neutrophil, lymphocyte, ...) {
 }
 
 # Insulin Resistance -----
+
+#' Recode HbA1c (IFCC, mmol/mol)
+#' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=30750
+#'
+#' UK Biobank HbA1c is stored in mmol/mol (IFCC). This function performs:
+#' - numeric coercion,
+#' - recoding UKB special codes (-3/-1) to NA,
+#' - dropping non-positive values to NA (conservative guard).
+#'
+#' @param hba1c Numeric/character vector of HbA1c values (mmol/mol, IFCC), usually from p30750.
+#' @param ... Reserved for future use.
+#'
+#' @return Numeric vector of HbA1c in mmol/mol (IFCC), with special codes as NA.
+#' @export
+#'
+#' @importFrom cli cli_alert_info
+leo_hba1c <- function(hba1c, ...) {
+  x <- suppressWarnings(as.numeric(hba1c))
+  cli::cli_alert_info("HbA1c recoding (IFCC, mmol/mol)")
+  return(x)
+}
+
+#' Convert HbA1c from IFCC (mmol/mol) to NGSP (%)
+#' https://ngsp.org/ifcc.asp
+#'
+#' Conversion formula:
+#' \deqn{NGSP(\%) = 0.09148 \times IFCC(mmol/mol) + 2.152}
+#'
+#' @param hba1c Numeric/character vector of HbA1c values (mmol/mol, IFCC), usually from p30750.
+#' @param ... Reserved for future use.
+#'
+#' @return Numeric vector of HbA1c in % (NGSP), NA preserved.
+#' @export
+#'
+#' @importFrom cli cli_alert_info
+leo_hba1c_percent <- function(hba1c, ...) {
+  cli::cli_alert_info("Converting HbA1c from mmol/mol(IFCC) to %(NGSP) >>> {.code NGSP=[0.09148*IFCC]+2.152} {.url https://ngsp.org/ifcc.asp}")
+  hba1c_ifcc <- leo_hba1c(hba1c)
+  hba1c_ngsp <- 0.09148 * hba1c_ifcc + 2.152
+  return(hba1c_ngsp)
+}
+
 #' Calculate Estimated Glucose Disposal Rate (eGDR)
 #'
 #' This function calculates the eGDR using waist circumference, hypertension status, and HbA1c values.
@@ -371,14 +392,13 @@ leo_LGI <- function(crp, wbc, plt, neutrophil, lymphocyte, ...) {
 #' - **HbA1c (mmol/mol)** (Field ID: 30750)
 #'    - Conversion formula: NGSP (%) = [0.09148 * IFCC] + 2.152 [Ref](https://ngsp.org/ifcc.asp)
 #' - **Waist circumference** (Field ID: 48)
-#' - **hypertension** need to extract from icd10 or first occurrence records
+#' - **hypertension** need to extract from icd10 or first occurrence records first.
 #' @references
 #' 1. \url{https://diabetesjournals.org/care/article/36/8/2280/32950/Use-of-the-Estimated-Glucose-Disposal-Rate-as-a} (Diabetes Care, 2013 July)
 #' 2. \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC11439291/#Sec2} (Cardiovasc Diabetol, 2024 Sep)
 leo_eGDR <- function(hba1c, waist, hypertension, ...) {
-  cli::cli_alert_info(" - Converting HbA1c from mmol/mol(IFCC) to %(NGSP) >>> {.code NGSP=[0.09148*IFCC]+2.152} {.url https://ngsp.org/ifcc.asp}")
-  hba1c_percent <- 0.09148 * hba1c + 2.152
-  cli::cli_alert_info(" - Calculating eGDR using the formula: {.code eGDR = 21.158 + (-0.09 * waist) + (-3.407 * hypertension) + (-0.551 * hba1c_percent)}")
+  hba1c_percent <- leo_hba1c_percent(hba1c)
+  cli::cli_alert_info("Calculating eGDR using the formula: {.code eGDR = 21.158 + (-0.09 * waist) + (-3.407 * hypertension) + (-0.551 * hba1c_percent)}")
   eGDR <- 21.158 + (-0.09 * waist) + (-3.407 * hypertension) + (-0.551 * hba1c_percent)
   return(eGDR)
 }
@@ -402,17 +422,50 @@ leo_eGDR <- function(hba1c, waist, hypertension, ...) {
 #' -- In UKB, triglycerides (Field ID: 30870) and glucose (Field ID: 30740) are measured in mmol/L.
 #' @references \url{https://www.ncbi.nlm.nih.gov/pmc/articles/PMC3662289/} (Cardiovasc Diabetol, 2013)
 leo_TyG <- function(triglycerides, glucose, ...) {
-  cli::cli_alert_info(" - Converting triglycerides and glucose from {.emph \"mmmol/L\"} (UKB default unit) to {.emph \"mg/dL\"}")
+  cli::cli_alert_info("Converting triglycerides and glucose from {.emph \"mmmol/L\"} (UKB default unit) to {.emph \"mg/dL\"}")
   # Convert triglycerides and glucose from mmol/L to mg/dL
   triglycerides_mg_dl <- triglycerides * 88.5704  # Exact conversion factor
   glucose_mg_dl <- glucose * 18.0168  # Exact conversion factor
   # Calculate TyG index element-wise for the vectors
-  cli::cli_alert_info(" - Calculating TyG index using the formula: {.code TyG = ln[(triglycerides * glucose)/2]}")
+  cli::cli_alert_info("Calculating TyG index using the formula: {.code TyG = ln[(triglycerides * glucose)/2]}")
   TyG <- log((triglycerides_mg_dl * glucose_mg_dl) / 2)
   return(TyG)
 }
 
 # Life style Indicators -----
+
+#' Recode smoking status (0 = Never, 1 = Previous, 2 = Current)
+#' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20116
+#'
+#' @param smoking_status Numeric/character vector, usually from p20116.
+#'
+#' @return Integer vector (0/1/2; NA for negative/special codes or others).
+#' @export
+leo_smoking_status <- function(smoking_status, ...) {
+  # keep 0/1/2, recode -3/-1 and other values to NA
+  x <- suppressWarnings(as.numeric(smoking_status))
+  x[x %in% c(-3, -1)] <- NA
+  x[!is.na(x) & !(x %in% c(0, 1, 2))] <- NA
+  cli::cli_alert_info("Smoking status recoding:\n  -3  Prefer not to answer\n  0   Never\n  1   Previous\n  2   Current")
+  return(as.integer(x))
+}
+
+#' Recode drinking status (0 = Never, 1 = Previous, 2 = Current)
+#' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20117
+#'
+#' @param drinking_status Numeric/character vector, usually from p20117.
+#'
+#' @return Integer vector (0/1/2; NA for negative/special codes or others).
+#' @export
+leo_drinking_status <- function(drinking_status, ...) {
+  # keep 0/1/2, recode -3/-1 and other values to NA
+  x <- suppressWarnings(as.numeric(drinking_status))
+  x[x %in% c(-3, -1)] <- NA
+  x[!is.na(x) & !(x %in% c(0, 1, 2))] <- NA
+  cli::cli_alert_info("Drinking status recoding:\n  -3  Prefer not to answer\n  0   Never\n  1   Previous\n  2   Current")
+  return(as.integer(x))
+}
+
 #' Calculate Physical Activity Indicator (with internal NA recoding)
 #'
 #' This function first recodes UKB special codes -3/-1 to NA, then determines
@@ -433,7 +486,7 @@ leo_TyG <- function(triglycerides, glucose, ...) {
 #' @export
 #' @importFrom cli cli_alert_info
 leo_physical_activity <- function(p884_i0, p894_i0, p904_i0, p914_i0, ...) {
-  cli::cli_alert_info(" - Recoding UKB special codes (-3/-1) to NA")
+  cli::cli_alert_info("Recoding UKB special codes (-3/-1) to NA")
 
   # helper to coerce to numeric and recode
   recode_na <- function(x) {
@@ -447,7 +500,7 @@ leo_physical_activity <- function(p884_i0, p894_i0, p904_i0, p914_i0, ...) {
   p904_i0 <- recode_na(p904_i0)
   p914_i0 <- recode_na(p914_i0)
 
-  cli::cli_alert_info(" - Evaluating against activity thresholds")
+  cli::cli_alert_info("Evaluating against activity thresholds")
   moderate_days    <- ifelse(!is.na(p884_i0) & p884_i0 >= 5,   1L, 0L)
   moderate_minutes <- ifelse(!is.na(p894_i0) & p894_i0 >= 150, 1L, 0L)
   vigorous_days    <- ifelse(!is.na(p904_i0) & p904_i0 >= 1,   1L, 0L)

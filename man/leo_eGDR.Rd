@@ -34,7 +34,7 @@ In UKB, HbA1c is measured in \strong{mmol/mol (IFCC)}, and needs to be converted
 \item Conversion formula: NGSP (\%) = \link{0.09148 * IFCC} + 2.152 \href{https://ngsp.org/ifcc.asp}{Ref}
 }
 \item \strong{Waist circumference} (Field ID: 48)
-\item \strong{hypertension} need to extract from icd10 or first occurrence records
+\item \strong{hypertension} need to extract from icd10 or first occurrence records first.
 }
 }
 }

@@ -216,7 +216,6 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
   return(result)
 }
 
-
 #' Find the max date in given date columns
 #' `r lifecycle::badge('stable')`
 #'
