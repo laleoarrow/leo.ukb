@@ -2,33 +2,42 @@
 % Please edit documentation in R/clinical_vars.R
 \name{leo_physical_activity}
 \alias{leo_physical_activity}
-\title{Calculate Physical Activity Indicator (with internal NA recoding)}
+\title{Calculate Physical Activity Indicator
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#stable}{\figure{lifecycle-stable.svg}{options: alt='[Stable]'}}}{\strong{[Stable]}}}
 \usage{
 leo_physical_activity(p884_i0, p894_i0, p904_i0, p914_i0, ...)
 }
 \arguments{
-\item{p884_i0}{Integer/numeric vector; days/week moderate activity (10+ min), codes -3/-1 → NA.}
+\item{p884_i0}{Moderate activity days/week (10+ min). UKB 884; -1/-3 -> NA.}
 
-\item{p894_i0}{Integer/numeric vector; minutes/week moderate activity, codes -3/-1 → NA.}
+\item{p894_i0}{Moderate activity minutes/day (typical day). UKB 894; -1/-3 -> NA.}
 
-\item{p904_i0}{Integer/numeric vector; days/week vigorous activity (10+ min), codes -3/-1 → NA.}
+\item{p904_i0}{Vigorous activity days/week (10+ min). UKB 904; -1/-3 -> NA.}
 
-\item{p914_i0}{Integer/numeric vector; minutes/week vigorous activity, codes -3/-1 → NA.}
+\item{p914_i0}{Vigorous activity minutes/day (typical day). UKB 914; -1/-3 -> NA.}
+
+\item{...}{Reserved for future use.}
 }
 \value{
-Integer vector (1 = meets guideline, 0 = does not, NA = all missing).
+Factor with levels c("Non-regular", "Regular"); NA if insufficient data.
 }
 \description{
-This function first recodes UKB special codes -3/-1 to NA, then determines
-if participants meet any of the recommended activity thresholds:
+Here, using IPAQ minutes/week as input, classify regular activity according
+to AHA (150/75/equivalent combination) rules:
 \itemize{
-\item ≥150 min moderate/week,
-\item ≥75 min vigorous/week,
-\item ≥5 days moderate/week,
-\item ≥1 day vigorous/week.
+\item Moderate:  \eqn{\ge 150} min/week; or
+\item Vigorous:  \eqn{\ge 75} min/week; or
+\item Equivalent: \eqn{moderate + 2 \times vigorous \ge 150.}
 }
 }
 \note{
-This function is not ready; only adapted it based on code from 医工科研,
-which needs further reference validation. (都还没找到参考文献 真是服了)
+\emph{Adults should pursue at least 150 minutes per week of moderate-intensity
+physical activity, or 75 minutes per week of vigorous-intensity aerobic
+physical activity, or an equivalent combination of moderate- and
+vigorous-intensity aerobic activities.} (Circulation, 2010, \href{https://www.ahajournals.org/doi/10.1161/CIRCULATIONAHA.109.192703}{source})
+\itemize{
+\item \strong{≥150 min/wk moderate intensity}
+\item \strong{≥75 min/wk vigorous intensity}
+\item \strong{Combination}
+}
 }

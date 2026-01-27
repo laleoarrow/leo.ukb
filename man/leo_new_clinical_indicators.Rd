@@ -36,6 +36,16 @@ A dataframe containing the new clinical indicators.
 This function applies specific functions to generate new clinical indicators.
 It is designed to work with vectors (e.g., columns of a dataframe).
 }
+\details{
+Supported indicators (use values in \code{types}):
+\itemize{
+\item Basics: age, BMI, gender, ethnicity, ethnicity_finer.
+\item Socioeconomic: tdi, education, household_income, household_income_2, career.
+\item Inflammation: LGI.
+\item Insulin resistance: hba1c, hba1c_percent, eGDR, TyG.
+\item Lifestyle: smoking_status, drinking_status, diet_us, physical_activity.
+}
+}
 \examples{
 df <- data.frame(
   hba1c = c(48, 55, 60),
