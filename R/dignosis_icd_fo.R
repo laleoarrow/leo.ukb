@@ -215,6 +215,88 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
   return(result)
 }
 
+#' Process multiple ICD definitions in bulk
+#'
+#' Apply dignosis_process_icd() to a list or table of ICD code sets and
+#' return one status/time pair per diagnosis.
+#'
+#' @param data A data.frame containing UKB baseline, censoring, ICD code and date columns.
+#' @param icd_map A named list (diagnosis -> vector of ICD codes) or a data.frame.
+#'   If data.frame: first column is diagnosis name; remaining columns or a single
+#'   "codes" column contain ICD codes (comma/space separated or one per cell).
+#' @param icd ICD version, 10 or 9.
+#' @param censored Censoring date ("YYYY-MM-DD").
+#' @param icd_rank Rank of diagnosis occurrence to consider (1 = first occurrence).
+#' @param baseline_date Baseline date column name (default "p53_i0").
+#'
+#' @return A data.frame with eid and {diagnosis}_status/{diagnosis}_time columns.
+#' @export
+dignosis_process_icd_multi <- function(data, icd_map, icd = 10, censored = "2025-01-01", icd_rank = 1, baseline_date = "p53_i0") {
+  if (is.data.frame(icd_map)) {
+    dn <- as.character(icd_map[[1]])
+    if (ncol(icd_map) == 2L) {
+      codes_raw <- as.character(icd_map[[2]])
+      code_list <- lapply(codes_raw, function(x) {
+        if (is.na(x) || x == "") return(character(0))
+        gsub("\\s+", "", unlist(strsplit(x, ",")))
+      })
+    } else {
+      code_list <- apply(icd_map[, -1, drop = FALSE], 1, function(r) {
+        r <- r[!is.na(r) & r != ""]
+        gsub("\\s+", "", as.character(r))
+      })
+    }
+    names(code_list) <- dn
+    icd_map <- code_list
+  }
+  if (!is.list(icd_map) || is.null(names(icd_map))) {
+    stop("dignosis_process_icd_multi: `icd_map` must be a named list or a data.frame with diagnosis names.")
+  }
+
+  results <- list()
+  for (dx in names(icd_map)) {
+    codes <- unique(as.character(icd_map[[dx]]))
+    codes <- codes[!is.na(codes) & codes != ""]
+    if (length(codes) == 0L) next
+
+    per_code <- lapply(codes, function(code) {
+      dignosis_process_icd(data, icd_code = code, icd = icd, censored = censored,
+                           icd_rank = icd_rank, baseline_date = baseline_date)
+    })
+    df <- Reduce(function(x, y) dplyr::left_join(x, y, by = "eid"), per_code)
+    status_cols <- paste0(codes, "_status")
+    time_cols <- paste0(codes, "_time")
+
+    status_mat <- as.matrix(df[, status_cols, drop = FALSE])
+    time_mat <- as.matrix(df[, time_cols, drop = FALSE])
+
+    dx_status <- apply(status_mat, 1, function(r) {
+      if (all(is.na(r))) return(NA_integer_)
+      if (any(r == 1, na.rm = TRUE)) return(1L)
+      0L
+    })
+
+    dx_time <- vapply(seq_len(nrow(df)), function(i) {
+      r_status <- status_mat[i, ]
+      r_time <- time_mat[i, ]
+      if (all(is.na(r_status))) return(NA_real_)
+      if (any(r_status == 1, na.rm = TRUE)) {
+        return(min(r_time[r_status == 1], na.rm = TRUE))
+      }
+      return(r_time[!is.na(r_time)][1])
+    }, numeric(1))
+
+    out <- df[, "eid", drop = FALSE]
+    out[[paste0(dx, "_status")]] <- as.integer(dx_status)
+    out[[paste0(dx, "_time")]] <- as.numeric(dx_time)
+    results[[dx]] <- out
+  }
+
+  if (length(results) == 0L) return(data.frame())
+  final <- Reduce(function(x, y) dplyr::left_join(x, y, by = "eid"), results)
+  return(final)
+}
+
 #' Find the max date in given date columns
 #' `r lifecycle::badge('stable')`
 #'

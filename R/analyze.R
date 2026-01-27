@@ -1,4 +1,50 @@
-# Analyses ----
+# Helper ----
+
+#' Bin a continuous variable by quantiles
+#'
+#' A lightweight wrapper of `cut()` using quantile-based breaks (equal-frequency).
+#'
+#' @param x Numeric/character vector.
+#' @param bins Integer; number of quantile bins (default 4).
+#' @param labels Character vector; default uses "Q1..Qk".
+#' @param right Logical; passed to `cut()`.
+#' @param include_lowest Logical; passed to `cut()`.
+#' @param ... Reserved for future use.
+#'
+#' @return Character vector of quantile bins; NA preserved.
+#' @export
+#' @importFrom cli cli_alert_warning
+#' @examples
+#' x <- c(1:10, NA_integer_)
+#' q4 <- leo_quantile(x, bins = 4); q4
+#' table(q4, useNA = "ifany")
+#'
+#' x_tie <- c(rep(1L, 6), rep(2L, 6))
+#' q4_tie <- leo_quantile(x_tie, bins = 4); q4_tie
+#' table(q4_tie, useNA = "ifany")
+leo_quantile <- function(x, bins = 4, labels = NULL, right = TRUE, include_lowest = TRUE, ...) {
+  x_num <- suppressWarnings(as.numeric(x))
+  probs <- seq(0, 1, length.out = bins + 1)
+  breaks_use <- stats::quantile(x_num, probs = probs, na.rm = TRUE, type = 7, names = FALSE)
+
+  breaks_use <- breaks_use[is.finite(breaks_use)]
+  if (length(breaks_use) < 2) {
+    cli::cli_alert_warning("leo_quantile(): insufficient finite break points; returning all NA.")
+    return(rep(NA_character_, length(x_num)))
+  }
+
+  if (anyDuplicated(breaks_use)) {
+    cli::cli_alert_warning("leo_quantile(): duplicated break points detected (ties). Collapsing duplicates.")
+    breaks_use <- unique(breaks_use)
+    if (length(breaks_use) < 2) return(rep(NA_character_, length(x_num)))
+  }
+
+  n_bins <- length(breaks_use) - 1
+  if (is.null(labels)) labels <- paste0("Q", seq_len(n_bins))
+
+  out <- cut(x_num, breaks = breaks_use, labels = labels, right = right, include.lowest = include_lowest)
+  as.character(out)
+}
 
 #' @title Calculate P-value for Heterogeneity from Subgroup Summary Statistics
 #' `r lifecycle::badge('stable')`
@@ -22,18 +68,13 @@
 #'   p_values = p_values_example,
 #'   subgroup_names = names_example
 #' )
+#' @export
 leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 
   # --- 1. Input Validation ---
-  if (length(hrs) != length(p_values)) {
-    stop("Error: The length of 'hrs' and 'p_values' must be the same.")
-  }
-  if (length(hrs) < 2) {
-    stop("Error: At least two subgroups are required to test for heterogeneity.")
-  }
-  if (any(hrs <= 0) || any(p_values <= 0) || any(p_values > 1)) {
-    stop("Error: Invalid input. HRs must be > 0 and P-values must be between 0 and 1.")
-  }
+  if (length(hrs) != length(p_values)) stop("Error: The length of 'hrs' and 'p_values' must be the same.")
+  if (length(hrs) < 2) stop("Error: At least two subgroups are required to test for heterogeneity.")
+  if (any(hrs <= 0) || any(p_values <= 0) || any(p_values > 1)) stop("Error: Invalid input. HRs must be > 0 and P-values must be between 0 and 1.")
 
   # --- 2. Calculate log(HR) and Standard Errors (SE) ---
   # The test statistic for a single HR is z = log(HR) / SE(log(HR))
@@ -118,120 +159,6 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
   ))
 }
 
-# #' Deprecated: General looped linear regression: y ~ x (+ covariates)
-# #'
-# #' @description Loop over multiple exposures (x) to fit linear models against a single outcome (y).
-# #' Input data frames must have the first column as individual ID. Covariates are optional.
-# #'
-# #' @param x Data frame (first col = ID) of exposures; remaining columns are candidate predictors.
-# #' @param y Data frame (first col = ID) of outcome; one outcome column is used (see y_col).
-# #' @param cov Optional data frame (first col = ID) of covariates; remaining columns are covariates.
-# #' @param x_col Character vector of exposure column names in x; default: all columns from the 2nd.
-# #' @param y_col Outcome column name in y; default: the 2nd column of y.
-# #' @param id_col Shared ID column name in x/y/cov; default "id".
-# #' @param scale_x Logical; if TRUE, regress on scale(x); default FALSE.
-# #' @param na_action One of "na.omit" or "na.exclude"; default "na.omit".
-# #' @param verbose Logical; if FALSE, suppress logs; default TRUE.
-# #'
-# #' @return A tibble, each row = one regression (exposure vs outcome).
-# #' Columns:
-# #' \itemize{
-# #'   \item \code{x_name}: exposure variable name
-# #'   \item \code{y_name}: outcome variable name
-# #'   \item \code{n}: number of non-missing samples used
-# #'   \item \code{r2}: R-squared of model
-# #'   \item \code{adjr2}: adjusted R-squared
-# #'   \item \code{beta}: coefficient for exposure (per 1SD if scale_x=TRUE)
-# #'   \item \code{se}: standard error of beta
-# #'   \item \code{t}: t-statistic for beta
-# #'   \item \code{p}: raw p-value for beta
-# #'   \item \code{ci_l}: lower 95% CI of beta
-# #'   \item \code{ci_u}: upper 95% CI of beta
-# #'   \item \code{p_adj}: BH-adjusted p-value across all exposures in this run
-# #' }
-# #'
-# #' @examples
-# #' # --- Example 1: multiple exposures, no covariates ---
-# #' set.seed(1)
-# #' x <- tibble::tibble(id = 1:120, PRS1 = rnorm(120), PRS2 = rnorm(120))
-# #' y <- tibble::tibble(id = 1:120, va1y = 0.2 * scale(x$PRS1)[,1] + rnorm(120))
-# #' res1 <- leo_linear_regression(x = x, y = y, x_col = c("PRS1","PRS2"),
-# #'                               y_col = "va1y", id_col = "id", scale_x = TRUE)
-# #' head(res1)
-# #'
-# #' # --- Example 2: single exposure with covariates ---
-# #' set.seed(2)
-# #' x2   <- tibble::tibble(id = 1:150, PRS = rnorm(150))
-# #' y2   <- tibble::tibble(id = 1:150, va1y = 0.3 * scale(x2$PRS)[,1] + rnorm(150))
-# #' cov2 <- tibble::tibble(id = 1:150, age = rnorm(150, 50, 10), sex = sample(c("M","F"), 150, T))
-# #' res2 <- leo_linear_regression(x = x2, y = y2, cov = cov2,
-# #'                               x_col = "PRS", y_col = "va1y", id_col = "id",
-# #'                               scale_x = TRUE, na_action = "na.omit")
-# #' head(res2)
-# #'
-# #' @export
-# #' @importFrom dplyr select any_of left_join bind_rows
-# #' @importFrom stats lm as.formula na.omit na.exclude nobs
-# #' @importFrom broom tidy glance
-# #' @importFrom tibble tibble
-# #' @importFrom glue glue
-# leo_linear_regression_old <- function(x, y, cov = NULL, x_col = NULL, y_col = NULL,
-#                                   id_col = "id", scale_x = F, na_action = "na.omit",
-#                                   verbose = TRUE) {
-#   # checks
-#   if (!id_col %in% names(x)) return(leo.basic::leo_log("id_col '{id_col}' not found in x", level = "danger", verbose = verbose))
-#   if (!id_col %in% names(y)) return(leo.basic::leo_log("id_col '{id_col}' not found in y", level = "danger", verbose = verbose))
-#   if (!is.null(cov) && !id_col %in% names(cov)) return(leo.basic::leo_log("id_col '{id_col}' not found in cov", level = "danger", verbose = verbose))
-#   if (is.null(x_col)) x_col <- names(x)[seq_len(ncol(x))[-1L]]
-#   if (length(x_col) == 0) return(leo.basic::leo_log("No exposure columns to analyze in x", level = "danger", verbose = verbose))
-#   if (is.null(y_col)) { if (ncol(y) < 2) return(leo.basic::leo_log("y has no outcome column", level = "danger", verbose = verbose)); y_col <- names(y)[2L] }
-#   if (!y_col %in% names(y)) return(leo.basic::leo_log("y_col '{y_col}' not found in y", level = "danger", verbose = verbose))
-#   if (!all(x_col %in% names(x))) return(leo.basic::leo_log("Some x_col not found in x: {paste(setdiff(x_col, names(x)), collapse=', ')}", level = "danger", verbose = verbose))
-#   if (!na_action %in% c("na.omit","na.exclude")) return(leo.basic::leo_log("na_action must be 'na.omit' or 'na.exclude'", level = "danger", verbose = verbose))
-#
-#   # helpers
-#   na_fun <- if (na_action == "na.omit") stats::na.omit else stats::na.exclude
-#   bt <- function(z) paste0("`", z, "`")
-#
-#   # prep data
-#   x_df <- dplyr::select(x, dplyr::any_of(c(id_col, x_col))); names(x_df)[1] <- "eid"
-#   y_df <- dplyr::select(y, dplyr::any_of(c(id_col, y_col))); names(y_df)[1] <- "eid"
-#   if (!is.null(cov)) {
-#     cov_df <- dplyr::select(cov, dplyr::any_of(c(id_col, setdiff(names(cov), id_col)))); names(cov_df)[1] <- "eid"
-#     cov_names <- setdiff(names(cov_df), "eid")
-#   } else { cov_df <- NULL; cov_names <- character(0) }
-#   base_df <- y_df; if (!is.null(cov_df)) base_df <- dplyr::left_join(base_df, cov_df, by = "eid")
-#
-#   # loop exposures
-#   leo.basic::leo_log("Performing linear regression with settings:\n y = {y_col}\n x = {paste(x_col, collapse=', ')}\n cov = {ifelse(length(cov_names)==0, '(none)', paste(cov_names, collapse=', '))}", level = "info", verbose = verbose)
-#   rows <- list()
-#   for (xn in x_col) {
-#     df <- dplyr::left_join(base_df, x_df[, c("eid", xn), drop = F], by = "eid")
-#     rhs_x <- if (scale_x) glue::glue("scale({bt(xn)})") else bt(xn)
-#     rhs_cov <- setdiff(names(df), c("eid", y_col, xn)) # drop cov if it is the x
-#     rhs <- c(rhs_x, if (length(rhs_cov) > 0) paste0("`", rhs_cov, "`"))
-#     form <- stats::as.formula(paste0(bt(y_col), " ~ ", paste(rhs, collapse = " + ")))
-#     fit <- stats::lm(form, data = df, na.action = na_fun)
-#
-#     tt <- broom::tidy(fit, conf.int = TRUE)
-#     exp_pat <- if (scale_x) paste0("^scale\\(", gsub("([\\W])","\\\\\\1", xn), "\\)$") else paste0("^", gsub("([\\W])","\\\\\\1", xn), "$")
-#     exp_row <- tt[grepl(exp_pat, tt$term), , drop = F]
-#     if (nrow(exp_row) == 0) exp_row <- data.frame(estimate = NA_real_, std.error = NA_real_, statistic = NA_real_, p.value = NA_real_, conf.low = NA_real_, conf.high = NA_real_)
-#     gl <- broom::glance(fit)
-#
-#     rows[[length(rows) + 1]] <- tibble::tibble(x_name = xn, y_name = y_col, n = stats::nobs(fit),
-#                                                r2 = gl$r.squared, adjr2 = gl$adj.r.squared,
-#                                                beta = exp_row$estimate[1], se = exp_row$std.error[1],
-#                                                t = exp_row$statistic[1], p = exp_row$p.value[1],
-#                                                ci_l = exp_row$conf.low[1], ci_u = exp_row$conf.high[1])
-#   }
-#
-#   out <- dplyr::bind_rows(rows); out$p_adj <- p.adjust(out$p, method = "BH")
-#   n_min <- min(out$n, na.rm = T); n_max <- max(out$n, na.rm = T)
-#   leo.basic::leo_log("Completed. Processed {length(x_col)} exposure(s). N range: {n_min}–{n_max}.", level = "success", verbose = verbose)
-#   return(out)
-# }
-
 #' Helper function to format p-values according to common publication standards
 #'
 #' @param p_value Numeric p-value
@@ -244,6 +171,8 @@ format_p_value <- function(p_value) {
   return(as.character(round(p_value, 3)))
 }
 
+
+# Analyses ----
 # Linear regression analysis for PRS vs clinical outcomes
 #' Linear regression analysis
 #' `r lifecycle::badge('experimental')`

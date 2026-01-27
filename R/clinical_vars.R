@@ -1,9 +1,25 @@
 # Here, we collect clinical variables derived from the clinical information of UK Biobank participants.
+# - Main entry: leo_new_clinical_indicators() acts as a dispatcher.
+# - indicator_dict maps each type -> required columns (semantic vs UKB field IDs) + a vectorized leo_*() function.
+# - For each type: check required columns -> do.call(calc_function, cols) -> mutate(new column) -> optionally drop assist cols / keep only eid + generated cols.
+# - Logging: the main function prints task-level progress; sub-functions print only essential notes (e.g., unit conversion, special-code handling) and usually avoid success messages.
+# - Helper recoders (e.g., recode_na31()) are internal utilities used by sub-functions and are not registered in indicator_dict.
 
-#' Generate New Clinical Indicators
+#' @title Generate New Clinical Indicators
 #'
+#' @description
 #' This function applies specific functions to generate new clinical indicators.
 #' It is designed to work with vectors (e.g., columns of a dataframe).
+#'
+#' @details
+#' Supported indicators (use values in `types`):
+#' \itemize{
+#'   \item Basics: age, BMI, gender, ethnicity, ethnicity_finer.
+#'   \item Socioeconomic: tdi, education, household_income, household_income_2, career.
+#'   \item Inflammation: LGI.
+#'   \item Insulin resistance: hba1c, hba1c_percent, eGDR, TyG.
+#'   \item Lifestyle: smoking_status, drinking_status, diet_us, physical_activity.
+#' }
 #'
 #' @param df A dataframe containing the required columns for calculation.
 #' @param types A vector of indicator types, options are "eGDR", "TyG", "PhysicalActivity", "LGI"...
@@ -51,10 +67,22 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
     "ethnicity_finer" = list(required_cols     = c("ethnicity"),
                              required_cols_ukb = c("p21000_i0"),
                              calc_function     = leo_ethnicity_finer),
+    # Socioeconomic Indicators (SES) ----
     "tdi" = list(required_cols     = c("tdi"),
                  required_cols_ukb = c("p22189"),     # Townsend index, recruitment
                  calc_function     = leo_tdi),
-
+    "education" = list(required_cols     = c("education"),
+                       required_cols_ukb = c("p6138_i0"),   # qualifications (instance 0)
+                       calc_function     = leo_education),
+    "household_income" = list(required_cols     = c("income"),
+                              required_cols_ukb = c("p738_i0"),
+                              calc_function     = leo_household_income),
+    "household_income_2" = list(required_cols     = c("income"),
+                                required_cols_ukb = c("p738_i0"),
+                                calc_function     = leo_household_income_2),
+    "career" = list(required_cols     = c("career"),
+                    required_cols_ukb = c("p6142_i0"),   # current employment status (instance 0)
+                    calc_function     = leo_career),
     # Inflammation ----
     "LGI" = list(required_cols      = c("crp", "wbc", "platelet", "neutrophil", "lymphocyte"),
                  required_cols_ukb  = c("p30710_i0", "p30000_i0", "p30080_i0", "p30140_i0", "p30120_i0"),
@@ -79,6 +107,15 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
     "drinking_status" = list(required_cols     = c("drinking_status"),
                              required_cols_ukb = c("p20117_i0"),  # alcohol drinker status (instance 0)
                              calc_function     = leo_drinking_status),
+    "diet_us" = list(required_cols      = c("fresh_fruit", "dried_fruit", "cooked_veg", "salad_veg",
+                                            "oily_fish", "non_oily_fish",
+                                            "bread_intake", "bread_type", "cereal_intake", "cereal_type",
+                                            "processed_meat", "age_last_meat", "poultry", "beef", "lamb", "pork"),
+                     required_cols_ukb  = c("p1309_i0", "p1319_i0", "p1289_i0", "p1299_i0",
+                                            "p1329_i0", "p1339_i0",
+                                            "p1438_i0", "p1448_i0", "p1458_i0", "p1468_i0",
+                                            "p1349_i0", "p3680_i0", "p1359_i0", "p1369_i0", "p1379_i0", "p1389_i0"),
+                     calc_function      = leo_diet_us),
     "physical_activity" = list(required_cols    = c("p884_i0","p894_i0","p904_i0","p914_i0"),
                                required_cols_ukb= c("p884_i0","p894_i0","p904_i0","p914_i0"),
                                calc_function    = leo_physical_activity)
@@ -88,14 +125,13 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
   # Loop through each type
   results <- df
   generated_types <- character(0)  # store successfully generated indicator names
+  assist_cols_to_drop <- character(0)  # accumulate assist columns from all successful types
   for (type in types) {
     cli::cat_rule(paste("Generating new clinical indicator:", type), col = "blue")
     # Retrieve the required columns and function from the dictionary
     indicator_info <- indicator_dict[[type]]
     if (is.null(indicator_info)) { cli::cli_alert_danger("Unknown type: {type}. Skip."); next }
-    required_cols <- switch(as.character(type_id),
-                            "FALSE" = indicator_info$required_cols,    # use column name
-                            "TRUE" = indicator_info$required_cols_ukb) # use ukb field id
+    required_cols <- if (type_id) indicator_info$required_cols_ukb else indicator_info$required_cols
     calc_function <- indicator_info$calc_function
     # check
     cli::cli_alert_info(paste("Checking if all required column is valid for {type} calculation."))
@@ -107,14 +143,21 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
     # Dynamically apply the function to calculate the indicator
     cli::cli_alert_info("Calculating the {type} using the following columns: {.val {required_cols}}")
     columns_to_pass <- lapply(required_cols, function(col) df[[col]])
-    results <- results %>% mutate(!!type := do.call(calc_function, columns_to_pass))
+    results <- results %>% mutate(!!type := do.call(calc_function, c(columns_to_pass, list(...))))
 
-    # remove assisting columns if requested
+    # Track successfully generated types and accumulate their assist columns
     generated_types <- c(generated_types, type)
-    if (remove_assist) { results <- results %>% dplyr::select(-all_of(required_cols)) }
-    cli::cli_alert_success(paste("{type} calculation completed.")) # Remove assisting columns if requested
+    assist_cols_to_drop <- c(assist_cols_to_drop, required_cols)
+    cli::cli_alert_success(paste("{type} calculation completed."))
+  }
+
+  # Finalize the results
+  if (remove_assist && !remove_other) {
+    assist_cols_to_drop <- unique(assist_cols_to_drop)  # remove duplicates for clarity
+    results <- results %>% dplyr::select(-all_of(assist_cols_to_drop))
   }
   if (remove_other) { results <- results %>% dplyr::select(eid, all_of(generated_types)) }
+  cli::cat_rule("All done!", col = "blue")
   leo.basic::leo_time_elapsed(t0)
   return(results)
 }
@@ -235,6 +278,7 @@ leo_ethnicity_finer <- function(ethnicity, ...) {
   return(eth_rec)
 }
 
+# Socioeconomic Indicators (SES) ----
 #' Recode Townsend deprivation index (TDI)
 #' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=22189
 #'
@@ -248,6 +292,135 @@ leo_tdi <- function(tdi, ...) {
   tdi_num[tdi_num %in% c(-3, -1)] <- NA
   return(tdi_num)
 }
+
+#' Recode UKB qualifications into 3 categories
+#'
+#' Recode UKB field 6138 (Qualifications; multiple selections separated by "|")
+#' into Degree / No degree / Unknown.
+#'
+#' @param p6138_i0 UKB 6138 qualifications string (https://biobank.ndph.ox.ac.uk/ukb/field.cgi?id=6138).
+#' @param ... Reserved for future use.
+#'
+#' @return Character vector with values: "Degree", "No degree", or "Unknown".
+#' @export
+#' @importFrom dplyr case_when
+#' @importFrom stringr str_detect
+#' @importFrom cli cli_alert_info cli_alert_success
+leo_education <- function(p6138_i0, ...) {
+  cli::cli_alert_info("Recoding UKB 6138 into Degree/No degree/Unknown")
+
+  x <- as.character(p6138_i0)
+  unknown <- is.na(x) | x == "" | x == "-3"
+  has_degree <- !unknown & stringr::str_detect(paste0("|", x, "|"), "\\|1\\|")
+
+  education <- dplyr::case_when(unknown ~ "Unknown",
+                                has_degree ~ "Degree",
+                                T ~ "Non_degree")
+
+  cli::cli_alert_success("Education recoding completed.")
+  return(education)
+}
+
+#' Recode employment status
+#' 
+#' Recode employment status into paid vs not-paid employment
+#' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=6142
+#'
+#' @param p6142_i0 Current employment status (UKB 6142, instance 0).
+#'   Values:
+#'   1 = In paid employment or self-employed
+#'   2 = Retired
+#'   3 = Looking after home and/or family
+#'   4 = Unable to work because of sickness or disability
+#'   5 = Unemployed
+#'   6 = Doing unpaid or voluntary work
+#'   7 = Full or part-time student
+#'   -7 = None of the above
+#'   -3 = Prefer not to answer
+#' @param ... Reserved for future use.
+#'
+#' @return Factor with categories "Paid employment" and "Not paid employment"; NA for special codes.
+#' @export
+leo_career <- function(p6142_i0, ...) {
+  x <- suppressWarnings(as.numeric(p6142_i0))
+  x[x %in% c(-3, -7)] <- NA_real_
+  career <- dplyr::case_when(
+    is.na(x) ~ NA_character_,
+    x == 1 ~ "Paid employment",
+    x %in% 2:7 ~ "Not paid employment",
+    TRUE ~ NA_character_
+  )
+  return(factor(career, levels = c("Paid employment", "Not paid employment")))
+}
+
+#' Recode household income (UKB 738) into readable categories
+#'
+#' Recode UKB field 738 "Average total household income before tax" into
+#' 5 brackets plus "Unknown" (-1/-3/NA/blank).
+#'
+#' @param p738_i0 Household income before tax (UKB 738, instance 0).
+#'   Values: 1–5; -1/-3 -> Unknown.
+#' @param ... Reserved for future use.
+#'
+#' @return Character vector: "0-18,000", "18,000-30,999", "31,000-51,999",
+#'   "52,000-100,000", "Above 100,000", or "Unknown".
+#' @export
+#' @importFrom cli cli_alert_info
+#' @importFrom dplyr case_when
+leo_household_income <- function(p738_i0, ...) {
+  income_code <- suppressWarnings(as.numeric(p738_i0))
+  income_code[income_code %in% c(-1, -3)] <- NA_real_
+
+  income <- dplyr::case_when(
+    is.na(income_code) ~ "Unknown",
+    income_code == 1   ~ "£0–£18,000",
+    income_code == 2   ~ "£18,000–£30,999",
+    income_code == 3   ~ "£31,000–£51,999",
+    income_code == 4   ~ "£52,000–£100,000",
+    income_code == 5   ~ "£100,000 and above",
+    TRUE               ~ "Unknown"
+  )
+  income <- factor(income,
+                   levels = c("£0–£18,000", "£18,000–£30,999", "£31,000–£51,999",
+                              "£52,000–£100,000", "£100,000 and above", "Unknown")
+  )
+  return(income)
+}
+
+#' Recode household income (UKB 738) into readable categories (2 categories)
+#'
+#' The five levels of the average total before-tax household income were classified
+#' as “less than” or “equal to or above” £31,000, which is closest to the UK median
+#' household income in October 2009 (£27,530)
+#' - Reference: *Air Pollution, Genetic Factors, and the Risk of Lung Cancer A Prospective Study in the UK Biobank*
+#'
+#' @param p738_i0 Household income before tax (UKB 738, instance 0).
+#' @param ... Reserved for future use.
+#'
+#' @return Character vector
+#' @export
+#' @importFrom cli cli_alert_info
+#' @importFrom dplyr case_when
+leo_household_income_2 <- function(p738_i0, ...) {
+  income_code <- suppressWarnings(as.numeric(p738_i0))
+  income_code[income_code %in% c(-1, -3)] <- NA_real_
+
+  income <- dplyr::case_when(
+    is.na(income_code) ~ "Miss value",
+    income_code == 1   ~ "Less than £31,000",
+    income_code == 2   ~ "Less than £31,000",
+    income_code == 3   ~ "£31,000 and above",
+    income_code == 4   ~ "£31,000 and above",
+    income_code == 5   ~ "£31,000 and above",
+    TRUE               ~ "Miss value"
+  )
+  income <- factor(income,
+                   levels = c("Less than £31,000", "£31,000 and above", "Miss value"))
+  return(income)
+}
+
+
+
 
 # Inflammation ----
 #' Calculate Low-Grade Inflammation Score (LGI / INFLA-score)
@@ -299,7 +472,7 @@ leo_LGI <- function(crp, wbc, plt, neutrophil, lymphocyte, ...) {
   #' @param x Numeric vector of biomarker values.
   #' @return Integer vector in [-4, 4]; NA if input is NA.
   #' @keywords internal
-  leo_LGI_decile_score <- function(x) {
+  .LGI_decile_score <- function(x) {
     if (all(is.na(x))) return(rep(NA_integer_, length(x)))
     deciles <- stats::quantile(x, probs = seq(0.1, 0.9, by = 0.1), na.rm = T, type = 7) # deciles
     tile <- cut(x, # cut into 10 deciles (1~10)
@@ -315,10 +488,10 @@ leo_LGI <- function(crp, wbc, plt, neutrophil, lymphocyte, ...) {
   }
 
   # score each biomarker by deciles
-  crp_score <- leo_LGI_decile_score(crp)
-  wbc_score <- leo_LGI_decile_score(wbc)
-  plt_score <- leo_LGI_decile_score(plt)
-  nlr_score <- leo_LGI_decile_score(nlr)
+  crp_score <- .LGI_decile_score(crp)
+  wbc_score <- .LGI_decile_score(wbc)
+  plt_score <- .LGI_decile_score(plt)
+  nlr_score <- .LGI_decile_score(nlr)
 
   # sum component scores
   lgi_score <- crp_score + wbc_score + plt_score + nlr_score
@@ -466,52 +639,256 @@ leo_drinking_status <- function(drinking_status, ...) {
   return(as.integer(x))
 }
 
-#' Calculate Physical Activity Indicator (with internal NA recoding)
+#' Recode drinking consumption
 #'
-#' This function first recodes UKB special codes -3/-1 to NA, then determines
-#' if participants meet any of the recommended activity thresholds:
-#' - ≥150 min moderate/week,
-#' - ≥75 min vigorous/week,
-#' - ≥5 days moderate/week,
-#' - ≥1 day vigorous/week.
+#' This is more sophisticated indictor shoing if one is exccessively drink,
+#' cobining thinking: red_wine white wine, beer, spirits, and fortified wine Numeric/character vector, usually from p20117.
 #'
-#' @note This function is not ready; only adapted it based on code from 医工科研,
-#'       which needs further reference validation. (都还没找到参考文献 真是服了)
-#'
-#' @param p884_i0 Integer/numeric vector; days/week moderate activity (10+ min), codes -3/-1 → NA.
-#' @param p894_i0 Integer/numeric vector; minutes/week moderate activity, codes -3/-1 → NA.
-#' @param p904_i0 Integer/numeric vector; days/week vigorous activity (10+ min), codes -3/-1 → NA.
-#' @param p914_i0 Integer/numeric vector; minutes/week vigorous activity, codes -3/-1 → NA.
-#' @return Integer vector (1 = meets guideline, 0 = does not, NA = all missing).
+#' @return Integer vector (0/1/2; NA for negative/special codes or others).
 #' @export
-#' @importFrom cli cli_alert_info
-leo_physical_activity <- function(p884_i0, p894_i0, p904_i0, p914_i0, ...) {
-  cli::cli_alert_info("Recoding UKB special codes (-3/-1) to NA")
-
-  # helper to coerce to numeric and recode
-  recode_na <- function(x) {
-    x_num <- suppressWarnings(as.numeric(x))
-    x_num[x_num %in% c(-3, -1)] <- NA
-    x_num
-  }
-
-  p884_i0 <- recode_na(p884_i0)
-  p894_i0 <- recode_na(p894_i0)
-  p904_i0 <- recode_na(p904_i0)
-  p914_i0 <- recode_na(p914_i0)
-
-  cli::cli_alert_info("Evaluating against activity thresholds")
-  moderate_days    <- ifelse(!is.na(p884_i0) & p884_i0 >= 5,   1L, 0L)
-  moderate_minutes <- ifelse(!is.na(p894_i0) & p894_i0 >= 150, 1L, 0L)
-  vigorous_days    <- ifelse(!is.na(p904_i0) & p904_i0 >= 1,   1L, 0L)
-  vigorous_minutes <- ifelse(!is.na(p914_i0) & p914_i0 >= 75,  1L, 0L)
-
-  meets_any <- (moderate_days + moderate_minutes + vigorous_days + vigorous_minutes) >= 1
-
-  all_na <- is.na(p884_i0) & is.na(p894_i0) & is.na(p904_i0) & is.na(p914_i0)
-  result <- ifelse(all_na, NA_integer_, as.integer(meets_any))
-
-  return(result)
+leo_drinking_consumption <- function(...) {
+  # todo：
+  # 202601: 主函数还未加
+  return(x)
 }
 
+#' healthy diet score by U.S. Dietary Guidelines
+#'
+#' Calculate a 0–7 healthy diet score using seven components (vegetables, fruit,
+#' fish, whole grains, refined grains, processed meat, unprocessed meat) following
+#' the U.S. Dietary Guidelines targets. Each component meeting its intake target
+#' contributes 1 point; higher scores indicate healthier patterns.
+#'
+#' Field expectations (UKB instance 0):
+#' - Fruits: p1309_i0 (fresh pieces/day), p1319_i0 (dried pieces/day; 5 pieces = 1 serving)
+#' - Vegetables: p1289_i0 (cooked tablespoons/day), p1299_i0 (salad tablespoons/day; 3 tbsp = 1 serving)
+#' - Fish: p1329_i0 (oily fish frequency code), p1339_i0 (non-oily fish frequency code)
+#' - Bread: p1438_i0 (slices/week, -10 = "less than once"), p1448_i0 (type: 1=White, 2=Brown, 3=Wholemeal, 4=Other)
+#' - Cereal: p1458_i0 (bowls/week, -10 = "less than once"), p1468_i0 (type: 1=Bran, 2=Biscuit, 3=Oat, 4=Muesli, 5=Other)
+#' - Processed meat: p1349_i0 (frequency code 0–5, per Data-Coding 100377); p3680_i0 == 0 implies never ate meat
+#' - Unprocessed meat: p1359_i0 (poultry), p1369_i0 (beef), p1379_i0 (lamb), p1389_i0 (pork) — all frequency codes 0–5
+#'
+#' All frequency fields (100377) encode: 0=Never, 1=<1/wk, 2=1/wk, 3=2–4/wk, 4=5–6/wk, 5=Daily.
+#' To meet component thresholds, frequency codes must be converted to weekly servings
+#' (e.g., code 2 → 1/wk, code 3 → 3/wk midpoint, code 5 → 7/wk).
+#'
+#' Whole grains: bread_type==3 (wholemeal) + cereal_type in (1,3,4) (bran/oat/muesli)
+#' Refined grains: bread_type in (1,2,4) (white/brown/other) + cereal_type in (2,5) (biscuit/other)
+#'
+#' @param fresh_fruit Fresh fruit pieces per day.
+#' @param dried_fruit Dried fruit pieces per day (5 pieces = 1 serving).
+#' @param cooked_veg Cooked vegetables tablespoons per day (3 tbsp = 1 serving).
+#' @param salad_veg Salad/raw vegetables tablespoons per day (3 tbsp = 1 serving).
+#' @param oily_fish Oily fish frequency code (p1329_i0, 0–5 per Data-Coding 100377).
+#' @param non_oily_fish Non-oily fish frequency code (p1339_i0, 0–5 per Data-Coding 100377).
+#' @param bread_intake Bread slices per week (p1438_i0); -10 treated as 0/week (less than once).
+#' @param bread_type Bread type code (p1448_i0): 1=White, 2=Brown, 3=Wholemeal, 4=Other.
+#' @param cereal_intake Cereal bowls per week (p1458_i0); -10 treated as 0/week.
+#' @param cereal_type Cereal type code (p1468_i0): 1=Bran, 2=Biscuit, 3=Oat, 4=Muesli, 5=Other.
+#' @param processed_meat Processed meat frequency code (p1349_i0, 0–5 per Data-Coding 100377).
+#' @param age_last_meat Age when last ate meat (p3680_i0); 0 = never ate meat.
+#' @param poultry Poultry frequency code (p1359_i0, 0–5 per Data-Coding 100377).
+#' @param beef Beef frequency code (p1369_i0, 0–5 per Data-Coding 100377).
+#' @param lamb Lamb/mutton frequency code (p1379_i0, 0–5 per Data-Coding 100377).
+#' @param pork Pork frequency code (p1389_i0, 0–5 per Data-Coding 100377).
+#' @param ... Reserved for future use.
+#'
+#' @return Integer vector in [0,7]; NA if any component cannot be evaluated for a row.
+#' @export
+#' @importFrom cli cli_alert_info
+leo_diet_us <- function(fresh_fruit, dried_fruit, cooked_veg, salad_veg,
+                        oily_fish, non_oily_fish,
+                        bread_intake, bread_type, cereal_intake, cereal_type,
+                        processed_meat, age_last_meat, poultry, beef, lamb, pork, ...) {
+  cli::cli_alert_info("Calculating healthy diet score (U.S. Dietary Guidelines; 0-7)")
 
+  # component 1: Fruits
+  fruit_fresh_p1309 <- recode_na31neg10(fresh_fruit) # UKB 1309
+  fruit_dried_p1319 <- recode_na31neg10(dried_fruit) # UKB 1319
+  # component 2: Vegetables
+  veg_cooked_p1289 <- recode_na31neg10(cooked_veg)   # UKB 1289
+  veg_salad_p1299  <- recode_na31neg10(salad_veg)    # UKB 1299
+  # component 3: Fish
+  fish_oily_p1329     <- recode_na31neg10(oily_fish)     # UKB 1329
+  fish_non_oily_p1339 <- recode_na31neg10(non_oily_fish) # UKB 1339
+  # component 4-5: Whole grains / Refined grains
+  bread_slices_p1438 <- recode_na31neg10(bread_intake)  # UKB 1438
+  bread_type_p1448   <- recode_na31(bread_type)         # UKB 1448
+  cereal_bowls_p1458 <- recode_na31neg10(cereal_intake) # UKB 1458
+  cereal_type_p1468  <- recode_na31(cereal_type)        # UKB 1468
+  # component 6: Processed meat
+  processed_meat_p1349 <- recode_na31neg10(processed_meat) # UKB 1349
+  meat_last_age_p3680  <- recode_na31(age_last_meat)       # UKB 3680
+  never_meat <- !is.na(meat_last_age_p3680) & meat_last_age_p3680 == 0
+  # component 7: Unprocessed meat
+  poultry_p1359 <- recode_na31neg10(poultry) # UKB 1359
+  beef_p1369    <- recode_na31neg10(beef)    # UKB 1369
+  lamb_p1379    <- recode_na31neg10(lamb)    # UKB 1379
+  pork_p1389    <- recode_na31neg10(pork)    # UKB 1389
+
+
+  # Frequency code -> weekly servings (Data-Coding 100377: 0=Never, 1=<1/wk, 2=1/wk, 3=2-4/wk, 4=5-6/wk, 5=Once or more Daily; -1/-3 handled as NA)
+  # Data-Coding 100377 mapping (https://biobank.ndph.ox.ac.uk/showcase/coding.cgi?id=100377)
+  # Logic we used here is to treat "less than once" as zero intake, for other intake intervals we use midpoints.
+  freq_map <- c(`0` = 0, `1` = 0, `2` = 1, `3` = 3, `4` = 5.5, `5` = 7)
+
+  # Component 1: Fruits (UKB 1309, 1319) - >=3 servings/day; dried fruit 5 pieces = 1 serving
+  fruit_serv_day <- rowSums(cbind(fruit_fresh_p1309, fruit_dried_p1319 / 5), na.rm = TRUE)
+  fruit_serv_day[is.na(fruit_fresh_p1309) & is.na(fruit_dried_p1319)] <- NA_real_
+
+  # Component 2: Vegetables (UKB 1289, 1299) - >=3 servings/day; 3 tbsp = 1 serving
+  veg_serv_day <- rowSums(cbind(veg_cooked_p1289 / 3, veg_salad_p1299 / 3), na.rm = TRUE)
+  veg_serv_day[is.na(veg_cooked_p1289) & is.na(veg_salad_p1299)] <- NA_real_
+
+  # Component 3: Fish (UKB 1329, 1339) - Data-Coding 100377; >=2 servings/week
+  fish_oily_week <- as.numeric(freq_map[as.character(fish_oily_p1329)])
+  fish_non_oily_week <- as.numeric(freq_map[as.character(fish_non_oily_p1339)])
+  fish_serv_week <- rowSums(cbind(fish_oily_week, fish_non_oily_week), na.rm = TRUE)
+  fish_serv_week[is.na(fish_oily_week) & is.na(fish_non_oily_week)] <- NA_real_
+
+  # Component 4: Whole grains (UKB 1438/1448, 1458/1468) - >=3 servings/day
+  # Component 5: Refined grains (UKB 1438/1448, 1458/1468) - <=2 servings/day
+  # Only require type if intake > 0.
+  whole_bread_week <- dplyr::case_when(
+    is.na(bread_slices_p1438) ~ NA_real_,
+    bread_slices_p1438 == 0   ~ 0,
+    bread_slices_p1438 > 0 & is.na(bread_type_p1448) ~ NA_real_,
+    bread_slices_p1438 > 0 & bread_type_p1448 == 3   ~ bread_slices_p1438,
+    TRUE                      ~ 0
+  )
+
+  refined_bread_week <- dplyr::case_when(
+    is.na(bread_slices_p1438) ~ NA_real_,
+    bread_slices_p1438 == 0   ~ 0,
+    bread_slices_p1438 > 0 & is.na(bread_type_p1448) ~ NA_real_,
+    bread_slices_p1438 > 0 & bread_type_p1448 %in% c(1, 2, 4) ~ bread_slices_p1438,
+    TRUE                      ~ 0
+  )
+
+  whole_cereal_week <- dplyr::case_when(
+    is.na(cereal_bowls_p1458) ~ NA_real_,
+    cereal_bowls_p1458 == 0   ~ 0,
+    cereal_bowls_p1458 > 0 & is.na(cereal_type_p1468) ~ NA_real_,
+    cereal_bowls_p1458 > 0 & cereal_type_p1468 %in% c(1, 3, 4) ~ cereal_bowls_p1458,
+    TRUE                      ~ 0
+  )
+
+  refined_cereal_week <- dplyr::case_when(
+    is.na(cereal_bowls_p1458) ~ NA_real_,
+    cereal_bowls_p1458 == 0   ~ 0,
+    cereal_bowls_p1458 > 0 & is.na(cereal_type_p1468) ~ NA_real_,
+    cereal_bowls_p1458 > 0 & cereal_type_p1468 %in% c(2, 5) ~ cereal_bowls_p1458,
+    TRUE                      ~ 0
+  )
+
+  whole_grain_week <- rowSums(cbind(whole_bread_week, whole_cereal_week), na.rm = TRUE)
+  whole_grain_week[is.na(whole_bread_week) & is.na(whole_cereal_week)] <- NA_real_
+  whole_grain_day <- ifelse(is.na(whole_grain_week), NA_real_, whole_grain_week / 7)
+
+  refined_grain_week <- rowSums(cbind(refined_bread_week, refined_cereal_week), na.rm = TRUE)
+  refined_grain_week[is.na(refined_bread_week) & is.na(refined_cereal_week)] <- NA_real_
+  refined_grain_day <- ifelse(is.na(refined_grain_week), NA_real_, refined_grain_week / 7)
+
+  # Component 6: Processed meat (UKB 1349, 3680) - Data-Coding 100377; <=1 serving/week; 3680==0 => never meat
+  processed_meat_week <- as.numeric(freq_map[as.character(processed_meat_p1349)])
+  processed_meat_week[never_meat %in% TRUE] <- 0
+
+  # Component 7: Unprocessed meat (UKB 1359/1369/1379/1389, 3680) - Data-Coding 100377; <=2 servings/week; 3680==0 => never meat
+  poultry_week <- as.numeric(freq_map[as.character(poultry_p1359)])
+  beef_week    <- as.numeric(freq_map[as.character(beef_p1369)])
+  lamb_week    <- as.numeric(freq_map[as.character(lamb_p1379)])
+  pork_week    <- as.numeric(freq_map[as.character(pork_p1389)])
+  poultry_week[never_meat %in% TRUE] <- 0
+  beef_week[never_meat %in% TRUE] <- 0
+  lamb_week[never_meat %in% TRUE] <- 0
+  pork_week[never_meat %in% TRUE] <- 0
+  unprocessed_meat_week <- rowSums(cbind(poultry_week, beef_week, lamb_week, pork_week), na.rm = TRUE)
+  unprocessed_meat_week[is.na(poultry_week) & is.na(beef_week) & is.na(lamb_week) & is.na(pork_week)] <- NA_real_
+
+  component_scores <- list(
+    vegetables       = ifelse(is.na(veg_serv_day), NA_integer_, ifelse(veg_serv_day >= 3, 1L, 0L)),
+    fruit            = ifelse(is.na(fruit_serv_day), NA_integer_, ifelse(fruit_serv_day >= 3, 1L, 0L)),
+    fish             = ifelse(is.na(fish_serv_week), NA_integer_, ifelse(fish_serv_week >= 2, 1L, 0L)),
+    whole_grains     = ifelse(is.na(whole_grain_day), NA_integer_, ifelse(whole_grain_day >= 3, 1L, 0L)),
+    refined_grains   = ifelse(is.na(refined_grain_day), NA_integer_, ifelse(refined_grain_day <= 2, 1L, 0L)),
+    processed_meat   = ifelse(is.na(processed_meat_week), NA_integer_, ifelse(processed_meat_week <= 1, 1L, 0L)),
+    unprocessed_meat = ifelse(is.na(unprocessed_meat_week), NA_integer_, ifelse(unprocessed_meat_week <= 2, 1L, 0L))
+  )
+
+  comp_mat <- do.call(cbind, component_scores)
+  any_na <- apply(comp_mat, 1, function(r) any(is.na(r)))
+  total <- rowSums(comp_mat, na.rm = TRUE)
+  total[any_na] <- NA_integer_
+
+  return(as.integer(total))
+}
+
+#' Calculate Physical Activity Indicator
+#' `r lifecycle::badge('stable')`
+#'
+#' Here, using IPAQ minutes/week as input, classify regular activity according
+#' to AHA (150/75/equivalent combination) rules:
+#' \itemize{
+#'   \item Moderate:  \eqn{\ge 150} min/week; or
+#'   \item Vigorous:  \eqn{\ge 75} min/week; or
+#'   \item Equivalent: \eqn{moderate + 2 \times vigorous \ge 150.}
+#' }
+#'
+#' @note *Adults should pursue at least 150 minutes per week of moderate-intensity
+#' physical activity, or 75 minutes per week of vigorous-intensity aerobic
+#' physical activity, or an equivalent combination of moderate- and
+#' vigorous-intensity aerobic activities.* (Circulation, 2010, [source](https://www.ahajournals.org/doi/10.1161/CIRCULATIONAHA.109.192703))
+#' - **≥150 min/wk moderate intensity**
+#' - **≥75 min/wk vigorous intensity**
+#' - **Combination**
+#'
+#' @param p884_i0 Moderate activity days/week (10+ min). UKB 884; -1/-3 -> NA.
+#' @param p894_i0 Moderate activity minutes/day (typical day). UKB 894; -1/-3 -> NA.
+#' @param p904_i0 Vigorous activity days/week (10+ min). UKB 904; -1/-3 -> NA.
+#' @param p914_i0 Vigorous activity minutes/day (typical day). UKB 914; -1/-3 -> NA.
+#' @param ... Reserved for future use.
+#'
+#' @return Factor with levels c("Non-regular", "Regular"); NA if insufficient data.
+#' @export
+#' @importFrom cli cli_alert_info
+#' @importFrom dplyr case_when coalesce
+leo_physical_activity <- function(p884_i0, p894_i0, p904_i0, p914_i0, ...) {
+  p884_i0 <- recode_na31(p884_i0); p894_i0 <- recode_na31(p894_i0)
+  p904_i0 <- recode_na31(p904_i0); p914_i0 <- recode_na31(p914_i0)
+  moderate_min_week <- dplyr::case_when(is.na(p884_i0) ~ NA_real_, p884_i0 == 0 ~ 0,
+                                        is.na(p894_i0) ~ NA_real_, T ~ p884_i0 * p894_i0)
+  vigorous_min_week <- dplyr::case_when(is.na(p904_i0) ~ NA_real_, p904_i0 == 0 ~ 0,
+                                        is.na(p914_i0) ~ NA_real_, T ~ p904_i0 * p914_i0)
+
+  moderate_ok <- !is.na(moderate_min_week) & moderate_min_week >= 150
+  vigorous_ok <- !is.na(vigorous_min_week) & vigorous_min_week >= 75
+  equivalent_min_week <- dplyr::coalesce(moderate_min_week, 0) + 2 * dplyr::coalesce(vigorous_min_week, 0)
+  equivalent_ok <- (!is.na(moderate_min_week) | !is.na(vigorous_min_week)) & equivalent_min_week >= 150
+
+  activity <- dplyr::case_when(is.na(moderate_min_week) & is.na(vigorous_min_week) ~ NA_character_,
+                               moderate_ok | vigorous_ok | equivalent_ok ~ "Regular",
+                               T ~ "Non-regular") %>%
+    factor(levels = c("Non-regular", "Regular"))
+  return(activity)
+}
+
+# Helper functions ----
+#' Helper function to recode UKB special values (-3/-1) to NA
+#' @details Used for UK Biobank data-codings where -1 = "Do not know" and -3 = "Prefer not to answer".
+#' @keywords internal
+recode_na31 <- function(x) {
+  x_num <- suppressWarnings(as.numeric(x))
+  x_num[x_num %in% c(-3, -1)] <- NA
+  x_num
+}
+
+#' Helper function to recode UKB special values (-3/-1 to NA and -10 to 0)
+#' @details For UK Biobank fields where -10 encodes "Less than once" and should be treated as 0;
+#'   -1 = "Do not know", -3 = "Prefer not to answer".
+#' @keywords internal
+recode_na31neg10 <- function(x) {
+  x_num <- suppressWarnings(as.numeric(x))
+  x_num[x_num %in% c(-3, -1)] <- NA
+  x_num[x_num == -10] <- 0
+  x_num
+}
