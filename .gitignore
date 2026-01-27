@@ -70,3 +70,4 @@ rsconnect/
 .Rdata
 .DS_Store
 .quarto
+*.swp

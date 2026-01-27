@@ -22,9 +22,9 @@
 #'   p20002_0_0 = as.Date(c("2015-01-01", "2016-02-02", "1900-01-01", NA, "2018-03-03", "2019-04-04"))
 #' )
 #' dignosis_process_fo(ukb_df, "p20002_0_0", censored = "2025-01-01") # This is the results.
-dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", filter_NA = T) {
+dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base_line="p53_i0",filter_NA = T) {
   # check
-  required_cols <- c("eid", "p53_i0", "p191", "p40000_i0", "p40000_i1", fo_date_col)
+  required_cols <- c("eid", base_line, "p191", "p40000_i0", "p40000_i1", fo_date_col)
   missing_required <- setdiff(required_cols, names(data))
   if (length(missing_required) > 0) {
     leo.basic::leo_log("dignosis_process_fo: missing [{paste(missing_required, collapse = ', ')}] - re-check data", level = "danger");return(NULL)
@@ -32,7 +32,7 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", filt
 
   # subset and format date columns
   tmp <- data %>% dplyr::select(dplyr::all_of(required_cols))
-  date_cols <- c("p53_i0", "p191", "p40000_i0", "p40000_i1", fo_date_col)
+  date_cols <- c(base_line, "p191", "p40000_i0", "p40000_i1", fo_date_col)
   tmp <- tmp %>% dplyr::mutate(dplyr::across(.cols = dplyr::all_of(date_cols),
                                              .fns  = ~ suppressWarnings(as.Date(.x, format = "%Y-%m-%d"))
                                              ))
@@ -72,11 +72,10 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", filt
       final_date = dplyr::if_else(!is.na(event_date) & event_date <= censor_base,
                                   event_date, censor_base),
 
-      # time in years from baseline (p53_i0)
+      # time in years from baseline 
       # status: 1 if event_date exists and occurs before censoring
-      tmp_time = as.numeric(difftime(final_date, p53_i0, units = "days")) / 365,
+      tmp_time = as.numeric(difftime(final_date, .data[[base_line]], units = "days"))/365,
       tmp_status = dplyr::if_else(!is.na(event_date) & event_date <= censor_base, 1L, 0L),
-
       # set time/status to NA if abnormal FO
       !!disease_time_col := dplyr::if_else(is_abnormal_fo, as.numeric(NA), tmp_time),
       !!disease_status_col := dplyr::if_else(is_abnormal_fo, as.integer(NA), tmp_status)
