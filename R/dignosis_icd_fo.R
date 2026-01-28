@@ -100,7 +100,7 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base
 #' Generate {icd_code}_status and {icd_code}_time from UKB ICD records.
 #'
 #' @param data A data.frame containing UKB baseline, censoring, ICD code and date columns.
-#' @param icd_code A target ICD code prefix (e.g., "M10").
+#' @param icd_code A target ICD code prefix or a character vector of prefixes (e.g., "M10" or c("E10", "E11")).
 #' @param icd ICD version, 10 or 9.
 #' @param censored Censoring date ("YYYY-MM-DD").
 #' @param icd_rank Rank of diagnosis occurrence to consider (1 = first occurrence, 2 = second occurrence, etc.).
@@ -110,7 +110,7 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base
 #' @export
 #'
 #' @importFrom dplyr select all_of mutate across coalesce if_else rowwise ungroup
-#' @importFrom rlang .data
+#' @importFrom rlang .data sym
 #' @importFrom leo.basic leo_log
 #' @examples
 #' df_example <- data.frame(
@@ -137,7 +137,10 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base
 #'
 #' # Prefix matching: M10 matches M101 / M102 (icd_rank = 2)
 #' dignosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 2)
-#' # to do: functions to find lines with more than n times of diagnosis for a given icd_code
+#'
+#' # Multiple ICD codes: c("M10", "E113") - takes global earliest date among all matches
+#' dignosis_process_icd(df_example, icd_code = c("M10", "E113"), icd = 10, icd_rank = 1)
+#' # Output columns: M10_E113_status, M10_E113_time
 dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-01", icd_rank = 1, baseline_date = "p53_i0") {
   icd <- as.integer(icd)
   if (!icd %in% c(9L, 10L)) stop("dignosis_process_icd: `icd` must be 9 or 10.")
@@ -169,32 +172,29 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
   df <- df %>% dplyr::mutate(p40000 = dplyr::coalesce(p40000_i0, p40000_i1)) %>%
     dplyr::select(-p40000_i0, -p40000_i1)
 
-  status_col <- paste0(icd_code, "_status")
-  time_col <- paste0(icd_code, "_time")
+  prefix <- paste(icd_code, collapse = "_")
+  status_col <- paste0(prefix, "_status")
+  time_col <- paste0(prefix, "_time")
 
-  # Match ICD prefix and extract first diagnosis date
-  leo.basic::leo_log("dignosis_process_icd: matching ICD{icd} prefix [{icd_code}].", level = "info")
+  # Match ICD prefix(es) and extract diagnosis date by rank
+  icd_pattern <- paste0("^(", paste(icd_code, collapse = "|"), ")")
+  leo.basic::leo_log("dignosis_process_icd: matching ICD{icd} pattern [{icd_pattern}].", level = "info")
   diagnosis_list <- df[[icd_col]]
 
   df$event_date <- sapply(seq_len(nrow(df)), function(i) {
     if (is.na(diagnosis_list[i])) return(as.Date(NA))
-
     diag_vec <- strsplit(diagnosis_list[i], "\\|")[[1]]
-    match_pos <- which(grepl(paste0("^", icd_code), diag_vec))
-
-    # if no matched diagnosis, return NA
-    if (length(match_pos) == 0L || match_pos[1] > length(date_cols)) return(as.Date(NA))
-
-    # if matched, get corresponding dates
+    match_pos <- which(grepl(icd_pattern, diag_vec))
+    if (length(match_pos) == 0L) return(as.Date(NA))
+    # filter valid positions within date_cols range
+    match_pos <- match_pos[match_pos <= length(date_cols)]
+    if (length(match_pos) == 0L) return(as.Date(NA))
+    # collect all matched dates and sort globally
     matched_dates <- sapply(date_cols[match_pos], function(col) df[[col]][i])
     sorted_dates <- sort(matched_dates, na.last = TRUE)
-    if (icd_rank > length(sorted_dates)) {
-      leo.basic::leo_log("dignosis_process_icd: icd_rank [{icd_rank}] out of range for eid [{df$eid[i]}], returning NA.", level = "warning")
-      leo.basic::leo_log("应该先把有{icd_rank}次诊断的行找出来!", level = "warning")
-      stop()
-    }
-    matched_date <- sorted_dates[icd_rank]
-    return(matched_date)
+    sorted_dates <- sorted_dates[!is.na(sorted_dates)]
+    if (length(sorted_dates) == 0L || icd_rank > length(sorted_dates)) return(as.Date(NA))
+    return(sorted_dates[icd_rank])
   }) %>% as.Date()
 
   # Compute survival time and status
@@ -206,7 +206,7 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
                   final_date = dplyr::if_else(
                     !is.na(event_date) & event_date <= censor_base, event_date, censor_base
                   ),
-                  !!time_col := as.numeric(difftime(final_date, !!sym(baseline_date), units = "days")) / 365,
+                  !!time_col := as.numeric(difftime(final_date, !!rlang::sym(baseline_date), units = "days")) / 365,
                   !!status_col := dplyr::if_else(!is.na(event_date) & (event_date <= censor_base), 1L, 0L))
 
   result <- df %>% dplyr::select(dplyr::all_of(c("eid", status_col, time_col)))
