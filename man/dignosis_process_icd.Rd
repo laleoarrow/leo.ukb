@@ -16,7 +16,7 @@ dignosis_process_icd(
 \arguments{
 \item{data}{A data.frame containing UKB baseline, censoring, ICD code and date columns.}
 
-\item{icd_code}{A target ICD code prefix (e.g., "M10").}
+\item{icd_code}{A target ICD code prefix or a character vector of prefixes (e.g., "M10" or c("E10", "E11")).}
 
 \item{icd}{ICD version, 10 or 9.}
 
@@ -57,5 +57,8 @@ dignosis_process_icd(df_example, icd_code = "E113", icd = 10, icd_rank = 1)
 
 # Prefix matching: M10 matches M101 / M102 (icd_rank = 2)
 dignosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 2)
-# to do: functions to find lines with more than n times of diagnosis for a given icd_code
+
+# Multiple ICD codes: c("M10", "E113") - takes global earliest date among all matches
+dignosis_process_icd(df_example, icd_code = c("M10", "E113"), icd = 10, icd_rank = 1)
+# Output columns: M10_E113_status, M10_E113_time
 }
