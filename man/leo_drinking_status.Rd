@@ -2,7 +2,7 @@
 % Please edit documentation in R/clinical_vars.R
 \name{leo_drinking_status}
 \alias{leo_drinking_status}
-\title{Recode drinking status (0 = Never, 1 = Previous, 2 = Current)
+\title{Recode drinking status (Never/Previous/Current)
 https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20117}
 \usage{
 leo_drinking_status(drinking_status, ...)
@@ -11,9 +11,10 @@ leo_drinking_status(drinking_status, ...)
 \item{drinking_status}{Numeric/character vector, usually from p20117.}
 }
 \value{
-Integer vector (0/1/2; NA for negative/special codes or others).
+Factor with levels "Never", "Previous", "Current";
+NA for negative/special codes or others.
 }
 \description{
-Recode drinking status (0 = Never, 1 = Previous, 2 = Current)
+Recode drinking status (Never/Previous/Current)
 https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20117
 }

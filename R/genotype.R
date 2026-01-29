@@ -266,3 +266,37 @@ ukb_hla_specify <- function(res, specify_alleles = "B27") {
   leo.basic::leo_log("ukb_hla_specify: done")
   return(out_df)
 }
+
+#' Clean HLA carrier output to a wide format
+#'
+#' Convert the long table returned by [ukb_hla_specify()] into a wide table
+#' suitable for downstream analysis: `eid, <allele>, <allele>_carrier, ...`
+#'
+#' @param res A data.frame with columns `eid`, `query`, `copies`, `carrier`.
+#' @return A wide-format data.frame with one row per `eid`.
+#' @examples 
+#' hla <- fread("/Users/leoarrow/Project/UKB/data/HLA.csv") %>%
+#'   ukb_hla_typing(header) %>%
+#'   ukb_hla_specify("B27") %>%
+#'   ukb_hla_clean()
+#' @export
+ukb_hla_clean <- function(res) {
+  stopifnot(is.data.frame(res))
+  required_cols <- c("eid", "query", "copies", "carrier")
+  missing_cols <- required_cols[!required_cols %in% names(res)]
+  if (length(missing_cols) > 0) {
+    stop("ukb_hla_clean: missing required columns: ", paste(missing_cols, collapse = ", "))
+  }
+
+  res %>%
+    dplyr::transmute(
+      eid, query,
+      copies = as.integer(copies),
+      carrier01 = as.integer(carrier)
+    ) %>%
+    tidyr::pivot_longer(c(copies, carrier01), names_to = "stat", values_to = "value") %>%
+    dplyr::mutate(key = dplyr::if_else(stat == "copies", query, paste0(query, "_carrier"))) %>%
+    dplyr::select(eid, key, value) %>%
+    tidyr::pivot_wider(names_from = key, values_from = value,
+                       values_fill = list(value = 0L))
+}

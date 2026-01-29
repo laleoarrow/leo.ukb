@@ -2,7 +2,7 @@
 % Please edit documentation in R/clinical_vars.R
 \name{leo_BMI}
 \alias{leo_BMI}
-\title{Recode BMI into categories (1:<18.5, 2:18.5-<25, 3:25-<30, 4:>=30)
+\title{Recode BMI into categories (Underweight/Normal weight/Overweight/Obese)
 https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21001}
 \usage{
 leo_BMI(BMI, ...)
@@ -11,9 +11,10 @@ leo_BMI(BMI, ...)
 \item{BMI}{Numeric/character vector of BMI (kg/m^2) from p21001.}
 }
 \value{
-Integer vector 1-4; NA if invalid or missing.
+Factor with levels "Underweight", "Normal weight", "Overweight", "Obese";
+NA if invalid or missing.
 }
 \description{
-Recode BMI into categories (1:<18.5, 2:18.5-<25, 3:25-<30, 4:>=30)
+Recode BMI into categories (Underweight/Normal weight/Overweight/Obese)
 https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21001
 }

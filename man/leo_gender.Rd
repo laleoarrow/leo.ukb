@@ -2,7 +2,7 @@
 % Please edit documentation in R/clinical_vars.R
 \name{leo_gender}
 \alias{leo_gender}
-\title{Recode gender (1 = Male, 0 = Female)
+\title{Recode sex (Male/Female)
 https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=31}
 \usage{
 leo_gender(gender, ...)
@@ -11,9 +11,9 @@ leo_gender(gender, ...)
 \item{gender}{Numeric/character vector, usually from p31.}
 }
 \value{
-Integer vector (1 = Male, 0 = Female, NA for negative/special codes).
+Factor with levels "Female", "Male"; NA for negative/special codes.
 }
 \description{
-Recode gender (1 = Male, 0 = Female)
+Recode sex (Male/Female)
 https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=31
 }

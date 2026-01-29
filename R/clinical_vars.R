@@ -18,11 +18,11 @@
 #'   \item Socioeconomic: tdi, education, household_income, household_income_2, career.
 #'   \item Inflammation: LGI.
 #'   \item Insulin resistance: hba1c, hba1c_percent, eGDR, TyG.
-#'   \item Lifestyle: smoking_status, drinking_status, diet_us, physical_activity.
+#'   \item Lifestyle: smoking_status, drinking_status, diet_us, physical_activity, sleep_score.
 #' }
 #'
 #' @param df A dataframe containing the required columns for calculation.
-#' @param types A vector of indicator types, options are "eGDR", "TyG", "PhysicalActivity", "LGI"...
+#' @param types A vector of indicator types, options are "eGDR", "TyG", "sleep_score", "LGI"...
 #' @param type_id Logical; if `FALSE`, the function expects semantic column names (e.g. `"age"`, `"BMI"`).
 #'   If `TRUE` (default), UKB field-id style names (e.g. `"p21003_i0"`) are used.
 #' @param remove_assist Logical, whether to remove the assisting columns (default `TRUE`).
@@ -116,12 +116,12 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
                                             "p1438_i0", "p1448_i0", "p1458_i0", "p1468_i0",
                                             "p1349_i0", "p3680_i0", "p1359_i0", "p1369_i0", "p1379_i0", "p1389_i0"),
                      calc_function      = leo_diet_us),
-    "physical_activity" = list(required_cols    = c("p884_i0","p894_i0","p904_i0","p914_i0"),
-                               required_cols_ukb= c("p884_i0","p894_i0","p904_i0","p914_i0"),
-                               calc_function    = leo_physical_activity),
-    "sleep_score" = list(required_cols    = c("sleep_duration","chronotype","insomnia","snoring","daytime_sleepiness"),
-                         required_cols_ukb= c("p1160_i0", "p1180_i0", "p1200_i0", "p1210_i0", "p1220_i0"),
-                         calc_function    = leo_sleep_score)
+    "physical_activity" = list(required_cols     = c("p884_i0","p894_i0","p904_i0","p914_i0"),
+                               required_cols_ukb = c("p884_i0","p894_i0","p904_i0","p914_i0"),
+                               calc_function     = leo_physical_activity),
+    "sleep_score" = list(required_cols     = c("sleep_duration","chronotype","insomnia","snoring","daytime_sleepiness"),
+                         required_cols_ukb = c("p1160_i0", "p1180_i0", "p1200_i0", "p1210_i0", "p1220_i0"),
+                         calc_function     = leo_sleep_score)
     # Add more indicator types here if needed
   )
 
@@ -177,12 +177,13 @@ leo_age <- function(age, ...) {
   return(age_num)
 }
 
-#' Recode BMI into categories (1:<18.5, 2:18.5-<25, 3:25-<30, 4:>=30)
+#' Recode BMI into categories (Underweight/Normal weight/Overweight/Obese)
 #' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21001
 #'
 #' @param BMI Numeric/character vector of BMI (kg/m^2) from p21001.
 #'
-#' @return Integer vector 1-4; NA if invalid or missing.
+#' @return Factor with levels "Underweight", "Normal weight", "Overweight", "Obese";
+#'   NA if invalid or missing.
 #' @export
 leo_BMI <- function(BMI, ...) {
   # convert to numeric and cut into 4 categories
@@ -190,28 +191,33 @@ leo_BMI <- function(BMI, ...) {
   bmi_num[bmi_num <= 0] <- NA
 
   bmi_cat <- dplyr::case_when(
-    is.na(bmi_num)                  ~ NA_integer_,
-    bmi_num < 18.5                  ~ 1L,
-    bmi_num >= 18.5 & bmi_num < 25  ~ 2L,
-    bmi_num >= 25   & bmi_num < 30  ~ 3L,
-    bmi_num >= 30                   ~ 4L
+    is.na(bmi_num)                  ~ NA_character_,
+    bmi_num < 18.5                  ~ "Underweight",
+    bmi_num >= 18.5 & bmi_num < 25  ~ "Normal weight",
+    bmi_num >= 25   & bmi_num < 30  ~ "Overweight",
+    bmi_num >= 30                   ~ "Obese"
   )
-  cli::cli_alert_info("BMI recoding:\n  1  <18.5\n  2  18.5-<25\n  3  25-<30\n  4  >=30")
+  bmi_cat <- factor(bmi_cat, levels = c("Underweight", "Normal weight", "Overweight", "Obese"))
   return(bmi_cat)
 }
 
-#' Recode gender (1 = Male, 0 = Female)
+#' Recode sex (Male/Female)
 #' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=31
 #'
 #' @param gender Numeric/character vector, usually from p31.
 #'
-#' @return Integer vector (1 = Male, 0 = Female, NA for negative/special codes).
+#' @return Factor with levels "Female", "Male"; NA for negative/special codes.
 #' @export
 leo_gender <- function(gender, ...) {
   # keep only 0/1, others -> NA
   gender_num <- suppressWarnings(as.numeric(gender))
-  gender_rec <- ifelse(gender_num %in% c(0, 1), as.integer(gender_num), NA_integer_)
-  cli::cli_alert_info("Gender recoding:\n  0 = Female\n  1 = Male\n")
+  gender_rec <- dplyr::case_when(
+    gender_num == 0 ~ "Female",
+    gender_num == 1 ~ "Male",
+    TRUE            ~ NA_character_
+  )
+  gender_rec <- factor(gender_rec, levels = c("Female", "Male"))
+  cli::cli_alert_info("Sex recoding:\n  Female (0)\n  Male (1)\n")
   return(gender_rec)
 }
 
@@ -220,22 +226,22 @@ leo_gender <- function(gender, ...) {
 #'
 #' @param ethnicity Numeric/character vector, usually from p21000.
 #'
-#' @return Integer vector (1 = White [1,1001,1002,1003],
-#'         0 = non-White [all other positive codes],
-#'         NA for -1/-3/missing).
+#' @return Factor with levels "White", "Non-White";
+#'   NA for -1/-3/missing.
 #' @export
 leo_ethnicity <- function(ethnicity, ...) {
   eth_num <- suppressWarnings(as.numeric(ethnicity))
   white_codes <- c(1, 1001, 1002, 1003)
 
   eth_rec <- dplyr::case_when(
-    eth_num %in% white_codes                ~ 1L,           # White
-    eth_num > 0                             ~ 0L,           # Non-White (other positive codes)
-    eth_num %in% c(-1, -3) | is.na(eth_num) ~ NA_integer_,  # Unknown / PNSA
-    TRUE                                    ~ NA_integer_
+    eth_num %in% white_codes                ~ "White",
+    eth_num > 0                             ~ "Non-White",
+    eth_num %in% c(-1, -3) | is.na(eth_num) ~ NA_character_,  # Unknown / PNSA
+    TRUE                                    ~ NA_character_
   )
 
-  cli::cli_alert_info("Ethnicity recoding:\n  1/1001/1002/1003  -> White (1)\n  other >0 codes    -> non-White (0)\n  -1/-3/NA          -> NA")
+  # eth_rec <- factor(eth_rec, levels = c("White", "Non-White"))
+  cli::cli_alert_info("Ethnicity recoding:\n  White (1/1001/1002/1003)\n  Non-White (other >0 codes)\n  -1/-3/NA -> NA")
   return(eth_rec)
 }
 
@@ -244,14 +250,9 @@ leo_ethnicity <- function(ethnicity, ...) {
 #'
 #' @param ethnicity Numeric/character vector, usually from p21000.
 #'
-#' @return Integer vector:
-#'   1 = White              (1,1001,1002,1003)
-#'   2 = Mixed              (2,2001,2002,2003,2004)
-#'   3 = Asian/Asian Brit.  (3,3001,3002,3003,3004)
-#'   4 = Black/Black Brit.  (4,4001,4002,4003,4004)
-#'   5 = Chinese            (5)
-#'   6 = Other ethnic group (6)
-#'   NA for -1/-3/missing/other unexpected codes.
+#' @return Factor with levels:
+#'   "White", "Mixed", "Asian or Asian British", "Black or Black British",
+#'   "Chinese", "Other ethnic group"; NA for -1/-3/missing/other unexpected codes.
 #' @export
 leo_ethnicity_finer <- function(ethnicity, ...) {
   eth_num <- suppressWarnings(as.numeric(ethnicity))
@@ -264,20 +265,20 @@ leo_ethnicity_finer <- function(ethnicity, ...) {
   other_codes   <- 6
 
   eth_rec <- dplyr::case_when(
-    eth_num %in% c(-1, -3) | is.na(eth_num) ~ NA_integer_,  # unknown / PNSA
-    eth_num %in% white_codes                ~ 1L,           # White
-    eth_num %in% mixed_codes                ~ 2L,           # Mixed
-    eth_num %in% asian_codes                ~ 3L,           # Asian or Asian British
-    eth_num %in% black_codes                ~ 4L,           # Black or Black British
-    eth_num %in% chinese_codes              ~ 5L,           # Chinese
-    eth_num %in% other_codes                ~ 6L,           # Other ethnic group
-    TRUE                                    ~ NA_integer_   # any other unexpected code
+    eth_num %in% c(-1, -3) | is.na(eth_num) ~ NA_character_,  # unknown / PNSA
+    eth_num %in% white_codes                ~ "White",
+    eth_num %in% mixed_codes                ~ "Mixed",
+    eth_num %in% asian_codes                ~ "Asian or Asian British",
+    eth_num %in% black_codes                ~ "Black or Black British",
+    eth_num %in% chinese_codes              ~ "Chinese",
+    eth_num %in% other_codes                ~ "Other ethnic group",
+    TRUE                                    ~ NA_character_   # any other unexpected code
   )
 
-  cli::cli_alert_info(
-    "Ethnicity (finer) recoding:\n  1  White (1,1001,1002,1003)\n  2  Mixed (2,2001,2002,2003,2004)\n  3  Asian/Asian Brit. (3,3001,3002,3003,3004)\n  4  Black/Black Brit. (4,4001,4002,4003,4004)\n  5  Chinese (5)\n  6  Other ethnic group (6)\n  -1/-3/NA -> NA"
+  eth_rec <- factor(
+    eth_rec,
+    levels = c("White", "Mixed", "Asian or Asian British", "Black or Black British", "Chinese", "Other ethnic group")
   )
-
   return(eth_rec)
 }
 
@@ -316,7 +317,7 @@ leo_education <- function(p6138_i0, ...) {
   unknown <- is.na(x) | x == "" | x == "-3"
   has_degree <- !unknown & stringr::str_detect(paste0("|", x, "|"), "\\|1\\|")
 
-  education <- dplyr::case_when(unknown ~ "Unknown",
+  education <- dplyr::case_when(unknown ~ NA_character_,
                                 has_degree ~ "Degree",
                                 T ~ "Non_degree")
 
@@ -375,17 +376,17 @@ leo_household_income <- function(p738_i0, ...) {
   income_code[income_code %in% c(-1, -3)] <- NA_real_
 
   income <- dplyr::case_when(
-    is.na(income_code) ~ "Unknown",
+    is.na(income_code) ~ NA_character_,
     income_code == 1   ~ "£0–£18,000",
     income_code == 2   ~ "£18,000–£30,999",
     income_code == 3   ~ "£31,000–£51,999",
     income_code == 4   ~ "£52,000–£100,000",
     income_code == 5   ~ "£100,000 and above",
-    TRUE               ~ "Unknown"
+    TRUE               ~ NA_character_
   )
   income <- factor(income,
                    levels = c("£0–£18,000", "£18,000–£30,999", "£31,000–£51,999",
-                              "£52,000–£100,000", "£100,000 and above", "Unknown")
+                              "£52,000–£100,000", "£100,000 and above")
   )
   return(income)
 }
@@ -409,16 +410,16 @@ leo_household_income_2 <- function(p738_i0, ...) {
   income_code[income_code %in% c(-1, -3)] <- NA_real_
 
   income <- dplyr::case_when(
-    is.na(income_code) ~ "Miss value",
+    is.na(income_code) ~ NA_character_,
     income_code == 1   ~ "Less than £31,000",
     income_code == 2   ~ "Less than £31,000",
     income_code == 3   ~ "£31,000 and above",
     income_code == 4   ~ "£31,000 and above",
     income_code == 5   ~ "£31,000 and above",
-    TRUE               ~ "Miss value"
+    TRUE               ~ NA_character_
   )
   income <- factor(income,
-                   levels = c("Less than £31,000", "£31,000 and above", "Miss value"))
+                   levels = c("Less than £31,000", "£31,000 and above"))
   return(income)
 }
 
@@ -610,36 +611,50 @@ leo_TyG <- function(triglycerides, glucose, ...) {
 
 # Life style Indicators -----
 
-#' Recode smoking status (0 = Never, 1 = Previous, 2 = Current)
+#' Recode smoking status (Never/Previous/Current)
 #' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20116
 #'
 #' @param smoking_status Numeric/character vector, usually from p20116.
 #'
-#' @return Integer vector (0/1/2; NA for negative/special codes or others).
+#' @return Factor with levels "Never", "Previous", "Current";
+#'   NA for negative/special codes or others.
 #' @export
 leo_smoking_status <- function(smoking_status, ...) {
   # keep 0/1/2, recode -3/-1 and other values to NA
   x <- suppressWarnings(as.numeric(smoking_status))
   x[x %in% c(-3, -1)] <- NA
   x[!is.na(x) & !(x %in% c(0, 1, 2))] <- NA
-  cli::cli_alert_info("Smoking status recoding:\n  -3  Prefer not to answer\n  0   Never\n  1   Previous\n  2   Current")
-  return(as.integer(x))
+  smoking <- dplyr::case_when(
+    x == 0 ~ "Never",
+    x == 1 ~ "Previous",
+    x == 2 ~ "Current",
+    TRUE   ~ NA_character_
+  )
+  smoking <- factor(smoking, levels = c("Never", "Previous", "Current"))
+  return(smoking)
 }
 
-#' Recode drinking status (0 = Never, 1 = Previous, 2 = Current)
+#' Recode drinking status (Never/Previous/Current)
 #' https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20117
 #'
 #' @param drinking_status Numeric/character vector, usually from p20117.
 #'
-#' @return Integer vector (0/1/2; NA for negative/special codes or others).
+#' @return Factor with levels "Never", "Previous", "Current";
+#'   NA for negative/special codes or others.
 #' @export
 leo_drinking_status <- function(drinking_status, ...) {
   # keep 0/1/2, recode -3/-1 and other values to NA
   x <- suppressWarnings(as.numeric(drinking_status))
   x[x %in% c(-3, -1)] <- NA
   x[!is.na(x) & !(x %in% c(0, 1, 2))] <- NA
-  cli::cli_alert_info("Drinking status recoding:\n  -3  Prefer not to answer\n  0   Never\n  1   Previous\n  2   Current")
-  return(as.integer(x))
+  drinking <- dplyr::case_when(
+    x == 0 ~ "Never",
+    x == 1 ~ "Previous",
+    x == 2 ~ "Current",
+    TRUE   ~ NA_character_
+  )
+  drinking <- factor(drinking, levels = c("Never", "Previous", "Current"))
+  return(drinking)
 }
 
 #' Recode drinking consumption

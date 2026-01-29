@@ -11,9 +11,8 @@ leo_ethnicity(ethnicity, ...)
 \item{ethnicity}{Numeric/character vector, usually from p21000.}
 }
 \value{
-Integer vector (1 = White \link{1,1001,1002,1003},
-0 = non-White \link{all other positive codes},
-NA for -1/-3/missing).
+Factor with levels "White", "Non-White";
+NA for -1/-3/missing.
 }
 \description{
 Recode ethnicity to White vs non-White

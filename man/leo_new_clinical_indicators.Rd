@@ -16,7 +16,7 @@ leo_new_clinical_indicators(
 \arguments{
 \item{df}{A dataframe containing the required columns for calculation.}
 
-\item{types}{A vector of indicator types, options are "eGDR", "TyG", "PhysicalActivity", "LGI"...}
+\item{types}{A vector of indicator types, options are "eGDR", "TyG", "sleep_score", "LGI"...}
 
 \item{type_id}{Logical; if \code{FALSE}, the function expects semantic column names (e.g. \code{"age"}, \code{"BMI"}).
 If \code{TRUE} (default), UKB field-id style names (e.g. \code{"p21003_i0"}) are used.}
@@ -43,7 +43,7 @@ Supported indicators (use values in \code{types}):
 \item Socioeconomic: tdi, education, household_income, household_income_2, career.
 \item Inflammation: LGI.
 \item Insulin resistance: hba1c, hba1c_percent, eGDR, TyG.
-\item Lifestyle: smoking_status, drinking_status, diet_us, physical_activity.
+\item Lifestyle: smoking_status, drinking_status, diet_us, physical_activity, sleep_score.
 }
 }
 \examples{

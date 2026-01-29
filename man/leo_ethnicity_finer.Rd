@@ -11,14 +11,9 @@ leo_ethnicity_finer(ethnicity, ...)
 \item{ethnicity}{Numeric/character vector, usually from p21000.}
 }
 \value{
-Integer vector:
-1 = White              (1,1001,1002,1003)
-2 = Mixed              (2,2001,2002,2003,2004)
-3 = Asian/Asian Brit.  (3,3001,3002,3003,3004)
-4 = Black/Black Brit.  (4,4001,4002,4003,4004)
-5 = Chinese            (5)
-6 = Other ethnic group (6)
-NA for -1/-3/missing/other unexpected codes.
+Factor with levels:
+"White", "Mixed", "Asian or Asian British", "Black or Black British",
+"Chinese", "Other ethnic group"; NA for -1/-3/missing/other unexpected codes.
 }
 \description{
 Recode ethnicity into finer categories (top-level 1–6)
