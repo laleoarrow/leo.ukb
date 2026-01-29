@@ -4,7 +4,13 @@
 \alias{dignosis_process_fo}
 \title{Process first occurrence (FO) data in UKB ----}
 \usage{
-dignosis_process_fo(data, fo_date_col, censored = "2025-01-01", filter_NA = T)
+dignosis_process_fo(
+  data,
+  fo_date_col,
+  censored = "2025-01-01",
+  base_line = "p53_i0",
+  filter_NA = T
+)
 }
 \arguments{
 \item{data}{Dataframe with UKB baseline / FO / death dates.}

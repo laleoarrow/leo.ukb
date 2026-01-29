@@ -10,7 +10,8 @@ dignosis_process_icd(
   icd = 10,
   censored = "2025-01-01",
   icd_rank = 1,
-  baseline_date = "p53_i0"
+  baseline_date = "p53_i0",
+  filter_NA = FALSE
 )
 }
 \arguments{
@@ -25,6 +26,8 @@ dignosis_process_icd(
 \item{icd_rank}{Rank of diagnosis occurrence to consider (1 = first occurrence, 2 = second occurrence, etc.).}
 
 \item{baseline_date}{Baseline date column name (default "p53_i0").}
+
+\item{filter_NA}{Logical, whether to filter out NA row. Default FALSE (Suitable for comorbidity check).}
 }
 \value{
 A data.frame with eid, {icd_code}_status, {icd_code}_time.

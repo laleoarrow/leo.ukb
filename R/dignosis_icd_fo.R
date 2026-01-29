@@ -22,7 +22,7 @@
 #'   p20002_0_0 = as.Date(c("2015-01-01", "2016-02-02", "1900-01-01", NA, "2018-03-03", "2019-04-04"))
 #' )
 #' dignosis_process_fo(ukb_df, "p20002_0_0", censored = "2025-01-01") # This is the results.
-dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base_line="p53_i0",filter_NA = T) {
+dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base_line="p53_i0", filter_NA = T) {
   # check
   required_cols <- c("eid", base_line, "p191", "p40000_i0", "p40000_i1", fo_date_col)
   missing_required <- setdiff(required_cols, names(data))
@@ -105,6 +105,7 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base
 #' @param censored Censoring date ("YYYY-MM-DD").
 #' @param icd_rank Rank of diagnosis occurrence to consider (1 = first occurrence, 2 = second occurrence, etc.).
 #' @param baseline_date Baseline date column name (default "p53_i0").
+#' @param filter_NA Logical, whether to filter out NA row. Default FALSE (Suitable for comorbidity check).
 #'
 #' @return A data.frame with eid, {icd_code}_status, {icd_code}_time.
 #' @export
@@ -141,7 +142,7 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base
 #' # Multiple ICD codes: c("M10", "E113") - takes global earliest date among all matches
 #' dignosis_process_icd(df_example, icd_code = c("M10", "E113"), icd = 10, icd_rank = 1)
 #' # Output columns: M10_E113_status, M10_E113_time
-dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-01", icd_rank = 1, baseline_date = "p53_i0") {
+dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-01", icd_rank = 1, baseline_date = "p53_i0", filter_NA = FALSE) {
   icd <- as.integer(icd)
   if (!icd %in% c(9L, 10L)) stop("dignosis_process_icd: `icd` must be 9 or 10.")
 
@@ -210,6 +211,15 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
                   !!status_col := dplyr::if_else(!is.na(event_date) & (event_date <= censor_base), 1L, 0L))
 
   result <- df %>% dplyr::select(dplyr::all_of(c("eid", status_col, time_col)))
+
+  if (filter_NA) {
+    n_before <- nrow(result)
+    result <- result %>%
+      dplyr::filter(!is.na(.data[[status_col]]) & !is.na(.data[[time_col]]))
+    n_after <- nrow(result)
+    leo.basic::leo_log("dignosis_process_icd: filtered NA - rows before: {n_before}, after: {n_after}.", level = "info")
+  }
+
   leo.basic::leo_log("dignosis_process_icd: created [{status_col}], [{time_col}] - ALL DONE.", level = "success")
 
   return(result)
