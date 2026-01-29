@@ -118,7 +118,10 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
                      calc_function      = leo_diet_us),
     "physical_activity" = list(required_cols    = c("p884_i0","p894_i0","p904_i0","p914_i0"),
                                required_cols_ukb= c("p884_i0","p894_i0","p904_i0","p914_i0"),
-                               calc_function    = leo_physical_activity)
+                               calc_function    = leo_physical_activity),
+    "sleep_score" = list(required_cols    = c("sleep_duration","chronotype","insomnia","snoring","daytime_sleepiness"),
+                         required_cols_ukb= c("p1160_i0", "p1180_i0", "p1200_i0", "p1210_i0", "p1220_i0"),
+                         calc_function    = leo_sleep_score)
     # Add more indicator types here if needed
   )
 
@@ -871,6 +874,70 @@ leo_physical_activity <- function(p884_i0, p894_i0, p904_i0, p914_i0, ...) {
     factor(levels = c("Non-regular", "Regular"))
   return(activity)
 }
+
+#' Calculate Sleep Score and Pattern
+#'
+#' Compute a 0-5 sleep health score based on 5 components:
+#' - Sleep duration (7-8h)
+#' - Chronotype (morning person)
+#' - No insomnia
+#' - No snoring
+#' - No daytime sleepiness
+#'
+#' @param p1160_i0 Sleep duration (hours). UKB 1160; 7-8h scores 1.
+#' @param p1180_i0 Chronotype. UKB 1180; 1/2 (morning) scores 1; -1/-3 -> NA.
+#' @param p1200_i0 Insomnia. UKB 1200; 1 (never/rarely) scores 1; -3 -> NA.
+#' @param p1210_i0 Snoring. UKB 1210; 2 (no) scores 1; -1/-3 -> NA.
+#' @param p1220_i0 Daytime sleepiness. UKB 1220; 0/1 (never/rarely) scores 1; -1/-3 -> NA.
+#' @param ... Reserved for future use.
+#'
+#' @return Factor with levels c("poor", "intermediate", "healthy"); 
+#'   based on score: 0-1=poor, 2-3=intermediate, 4-5=healthy.
+#' @export
+#' @importFrom cli cli_alert_info
+#' @importFrom dplyr case_when
+leo_sleep_score <- function(p1160_i0, p1180_i0, p1200_i0, p1210_i0, p1220_i0, ...) {
+  cli::cli_alert_info("Calculating sleep score (0-5) and pattern classification")
+  # 1. 清洗特殊编码
+  p1160 <- recode_na31(p1160_i0)
+  p1180 <- recode_na31(p1180_i0)
+  p1200 <- recode_na31(p1200_i0)
+  p1210 <- recode_na31(p1210_i0)
+  p1220 <- recode_na31(p1220_i0)
+  # 2. 计算各组件得分（每个0或1）
+  score_duration <- dplyr::case_when(is.na(p1160) ~ NA_integer_,
+                                     p1160 >= 7 & p1160 <= 8 ~ 1L,
+                                     TRUE ~ 0L)
+  score_chronotype <- dplyr::case_when(is.na(p1180) ~ NA_integer_,
+                                       p1180 %in% c(1, 2) ~ 1L,  # Morning person
+                                       TRUE ~ 0L)
+  score_insomnia <- dplyr::case_when(is.na(p1200) ~ NA_integer_,
+                                     p1200 == 1 ~ 1L,  # Never/rarely
+                                     TRUE ~ 0L)
+  score_snoring <- dplyr::case_when(is.na(p1210) ~ NA_integer_,
+                                    p1210 == 2 ~ 1L,  # No snoring (注意：2表示不打鼾)
+                                    TRUE ~ 0L)
+  score_sleepiness <- dplyr::case_when(is.na(p1220) ~ NA_integer_,
+                                       p1220 %in% c(0, 1) ~ 1L,  # Never/rarely
+                                       TRUE ~ 0L)
+  
+  # 3. 计算总分（0-5）
+  score_matrix <- cbind(score_duration, score_chronotype, score_insomnia, score_snoring, score_sleepiness)
+  sleep_score <- rowSums(score_matrix, na.rm = FALSE)
+  # 4. 分类（poor/intermediate/healthy）
+  sleep_pattern <- dplyr::case_when(
+    is.na(sleep_score) ~ NA_character_,
+    sleep_score >= 4 ~ "healthy",      # 4-5分
+    sleep_score >= 2 ~ "intermediate", # 2-3分
+    TRUE ~ "poor"                      # 0-1分
+  )
+  sleep_pattern <- factor(sleep_pattern, 
+                          levels = c("poor", "intermediate", "healthy"))
+  cli::cli_alert_info("Sleep pattern distribution:\n  Poor: {sum(sleep_pattern == 'poor', na.rm=T)}\n  Intermediate: {sum(sleep_pattern == 'intermediate', na.rm=T)}\n  Healthy: {sum(sleep_pattern == 'healthy', na.rm=T)}")
+  return(sleep_pattern)  # 只返回分类结果
+}
+
+
 
 # Helper functions ----
 #' Helper function to recode UKB special values (-3/-1) to NA
