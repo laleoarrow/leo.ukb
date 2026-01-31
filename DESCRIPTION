@@ -17,3 +17,6 @@ Imports:
     lifecycle
 Remotes: 
     github::laleoarrow/leo.basic
+Depends: 
+    R (>= 3.5)
+LazyData: true

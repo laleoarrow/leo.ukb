@@ -1,0 +1,158 @@
+#' Get Dataset Dictionary (Official Method)
+#'
+#' Downloads the full data dictionary for a specific dataset using `dx extract_dataset -ddd`.
+#' This file contains the authoritative list of column names (e.g., `p21003_i0`).
+#'
+#' @param dataset The dataset ID or name (e.g. "app123.dataset" or "project-X:record-Y").
+#' @return A data.table/data.frame containing the dictionary (must have a `name` column).
+#' @export
+leo_dx_get_dataset_dictionary <- function(dataset) {
+  # Determine storage location: prefer "tmp" in project, otherwise tempdir()
+  storage_dir <- if (dir.exists("tmp")) "tmp" else tempdir()
+  
+  # Optimization: Try to resolve the record name to check if the file already exists.
+  # We use `dx describe` to get the Name.
+  
+  # Step 1: Resolve dataset ID if needed
+  if (missing(dataset) || is.null(dataset)) stop("Dataset ID is required.")
+
+  leo.basic::leo_log("Checking for info on {dataset}...", level = "info")
+  
+  # Get dataset name to predict filename
+  # Command: dx describe <id> --json
+  # We parse the "name" field.
+  # Since we might not have jsonlite, we can try `dx describe` text output.
+  # "Name" is usually the first line or labeled "Name".
+  
+  sys_cmd_desc <- glue::glue("dx describe \"{dataset}\" --json")
+  desc_json <- tryCatch({
+    system(sys_cmd_desc, intern = TRUE, ignore.stderr = TRUE)
+  }, error = function(e) NULL)
+  
+  record_name <- NULL
+  if (!is.null(desc_json) && length(desc_json) > 0) {
+      json_str <- paste(desc_json, collapse = " ")
+      matches <- regmatches(json_str, regexec('"name"\\s*:\\s*"([^"]+)"', json_str))
+      if (length(matches[[1]]) > 1) {
+          record_name <- matches[[1]][2]
+      }
+  }
+  
+  target_file <- NULL
+  if (!is.null(record_name)) {
+      expected_file <- file.path(storage_dir, paste0(record_name, ".data_dictionary.csv"))
+      if (file.exists(expected_file)) {
+          leo.basic::leo_log("Using cached dictionary: {expected_file}", level = "success")
+          if (requireNamespace("data.table", quietly = TRUE)) {
+            return(data.table::fread(expected_file, data.table = FALSE))
+          } else {
+            return(read.csv(expected_file, stringsAsFactors = FALSE))
+          }
+      }
+  }
+  
+  # If not cached or name resolution failed, proceed to download.
+  leo.basic::leo_log("Fetching dictionary for {dataset}...", level = "info")
+  
+  # Use system2 for proper exit code handling
+  # dx extract_dataset <id> -ddd --output <dir>/
+  
+  res <- tryCatch({
+    system2("dx", 
+            args = c("extract_dataset", shQuote(dataset), "-ddd", "--output", paste0(storage_dir, "/")),
+            stdout = TRUE, stderr = TRUE)
+  }, error = function(e) {
+    leo.basic::leo_log("Failed to run dx extract_dataset: {e$message}", level = "danger")
+    return(NULL)
+  })
+  
+  # Check exit status
+  exit_code <- attr(res, "status")
+  if (!is.null(exit_code) && exit_code != 0) {
+    leo.basic::leo_log("dx extract_dataset failed with exit code {exit_code}", level = "danger")
+    if (length(res) > 0) {
+      leo.basic::leo_log("Output: {paste(res, collapse = '\\n')}", level = "info")
+    }
+    return(NULL)
+  }
+  
+  if (is.null(res)) return(NULL)
+  
+  # Find the generated CSV file
+  # We can't trust record_name 100% if regex failed, so we search directory again by time.
+  # But we should search specifically for .data_dictionary.csv
+  
+  csv_files <- list.files(storage_dir, pattern = "\\.data_dictionary\\.csv$", full.names = TRUE)
+  if (length(csv_files) == 0) {
+    leo.basic::leo_log("No dictionary CSV found after extraction.", level = "danger")
+    return(NULL)
+  }
+  
+  # Sort by mtime to pick the absolute newest one (the one we just downloaded)
+  info <- file.info(csv_files)
+  target_file <- rownames(info)[which.max(info$mtime)]
+  
+  leo.basic::leo_log("Dictionary downloaded to: {target_file}", level = "success")
+  
+  # Read it
+  # Use utils::read.csv or data.table::fread if available
+  if (requireNamespace("data.table", quietly = TRUE)) {
+    dict_df <- data.table::fread(target_file, data.table = FALSE)
+  } else {
+    dict_df <- read.csv(target_file, stringsAsFactors = FALSE)
+  }
+  
+  return(dict_df)
+}
+
+#' Find Valid Columns in Dataset (Official Regex)
+#'
+#' Uses the official UKB RAP regex strategy to find all columns belonging to a field ID.
+#' Filters by entity to ensure only fields for the specified entity are returned.
+#'
+#' @param fields Vector of field IDs (e.g. `21003`, `p31`).
+#' @param dictionary The dictionary dataframe from `leo_dx_get_dataset_dictionary`.
+#' @param entity The entity type to filter for (e.g. "participant", "hesin"). 
+#'   Default is "participant". The dictionary contains multiple entities, so filtering is essential.
+#' @return Character vector of valid column names found in the dictionary for the specified entity.
+#' @export
+leo_dx_find_columns <- function(fields, dictionary, entity = "participant") {
+  if (is.null(dictionary) || nrow(dictionary) == 0) return(character(0))
+  if (!("name" %in% names(dictionary))) {
+    stop("Dictionary is missing 'name' column.")
+  }
+  
+  # CRITICAL: Filter dictionary by entity first
+  # The data_dictionary.csv contains ALL entities (participant, hesin, death, etc.)
+  # We must only match fields for the requested entity
+  if ("entity" %in% names(dictionary)) {
+    dictionary <- dictionary[dictionary$entity == entity, ]
+    if (nrow(dictionary) == 0) {
+      leo.basic::leo_log("No fields found for entity '{entity}' in dictionary.", level = "warning")
+      return(character(0))
+    }
+  } else {
+    leo.basic::leo_log("Dictionary has no 'entity' column. Cannot filter by entity (risky).", level = "warning")
+  }
+  
+  # Clean fields -> extract purely numeric ID
+  # 21003 -> "21003", p31 -> "31"
+  fields_char <- as.character(fields)
+  clean_ids <- sub("^\\D*(\\d+).*", "\\1", fields_char)
+  clean_ids <- unique(clean_ids[clean_ids != ""]) # Remove empties
+  
+  valid_cols <- character(0)
+  all_names <- dictionary$name
+  for (fid in clean_ids) {
+    # Official tutorial: https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd
+    regex <- paste0("^p", fid, "(?![0-9])")
+    matches <- grep(regex, all_names, value = TRUE, perl = TRUE) 
+    if (length(matches) > 0) {
+      valid_cols <- c(valid_cols, matches)
+    } else {
+      leo.basic::leo_log("Field {fid} (p{fid}) not found for entity '{entity}'.", level = "warning")
+    }
+  }
+  
+  return(unique(valid_cols))
+}
