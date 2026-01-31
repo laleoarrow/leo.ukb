@@ -1,3 +1,37 @@
+# Internal cache for project names to avoid redundant API calls
+.dx_cache <- new.env(parent = emptyenv())
+
+#' Internal robust dx runner
+#' @keywords internal
+#' @noRd
+.dx_run <- function(args, intern = TRUE, ignore.stderr = FALSE, ...) {
+  # Find dx
+  dx_path <- Sys.which("dx")
+
+  # macOS Homebrew fallback
+  if (dx_path == "" && Sys.info()["sysname"] == "Darwin") {
+    common_paths <- c("/opt/homebrew/bin/dx", "/usr/local/bin/dx")
+    for (p in common_paths) {
+      if (file.exists(p)) {
+        dx_path <- p
+        break
+      }
+    }
+  }
+
+  if (dx_path == "") dx_path <- "dx"
+
+  # Use system2
+  res <- system2(dx_path, args = args, stdout = intern, stderr = if (ignore.stderr) FALSE else TRUE, ...)
+
+  # Handle exit status if intern=TRUE
+  if (intern && !is.null(attr(res, "status")) && attr(res, "status") != 0 && !ignore.stderr) {
+    # It might be better to return NULL or handle at call site, but we'll stick to original behavior
+  }
+
+  return(res)
+} 
+
 #' Get Dataset Dictionary (Official Method)
 #'
 #' Downloads the full data dictionary for a specific dataset using `dx extract_dataset -ddd`.
@@ -5,8 +39,9 @@
 #'
 #' @param dataset The dataset ID or name (e.g. "app123.dataset" or "project-X:record-Y").
 #' @return A data.table/data.frame containing the dictionary (must have a `name` column).
-#' @export
-leo_dx_get_dataset_dictionary <- function(dataset) {
+#' @keywords internal
+#' @noRd
+dx_get_dataset_dictionary <- function(dataset) {
   # Determine storage location: prefer "tmp" in project, otherwise tempdir()
   storage_dir <- if (dir.exists("tmp")) "tmp" else tempdir()
   
@@ -24,9 +59,9 @@ leo_dx_get_dataset_dictionary <- function(dataset) {
   # Since we might not have jsonlite, we can try `dx describe` text output.
   # "Name" is usually the first line or labeled "Name".
   
-  sys_cmd_desc <- glue::glue("dx describe \"{dataset}\" --json")
+  sys_cmd_args <- c("describe", shQuote(dataset), "--json")
   desc_json <- tryCatch({
-    system(sys_cmd_desc, intern = TRUE, ignore.stderr = TRUE)
+    .dx_run(sys_cmd_args, intern = TRUE, ignore.stderr = TRUE)
   }, error = function(e) NULL)
   
   record_name <- NULL
@@ -111,12 +146,13 @@ leo_dx_get_dataset_dictionary <- function(dataset) {
 #' Filters by entity to ensure only fields for the specified entity are returned.
 #'
 #' @param fields Vector of field IDs (e.g. `21003`, `p31`).
-#' @param dictionary The dictionary dataframe from `leo_dx_get_dataset_dictionary`.
+#' @param dictionary The dictionary dataframe from `dx_get_dataset_dictionary`.
 #' @param entity The entity type to filter for (e.g. "participant", "hesin"). 
 #'   Default is "participant". The dictionary contains multiple entities, so filtering is essential.
 #' @return Character vector of valid column names found in the dictionary for the specified entity.
-#' @export
-leo_dx_find_columns <- function(fields, dictionary, entity = "participant") {
+#' @keywords internal
+#' @noRd
+dx_find_columns <- function(fields, dictionary, entity = "participant") {
   if (is.null(dictionary) || nrow(dictionary) == 0) return(character(0))
   if (!("name" %in% names(dictionary))) {
     stop("Dictionary is missing 'name' column.")

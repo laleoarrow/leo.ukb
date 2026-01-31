@@ -41,19 +41,19 @@
 #' @examples
 #' \dontrun{
 #' # 1. Basic extraction (extracts covariates defined in fields.txt)
-#' leo_dx_extract("tmp/fields.txt", output_prefix = "ukb_data")
+#' dx_extract("tmp/fields.txt", output_prefix = "ukb_data")
 #'
 #' # 2. Extract with human-readable labels and descriptive headers
-#' leo_dx_extract("tmp/fields.txt", 
+#' dx_extract("tmp/fields.txt", 
 #'                output_prefix = "ukb_data_readable",
 #'                coding_option = "REPLACE",
 #'                header_style = "FIELD-TITLE")
 #'                
 #' # 3. Explicitly specifying the dataset (Recommended for reproducibility)
-#' leo_dx_extract("tmp/fields.txt", 
+#' dx_extract("tmp/fields.txt", 
 #'                dataset = "project-Gk2PzX0Jj1X4Y5Z6:record-Fp37890Qj9k2X1Y4")
 #' }
-leo_dx_extract <- function(file,
+dx_extract <- function(file,
                            output_prefix = NULL,
                            expand = TRUE,
                            entity = "participant",
@@ -71,7 +71,7 @@ leo_dx_extract <- function(file,
   
   # Display dx environment info
   tryCatch({
-    dx_env <- system("dx env", intern = TRUE, ignore.stderr = TRUE)
+    dx_env <- .dx_run("env", intern = TRUE, ignore.stderr = TRUE)
     user_line <- grep("Current user", dx_env, value = TRUE)
     project_line <- grep("Current workspace name", dx_env, value = TRUE)
     if (length(user_line) > 0) leo.basic::leo_log(trimws(user_line), level = "info")
@@ -81,13 +81,9 @@ leo_dx_extract <- function(file,
   })
 
   # Auto-detect latest dataset if not specified
-  # Use `dx find data` instead of `dx ls` for reliability:
-  # - dx ls is non-recursive and shell glob can be consumed by zsh
-  # - dx find data searches the entire project
   if (is.null(dataset)) {
     datasets <- tryCatch({
-      # --brief returns just the ID, --name filters by pattern
-      system("dx find data --name '*.dataset' --brief", intern = TRUE, ignore.stderr = TRUE)
+      .dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE, ignore.stderr = TRUE)
     }, error = function(e) character(0))
 
     if (length(datasets) > 0) {
@@ -123,12 +119,12 @@ leo_dx_extract <- function(file,
     leo.basic::leo_log("Validating fields against dataset dictionary ({dataset})...", level = "info")
     
     # 1. Get Dictionary (Official)
-    ukb_dd <- leo_dx_get_dataset_dictionary(dataset)
+    ukb_dd <- dx_get_dataset_dictionary(dataset)
     
     if (!is.null(ukb_dd)) {
         # 2. Find valid columns (Official Regex), filtered by entity
         # Exclude 'eid' from lookup as it's added manually later
-        valid_cols <- leo_dx_find_columns(fields[fields != "eid"], ukb_dd, entity = entity)
+        valid_cols <- dx_find_columns(fields[fields != "eid"], ukb_dd, entity = entity)
         
         if (length(valid_cols) > 0) {
            fields <- c("eid", valid_cols)
@@ -168,11 +164,11 @@ leo_dx_extract <- function(file,
   leo.basic::leo_log("Uploading field names file to: {dx_file_path}", level = "info")
 
   # Delete existing file if present (to avoid duplicates)
-  system(paste0("dx rm -f ", dx_file_path), ignore.stdout = TRUE, ignore.stderr = TRUE)
+  .dx_run(c("rm", "-f", dx_file_path), ignore.stdout = TRUE, ignore.stderr = TRUE)
 
-  upload_cmd <- paste0("dx upload \"", fields_file, "\" --path ", dx_file_path)
   upload_exit <- tryCatch({
-    system(upload_cmd, ignore.stdout = TRUE, ignore.stderr = TRUE)
+    res <- .dx_run(c("upload", shQuote(fields_file), "--path", dx_file_path), intern = FALSE, ignore.stdout = TRUE, ignore.stderr = TRUE)
+    if (is.null(res)) 1L else res
   }, error = function(e) {
     leo.basic::leo_log(paste0("Upload error: ", e$message), level = "danger")
     return(1L)
@@ -206,7 +202,7 @@ leo_dx_extract <- function(file,
   leo.basic::leo_log("Running Table Exporter...", level = "info")
   leo.basic::leo_log("dx {paste(args, collapse = ' ')}", level = "info")
 
-  res <- system2("dx", args = args, stdout = TRUE, stderr = TRUE)
+  res <- .dx_run(args, intern = TRUE, ignore.stderr = FALSE)
   exit_code <- attr(res, "status")
   if (is.null(exit_code)) exit_code <- 0L
 
@@ -232,73 +228,229 @@ leo_dx_extract <- function(file,
   return(invisible(list(job_id = job_id, output_path = output_path)))
 }
 
-#' Check DNAnexus Job Status
+#' Check DNAnexus Job Status & Dashboard
 #'
-#' Checks the status of a DNAnexus job (e.g. Table Exporter) using \`dx describe\`.
+#' Checks the status of a specific job or displays a dashboard of recent jobs.
 #'
-#' @param job_id A string containing the job ID (e.g., "job-Gk2...") or a list 
-#'   returned by \code{\link{leo_dx_extract}} (which contains a \`\$job_id\` element).
-#' @return The state of the job as a string (e.g., "idle", "runnable", "running", 
-#'   "done", "failed", "terminated"). Returns NA if the status could not be determined.
+#' When called without a \code{job_id}, it displays a "htop"-style dashboard of the 
+#' last several jobs.
+#'
+#' @param all_projects Logical. If TRUE, shows jobs from all projects in the account (account-wide).
+#'   Default is FALSE (only current project).
+#' @param job_id Optional. A string containing the job ID (e.g., "job-Gk2...") or a list 
+#'   returned by \code{\link{dx_extract}}. If provided, \code{all_projects} is ignored.
+#' @param limit Numeric. Number of recent jobs to show in the dashboard (default: 3).
+#' @return The state of the job as a string (if \code{job_id} provided) or a data frame 
+#'   of recent jobs (if \code{job_id} is NULL), invisibly.
 #' @export
 #' @examples
 #' \dontrun{
-#' # Check status using a job ID
-#' leo_dx_status("job-Gk2PzX0Jj1X4Y5Z6")
+#' # 1. View dashboard of recent jobs in current project
+#' dx_status()
 #'
-#' # Check status from extraction result
-#' res <- leo_dx_extract("fields.txt")
-#' leo_dx_status(res)
+#' # 2. View dashboard for ONLY the current project
+#' dx_status(all_projects = FALSE)
+#'
+#' # 3. Check status of a specific job
+#' dx_status(job_id = "job-Gk2PzX0Jj1X4Y5Z6")
 #' }
-leo_dx_status <- function(job_id) {
-  # Handle list input (from leo_dx_extract)
-  if (is.list(job_id) && !is.null(job_id$job_id)) {
-    job_id <- job_id$job_id
-  }
-  
-  if (is.null(job_id) || is.na(job_id) || !is.character(job_id) || !grepl("^job-", job_id)) {
-    leo.basic::leo_log("Invalid Job ID provided.", level = "danger")
-    return(NA_character_)
-  }
-  
-  # Run dx describe
-  # dx describe job-xxxx --json
-  # We look for the "state" field.
-  
-  cmd <- glue::glue("dx describe \"{job_id}\" --json")
-  res <- tryCatch({
-    system(cmd, intern = TRUE, ignore.stderr = TRUE)
-  }, error = function(e) NULL)
-  
-  if (is.null(res) || length(res) == 0) {
-    leo.basic::leo_log("Could not check status for {job_id}. (Is dx toolkit authenticated?)", level = "warning")
-    return(NA_character_)
-  }
-  
-  json_str <- paste(res, collapse = " ")
-  
-  # Simple regex for "state": "done"
-  matches <- regmatches(json_str, regexec('"state"\\s*:\\s*"([^"]+)"', json_str))
-  
-  state <- NA_character_
-  if (length(matches[[1]]) > 1) {
-    state <- matches[[1]][2]
-  }
-  
-  # Pretty print status
-  if (!is.na(state)) {
-    color_map <- list(
-      "done" = "success",
-      "failed" = "danger",
-      "running" = "info",
-      "idle" = "warning",
-      "runnable" = "warning",
-      "terminated" = "danger"
-    )
-    lvl <- if (!is.null(color_map[[state]])) color_map[[state]] else "info"
+dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
+  t0 <- Sys.time()
+  # --- 1. Single Job Mode (If job_id is provided) ---
+  if (!is.null(job_id)) {
+    if (is.list(job_id) && !is.null(job_id$job_id)) job_id <- job_id$job_id
+    if (is.null(job_id) || is.na(job_id) || !is.character(job_id) || !grepl("^job-", job_id)) {
+      leo.basic::leo_log("Invalid Job ID provided.", level = "danger")
+      return(NA_character_)
+    }
     
-    leo.basic::leo_log("Job {job_id} is: {state}", level = lvl)
+    cmd_args <- c("describe", shQuote(job_id), "--json")
+    res <- tryCatch({.dx_run(cmd_args, intern = TRUE, ignore.stderr = TRUE)}, error = function(e) NULL)
+    if (is.null(res) || length(res) == 0) return(NA_character_)
+    
+    json_str <- paste(res, collapse = " ")
+    matches <- regmatches(json_str, regexec('"state"\\s*:\\s*"([^"]+)"', json_str))
+    state <- if (length(matches[[1]]) > 1) matches[[1]][2] else NA_character_
+    
+    if (!is.na(state)) {
+      color_map <- list("done"="success", "failed"="danger", "running"="info", "runnable"="warning", "terminated"="danger")
+      lvl <- if (!is.null(color_map[[state]])) color_map[[state]] else "info"
+      leo.basic::leo_log("Job {job_id} is: {state}", level = lvl)
+    }
+    return(state)
   }
-  
-  return(state)
-}
+
+  # --- 2. Dashboard Mode (If job_id is NULL) ---
+  cli::cli_alert_info("Checking DNAnexus status...")
+    
+    # Check login first
+    user <- tryCatch(.dx_run("whoami", intern = TRUE, ignore.stderr = TRUE), error = function(e) NULL)
+    if (is.null(user) || length(user) == 0) {
+      leo.basic::leo_log("Not logged in to DNAnexus. Please run 'dx login' in terminal.", level = "danger")
+      return(invisible(NULL))
+    }
+    
+    # Metadata: Env info
+    env_info <- tryCatch(.dx_run("env", intern = TRUE, ignore.stderr = TRUE), error = function(e) "")
+    curr_proj_line <- grep("Current workspace name", env_info, value = TRUE)
+    curr_proj_id_line <- grep("Current workspace", env_info, value = TRUE)
+    curr_proj_name <- if (length(curr_proj_line) > 0) sub(".*Current workspace name\\s+", "", curr_proj_line[1]) else "Unknown"
+    curr_proj_id <- if (length(curr_proj_id_line) > 0) {
+        val <- curr_proj_id_line[grep("^Current workspace\\s+project-", curr_proj_id_line)]
+        if(length(val) == 0) val <- curr_proj_id_line[grep("Current workspace", curr_proj_id_line)]
+        sub(".*Current workspace\\s+", "", val[1])
+    } else ""
+    
+    cat(cli::style_italic(glue::glue(" User: {cli::col_yellow(user)} | Project: {cli::col_cyan(curr_proj_name)} ({curr_proj_id})")), "\n\n")
+
+    # Fetch recent jobs
+    cmd_args <- c("find", "jobs", if(all_projects) "--all-projects" else character(0), "--num-results", as.character(limit), "--json")
+    res <- tryCatch({
+      .dx_run(cmd_args, intern = TRUE, ignore.stderr = TRUE)
+    }, error = function(e) NULL)
+    
+    if (is.null(res) || length(res) == 0) {
+      leo.basic::leo_log("Login success, but no jobs found.", level = "info")
+      return(invisible(NULL))
+    }
+    
+    # Parse JSON
+    if (requireNamespace("jsonlite", quietly = TRUE)) {
+      jobs_raw <- jsonlite::fromJSON(paste(res, collapse = " "))
+      if (length(jobs_raw) == 0) {
+         leo.basic::leo_log("No jobs found.", level = "info")
+         return(invisible(NULL))
+      }
+      jobs <- as.data.frame(jobs_raw)
+    } else {
+      leo.basic::leo_log("jsonlite not installed. Reverting to base dx display.", level = "warning")
+      .dx_run(cmd_args, intern = FALSE)
+      return(invisible(NULL))
+    }
+    
+    # Project Mapping for all_projects view (with session caching)
+    proj_map <- list()
+    if (all_projects) {
+      unique_proj_ids <- unique(jobs$project)
+      for (pid in unique_proj_ids) {
+        # Try to use internal cache added to dx_utils.R
+        if (exists(".dx_cache") && exists(pid, envir = .dx_cache)) {
+          proj_map[[pid]] <- get(pid, envir = .dx_cache)
+        } else {
+          p_info <- tryCatch(.dx_run(c("describe", pid, "--json"), intern = TRUE, ignore.stderr = TRUE), error = function(e) NULL)
+          if (!is.null(p_info)) {
+            p_meta <- jsonlite::fromJSON(paste(p_info, collapse = " "))
+            proj_map[[pid]] <- p_meta$name
+            if (exists(".dx_cache")) assign(pid, p_meta$name, envir = .dx_cache)
+          } else {
+            proj_map[[pid]] <- pid # Fallback
+          }
+        }
+      }
+    }
+
+    # Timing & Metadata Processing
+    now_ms <- as.numeric(Sys.time()) * 1000
+    
+    # Currency symbol
+    currency_symbol <- if (!is.null(jobs$currency) && !is.null(jobs$currency$symbol[1])) jobs$currency$symbol[1] else "£"
+    
+    # Duration calculation
+    # startedRunning, stoppedRunning are in ms
+    jobs$start <- ifelse(is.na(jobs$startedRunning), jobs$created, jobs$startedRunning)
+    jobs$end <- ifelse(is.na(jobs$stoppedRunning), now_ms, jobs$stoppedRunning)
+    jobs$duration_ms <- jobs$end - jobs$start
+    
+    format_dur <- function(ms) {
+      s <- ms / 1000
+      if (s < 60) return(paste0(round(s), "s"))
+      m <- s / 60
+      if (m < 60) return(paste0(round(m), "m"))
+      h <- m / 60
+      return(paste0(round(h, 1), "h"))
+    }
+    
+    jobs$dur_str <- sapply(jobs$duration_ms, format_dur)
+    jobs$age_str <- sapply(difftime(Sys.time(), as.POSIXct(jobs$created/1000, origin="1970-01-01")), function(age) {
+        val_m <- as.numeric(age, units="mins")
+        if (val_m < 60) return(paste0(round(val_m), "m"))
+        val_h <- as.numeric(age, units="hours")
+        if (val_h < 24) return(paste0(round(val_h, 1), "h"))
+        return(paste0(round(as.numeric(age, units="days")), "d"))
+    })
+
+    # Header
+    cols <- c("Job ID", "Status", "Project", "Cost", "Owner", "Since", "Duration", "Name")
+    
+    # Custom alignment function for Multi-byte (Chinese) and ANSI strings
+    align_ansi <- function(x, width, side = "left") {
+      clean_x <- cli::ansi_strip(as.character(x))
+      n <- nchar(clean_x, type = "width") # Use visual display width
+      pad_len <- max(0, width - n)
+      pad <- strrep(" ", pad_len)
+      if (side == "left") paste0(x, pad) else paste0(pad, x)
+    }
+
+    # Unify Header and Data column widths
+    w <- c(id=28, status=12, project=20, cost=8, owner=8, since=7, dur=8)
+    
+    header_str <- paste(
+      align_ansi(cols[1], w["id"]),
+      align_ansi(cols[2], w["status"]),
+      align_ansi(cols[3], w["project"]),
+      align_ansi(cols[4], w["cost"]),
+      align_ansi(cols[5], w["owner"]),
+      align_ansi(cols[6], w["since"]),
+      align_ansi(cols[7], w["dur"]),
+      cols[8],
+      sep = " | "
+    )
+    cat(cli::style_bold(header_str), "\n")
+    cat(paste(rep("-", 140), collapse = ""), "\n")
+    
+    for (i in seq_len(nrow(jobs))) {
+      s <- jobs$state[i]
+      st_color <- switch(s,
+        "done" = cli::col_green(paste0("✔ ", s)),
+        "failed" = cli::col_red(paste0("✖ ", s)),
+        "running" = cli::col_blue(paste0("● ", s)),
+        "runnable" = cli::col_yellow(paste0("○ ", s)),
+        "waiting" = cli::col_yellow(paste0("○ ", s)),
+        "terminated" = cli::col_red(paste0("⚑ ", s)),
+        s
+      )
+      
+      owner <- sub("user-", "", jobs$launchedBy[i])
+      pname <- if (!is.null(proj_map[[jobs$project[i]]])) proj_map[[jobs$project[i]]] else jobs$project[i]
+      
+      # Cost string: TotalPrice is often NA for running jobs in the find jobs list
+      cost_val <- if ("totalPrice" %in% names(jobs)) jobs$totalPrice[i] else 0
+      
+      if (s %in% c("running", "runnable", "waiting") && (is.na(cost_val) || cost_val == 0)) {
+        cost_str <- "Pending"
+        p_color <- cli::style_italic
+      } else {
+        if (is.na(cost_val)) cost_val <- 0
+        cost_str <- sprintf("%s%.2f", currency_symbol, cost_val)
+        p_color <- cli::col_green
+      }
+
+      cat(align_ansi(jobs$id[i], w["id"]), " | ", sep="")
+      cat(align_ansi(st_color, w["status"]), " | ", sep="")
+      cat(align_ansi(cli::ansi_strtrim(pname, w["project"]), w["project"]), " | ", sep="")
+      cat(align_ansi(p_color(cost_str), w["cost"]), " | ", sep="")
+      cat(align_ansi(cli::ansi_strtrim(owner, w["owner"]), w["owner"]), " | ", sep="")
+      
+      age_styled <- cli::style_italic(jobs$age_str[i])
+      dur_styled <- cli::col_cyan(jobs$dur_str[i])
+
+      cat(align_ansi(age_styled, w["since"]), " | ", sep="")
+      cat(align_ansi(dur_styled, w["dur"]), " | ", sep="")
+      cat(cli::ansi_strtrim(jobs$name[i], 35))
+      cat("\n")
+    }
+    cat(paste(rep("-", 140), collapse = ""), "\n")
+    
+    leo.basic::leo_time_elapsed(t0)
+    return(invisible(jobs))
+  }
