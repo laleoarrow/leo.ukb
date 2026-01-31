@@ -5,7 +5,8 @@
 \title{Extract UKB data using DNAnexus Table Exporter}
 \usage{
 dx_extract(
-  file,
+  file = NULL,
+  field_vec = NULL,
   output_prefix = NULL,
   expand = TRUE,
   entity = "participant",
@@ -17,7 +18,9 @@ dx_extract(
 )
 }
 \arguments{
-\item{file}{Path to a text file containing UKB field IDs (one per line).}
+\item{file}{Path to a text file containing UKB field IDs (one per line). Either \code{file} or \code{field_vec} must be provided.}
+
+\item{field_vec}{A character or numeric vector of field IDs. Either \code{file} or \code{field_vec} must be provided.}
 
 \item{output_prefix}{Output file prefix (default: derived from input file name).}
 
@@ -73,13 +76,16 @@ dx_status() # Check the status of your login
 # 1. Basic extraction (extracts covariates defined in fields.txt)
 dx_extract("tmp/fields.txt", output_prefix = "ukb_data")
 
-# 2. Extract with human-readable labels and descriptive headers
+# 2. Extraction using a vector of field IDs (No file needed!)
+dx_extract(field_vec = c(4079, 4080, 20002), output_prefix = "my_fields")
+
+# 3. Extract with human-readable labels and descriptive headers
 dx_extract("tmp/fields.txt", 
                output_prefix = "ukb_data_readable",
                coding_option = "REPLACE",
                header_style = "FIELD-TITLE")
                
-# 3. Explicitly specifying the dataset (Recommended for reproducibility)
+# 4. Explicitly specifying the dataset (Recommended for reproducibility)
 dx_extract("tmp/fields.txt", 
                dataset = "project-Gk2PzX0Jj1X4Y5Z6:record-Fp37890Qj9k2X1Y4")
 }

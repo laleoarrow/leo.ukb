@@ -35,7 +35,8 @@ dx_login <- function(token = NULL) {
 #' This function takes a file containing UKB field IDs and runs the Table Exporter
 #' app on DNAnexus RAP to extract the data. The output will be saved to `data_files/` on the RAP project.
 #'
-#' @param file Path to a text file containing UKB field IDs (one per line).
+#' @param file Path to a text file containing UKB field IDs (one per line). Either \code{file} or \code{field_vec} must be provided.
+#' @param field_vec A character or numeric vector of field IDs. Either \code{file} or \code{field_vec} must be provided.
 #' @param output_prefix Output file prefix (default: derived from input file name).
 #' @param expand Logical. If TRUE (default), validates and expands field IDs (e.g. `21003`) 
 #'   into all instances/arrays present in the dataset (e.g. `p21003_i0`, `p21003_i1`) 
@@ -78,17 +79,21 @@ dx_login <- function(token = NULL) {
 #' # 1. Basic extraction (extracts covariates defined in fields.txt)
 #' dx_extract("tmp/fields.txt", output_prefix = "ukb_data")
 #' 
-#' # 2. Extract with human-readable labels and descriptive headers
+#' # 2. Extraction using a vector of field IDs (No file needed!)
+#' dx_extract(field_vec = c(4079, 4080, 20002), output_prefix = "my_fields")
+#' 
+#' # 3. Extract with human-readable labels and descriptive headers
 #' dx_extract("tmp/fields.txt", 
 #'                output_prefix = "ukb_data_readable",
 #'                coding_option = "REPLACE",
 #'                header_style = "FIELD-TITLE")
 #'                
-#' # 3. Explicitly specifying the dataset (Recommended for reproducibility)
+#' # 4. Explicitly specifying the dataset (Recommended for reproducibility)
 #' dx_extract("tmp/fields.txt", 
 #'                dataset = "project-Gk2PzX0Jj1X4Y5Z6:record-Fp37890Qj9k2X1Y4")
 #' }
-dx_extract <- function(file,
+dx_extract <- function(file = NULL,
+                       field_vec = NULL,
                        output_prefix = NULL,
                        expand = TRUE,
                        entity = "participant",
@@ -97,10 +102,24 @@ dx_extract <- function(file,
                        header_style = "FIELD-NAME",
                        instance_type = "mem1_ssd1_v2_x4",
                        dataset = NULL) {
-  # Check if file exists
-  if (!file.exists(file)) {
-    leo.basic::leo_log("File not found: {file}", level = "danger")
+  # Input validation
+  if (is.null(file) && is.null(field_vec)) {
+    leo.basic::leo_log("Either 'file' or 'field_vec' must be provided.", level = "danger")
     return(invisible(NULL))
+  }
+  if (!is.null(file) && !is.null(field_vec)) {
+    leo.basic::leo_log("Please provide EITHER 'file' OR 'field_vec', not both.", level = "warning")
+  }
+
+  # Read and validate field IDs
+  if (!is.null(field_vec)) {
+    fields <- as.character(field_vec)
+  } else {
+    if (!file.exists(file)) {
+      leo.basic::leo_log("File not found: {file}", level = "danger")
+      return(invisible(NULL))
+    }
+    fields <- readLines(file, warn = FALSE)
   }
   cli::cat_rule("Extracting Data using DNAnexus Table Exporter", col = "blue")
   
@@ -132,13 +151,11 @@ dx_extract <- function(file,
     }
   }
 
-  # Read and validate field IDs
-  fields <- readLines(file, warn = FALSE)
   fields <- trimws(fields)
   fields <- fields[fields != ""]
 
   if (length(fields) == 0) {
-    leo.basic::leo_log("No valid field IDs found in {file}", level = "danger")
+    leo.basic::leo_log("No valid field IDs found.", level = "danger")
     return(invisible(NULL))
   }
 
@@ -175,7 +192,13 @@ dx_extract <- function(file,
 
   # Generate output prefix from file name if not provided
   if (is.null(output_prefix)) {
-    output_prefix <- tools::file_path_sans_ext(basename(file))
+    if (!is.null(file)) {
+      output_prefix <- tools::file_path_sans_ext(basename(file))
+    } else {
+      # Use the first 2 fields + count for the name
+      short_list <- head(fields[fields != "eid"], 2)
+      output_prefix <- paste0("extract_", paste(short_list, collapse = "_"), "_n", length(fields))
+    }
   }
 
   # Save fields to file (locally)
