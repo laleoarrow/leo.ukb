@@ -417,7 +417,11 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
     now_ms <- as.numeric(Sys.time()) * 1000
     
     # Currency symbol
-    currency_symbol <- if (!is.null(jobs$currency) && !is.null(jobs$currency$symbol[1])) jobs$currency$symbol[1] else "£"
+    currency_symbol <- "£" # Default
+    if (!is.null(jobs$currency) && is.data.frame(jobs$currency) && "symbol" %in% names(jobs$currency)) {
+      sym <- jobs$currency$symbol[!is.na(jobs$currency$symbol)][1]
+      if (!is.null(sym) && !is.na(sym)) currency_symbol <- sym
+    }
     
     # Duration calculation
     # startedRunning, stoppedRunning are in ms
