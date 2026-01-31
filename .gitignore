@@ -71,3 +71,4 @@ rsconnect/
 .DS_Store
 .quarto
 *.swp
+tmp/
