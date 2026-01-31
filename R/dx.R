@@ -27,8 +27,7 @@ dx_login <- function(token = NULL) {
     system(paste(shQuote(dx_path), "login"))
   }
   
-  duration <- round(as.numeric(difftime(Sys.time(), t0, units = "secs")), 1)
-  return(leo.basic::leo_log("Logged in to DNAnexus in {duration}s", level = "success"))
+  leo.basic::leo_time_elapsed(t0)
 }
 
 #' Extract UKB data using DNAnexus Table Exporter
