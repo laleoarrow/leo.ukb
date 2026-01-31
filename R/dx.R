@@ -222,10 +222,10 @@ dx_extract <- function(file = NULL,
   leo.basic::leo_log("Uploading field names file to: {dx_file_path}", level = "info")
 
   # Delete existing file if present (to avoid duplicates)
-  .dx_run(c("rm", "-f", dx_file_path), ignore.stdout = TRUE, ignore.stderr = TRUE)
+  .dx_run(c("rm", "-f", dx_file_path), ignore.stderr = TRUE)
 
   upload_exit <- tryCatch({
-    res <- .dx_run(c("upload", shQuote(fields_file), "--path", dx_file_path), intern = FALSE, ignore.stdout = TRUE, ignore.stderr = TRUE)
+    res <- .dx_run(c("upload", shQuote(fields_file), "--path", dx_file_path), intern = FALSE, ignore.stderr = TRUE)
     if (is.null(res)) 1L else res
   }, error = function(e) {
     leo.basic::leo_log(paste0("Upload error: ", e$message), level = "danger")
