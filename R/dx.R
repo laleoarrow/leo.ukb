@@ -280,18 +280,21 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
     return(state)
   }
 
-  # --- 2. Dashboard Mode (If job_id is NULL) ---
-  cli::cli_alert_info("Checking DNAnexus status...")
-    
-    # Check login first
-    user <- tryCatch(.dx_run("whoami", intern = TRUE, ignore.stderr = TRUE), error = function(e) NULL)
-    if (is.null(user) || length(user) == 0) {
-      leo.basic::leo_log("Not logged in to DNAnexus. Please run 'dx login' in terminal.", level = "danger")
+    # --- 2. Dashboard Mode (If job_id is NULL) ---
+    status_id <- cli::cli_status("Fetching DNAnexus data...")
+    on.exit(cli::cli_status_clear(status_id), add = TRUE)
+      
+    # Get environment info (contains user and project)
+    env_info <- tryCatch(.dx_run("env", intern = TRUE, ignore.stderr = TRUE), error = function(e) NULL)
+    if (is.null(env_info) || length(env_info) == 0) {
+      leo.basic::leo_log("Could not get DNAnexus environment. Please run 'dx login' in terminal.", level = "danger")
       return(invisible(NULL))
     }
     
-    # Metadata: Env info
-    env_info <- tryCatch(.dx_run("env", intern = TRUE, ignore.stderr = TRUE), error = function(e) "")
+    # Extract user and current project info
+    user_line <- grep("Current user", env_info, value = TRUE)
+    user <- if (length(user_line) > 0) sub("^Current user\\s+", "", user_line[1]) else "Unknown"
+    
     curr_proj_line <- grep("Current workspace name", env_info, value = TRUE)
     curr_proj_id_line <- grep("Current workspace", env_info, value = TRUE)
     curr_proj_name <- if (length(curr_proj_line) > 0) sub(".*Current workspace name\\s+", "", curr_proj_line[1]) else "Unknown"
@@ -301,6 +304,11 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
         sub(".*Current workspace\\s+", "", val[1])
     } else ""
     
+    # Pre-cache current project
+    if (curr_proj_id != "" && curr_proj_name != "Unknown" && exists(".dx_cache")) {
+        assign(curr_proj_id, curr_proj_name, envir = .dx_cache)
+    }
+
     cat(cli::style_italic(glue::glue(" User: {cli::col_yellow(user)} | Project: {cli::col_cyan(curr_proj_name)} ({curr_proj_id})")), "\n\n")
 
     # Fetch recent jobs
@@ -328,24 +336,24 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
       return(invisible(NULL))
     }
     
-    # Project Mapping for all_projects view (with session caching)
+    # Project Mapping for dashboard view (with session caching)
     proj_map <- list()
-    if (all_projects) {
-      unique_proj_ids <- unique(jobs$project)
-      for (pid in unique_proj_ids) {
-        # Try to use internal cache added to dx_utils.R
-        if (exists(".dx_cache") && exists(pid, envir = .dx_cache)) {
-          proj_map[[pid]] <- get(pid, envir = .dx_cache)
+    unique_proj_ids <- unique(jobs$project)
+    for (pid in unique_proj_ids) {
+      if (exists(".dx_cache") && exists(pid, envir = .dx_cache)) {
+        proj_map[[pid]] <- get(pid, envir = .dx_cache)
+      } else if (all_projects) {
+        # Only fetch if all_projects=TRUE or we really need it
+        p_info <- tryCatch(.dx_run(c("describe", pid, "--json"), intern = TRUE, ignore.stderr = TRUE), error = function(e) NULL)
+        if (!is.null(p_info)) {
+          p_meta <- jsonlite::fromJSON(paste(p_info, collapse = " "))
+          proj_map[[pid]] <- p_meta$name
+          if (exists(".dx_cache")) assign(pid, p_meta$name, envir = .dx_cache)
         } else {
-          p_info <- tryCatch(.dx_run(c("describe", pid, "--json"), intern = TRUE, ignore.stderr = TRUE), error = function(e) NULL)
-          if (!is.null(p_info)) {
-            p_meta <- jsonlite::fromJSON(paste(p_info, collapse = " "))
-            proj_map[[pid]] <- p_meta$name
-            if (exists(".dx_cache")) assign(pid, p_meta$name, envir = .dx_cache)
-          } else {
-            proj_map[[pid]] <- pid # Fallback
-          }
+          proj_map[[pid]] <- pid
         }
+      } else {
+        proj_map[[pid]] <- pid # Fallback to ID for non-cached projects in local view
       }
     }
 
@@ -378,6 +386,9 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
         if (val_h < 24) return(paste0(round(val_h, 1), "h"))
         return(paste0(round(as.numeric(age, units="days")), "d"))
     })
+
+    # Clear status right before printing the table
+    cli::cli_status_clear(status_id)
 
     # Header
     cols <- c("Job ID", "Status", "Project", "Cost", "Owner", "Since", "Duration", "Name")
