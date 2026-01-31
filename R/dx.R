@@ -416,13 +416,6 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
     # Timing & Metadata Processing
     now_ms <- as.numeric(Sys.time()) * 1000
     
-    # Currency symbol
-    currency_symbol <- "£" # Default
-    if (!is.null(jobs$currency) && is.data.frame(jobs$currency) && "symbol" %in% names(jobs$currency)) {
-      sym <- jobs$currency$symbol[!is.na(jobs$currency$symbol)][1]
-      if (!is.null(sym) && !is.na(sym)) currency_symbol <- sym
-    }
-    
     # Duration calculation
     # startedRunning, stoppedRunning are in ms
     jobs$start <- ifelse(is.na(jobs$startedRunning), jobs$created, jobs$startedRunning)
@@ -494,15 +487,28 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
       owner <- sub("user-", "", jobs$launchedBy[i])
       pname <- if (!is.null(proj_map[[jobs$project[i]]])) proj_map[[jobs$project[i]]] else jobs$project[i]
       
-      # Cost string: TotalPrice is often NA for running jobs in the find jobs list
+      # Cost string processing
       cost_val <- if ("totalPrice" %in% names(jobs)) jobs$totalPrice[i] else 0
       
+      # Determine currency symbol for this specific job (Defensive Logic)
+      row_currency <- "£"
+      # Case 1: Nested data frame (non-flattened fromJSON)
+      if ("currency" %in% names(jobs) && is.data.frame(jobs$currency)) {
+        sym <- jobs$currency$symbol[i]
+        if (!is.null(sym) && !is.na(sym)) row_currency <- sym
+      } 
+      # Case 2: Flattened column name
+      else if ("currency.symbol" %in% names(jobs)) {
+        sym <- jobs$currency.symbol[i]
+        if (!is.null(sym) && !is.na(sym)) row_currency <- sym
+      }
+
       if (s %in% c("running", "runnable", "waiting") && (is.na(cost_val) || cost_val == 0)) {
         cost_str <- "Pending"
         p_color <- cli::style_italic
       } else {
         if (is.na(cost_val)) cost_val <- 0
-        cost_str <- sprintf("%s%.2f", currency_symbol, cost_val)
+        cost_str <- sprintf("%s%.2f", row_currency, cost_val)
         p_color <- cli::col_green
       }
 
