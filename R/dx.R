@@ -7,13 +7,28 @@
 #' @return None (runs system command).
 #' @export
 dx_login <- function(token = NULL) {
+  t0 <- Sys.time()
+  
+  # Get dx path for system() call
+  dx_path <- Sys.which("dx")
+  if (dx_path == "" && Sys.info()["sysname"] == "Darwin") {
+    for (p in c("/opt/homebrew/bin/dx", "/usr/local/bin/dx")) {
+      if (file.exists(p)) { dx_path <- p; break }
+    }
+  }
+  if (dx_path == "") dx_path <- "dx"
+
   if (!is.null(token)) {
-    # Token-based login
+    # Token-based login (non-interactive)
     .dx_run(c("login", "--token", token), intern = FALSE)
   } else {
-    # Interactive login
-    .dx_run("login", intern = FALSE)
+    # Interactive login: system() handles TTY prompts (keyboard input) 
+    # much better than system2() in some R consoles
+    system(paste(shQuote(dx_path), "login"))
   }
+  
+  duration <- round(as.numeric(difftime(Sys.time(), t0, units = "secs")), 1)
+  return(leo.basic::leo_log("Logged in to DNAnexus in {duration}s", level = "success"))
 }
 
 #' Extract UKB data using DNAnexus Table Exporter
