@@ -1,3 +1,21 @@
+#' Log in to DNAnexus
+#'
+#' This is a wrapper for \code{dx login}. It supports both interactive login 
+#' (if no token provided) and token-based login.
+#'
+#' @param token Optional. A DNAnexus authentication token.
+#' @return None (runs system command).
+#' @export
+dx_login <- function(token = NULL) {
+  if (!is.null(token)) {
+    # Token-based login
+    .dx_run(c("login", "--token", token), intern = FALSE)
+  } else {
+    # Interactive login
+    .dx_run("login", intern = FALSE)
+  }
+}
+
 #' Extract UKB data using DNAnexus Table Exporter
 #'
 #' This function takes a file containing UKB field IDs and runs the Table Exporter
@@ -45,7 +63,7 @@
 #' 
 #' # 1. Basic extraction (extracts covariates defined in fields.txt)
 #' dx_extract("tmp/fields.txt", output_prefix = "ukb_data")
-#'
+#' 
 #' # 2. Extract with human-readable labels and descriptive headers
 #' dx_extract("tmp/fields.txt", 
 #'                output_prefix = "ukb_data_readable",
@@ -56,27 +74,15 @@
 #' dx_extract("tmp/fields.txt", 
 #'                dataset = "project-Gk2PzX0Jj1X4Y5Z6:record-Fp37890Qj9k2X1Y4")
 #' }
-#' 
-#' @export
-dx_login <- function(token = NULL) {
-  if (!is.null(token)) {
-    # Token-based login
-    .dx_run(c("login", "--token", token), intern = FALSE)
-  } else {
-    # Interactive login
-    .dx_run("login", intern = FALSE)
-  }
-}
-
 dx_extract <- function(file,
-                           output_prefix = NULL,
-                           expand = TRUE,
-                           entity = "participant",
-                           coding_option = "RAW",
-                           output_format = "CSV",
-                           header_style = "FIELD-NAME",
-                           instance_type = "mem1_ssd1_v2_x4",
-                           dataset = NULL) {
+                       output_prefix = NULL,
+                       expand = TRUE,
+                       entity = "participant",
+                       coding_option = "RAW",
+                       output_format = "CSV",
+                       header_style = "FIELD-NAME",
+                       instance_type = "mem1_ssd1_v2_x4",
+                       dataset = NULL) {
   # Check if file exists
   if (!file.exists(file)) {
     leo.basic::leo_log("File not found: {file}", level = "danger")
