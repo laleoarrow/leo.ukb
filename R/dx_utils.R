@@ -1,6 +1,3 @@
-# Internal cache for project names to avoid redundant API calls
-.dx_cache <- new.env(parent = emptyenv())
-
 #' Internal robust dx runner
 #' @keywords internal
 #' @noRd

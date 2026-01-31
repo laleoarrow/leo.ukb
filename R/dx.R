@@ -40,6 +40,9 @@
 #'
 #' @examples
 #' \dontrun{
+#' dx_login() # Make sure you have logged in to DNAnexus
+#' dx_status() # Check the status of your login
+#' 
 #' # 1. Basic extraction (extracts covariates defined in fields.txt)
 #' dx_extract("tmp/fields.txt", output_prefix = "ukb_data")
 #'
@@ -53,6 +56,18 @@
 #' dx_extract("tmp/fields.txt", 
 #'                dataset = "project-Gk2PzX0Jj1X4Y5Z6:record-Fp37890Qj9k2X1Y4")
 #' }
+#' 
+#' @export
+dx_login <- function(token = NULL) {
+  if (!is.null(token)) {
+    # Token-based login
+    .dx_run(c("login", "--token", token), intern = FALSE)
+  } else {
+    # Interactive login
+    .dx_run("login", intern = FALSE)
+  }
+}
+
 dx_extract <- function(file,
                            output_prefix = NULL,
                            expand = TRUE,
@@ -336,24 +351,22 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
       return(invisible(NULL))
     }
     
-    # Project Mapping for dashboard view (with session caching)
+    # Project Mapping for dashboard view
     proj_map <- list()
     unique_proj_ids <- unique(jobs$project)
     for (pid in unique_proj_ids) {
-      if (exists(".dx_cache") && exists(pid, envir = .dx_cache)) {
-        proj_map[[pid]] <- get(pid, envir = .dx_cache)
+      if (pid == curr_proj_id) {
+        proj_map[[pid]] <- curr_proj_name
       } else if (all_projects) {
-        # Only fetch if all_projects=TRUE or we really need it
         p_info <- tryCatch(.dx_run(c("describe", pid, "--json"), intern = TRUE, ignore.stderr = TRUE), error = function(e) NULL)
         if (!is.null(p_info)) {
           p_meta <- jsonlite::fromJSON(paste(p_info, collapse = " "))
           proj_map[[pid]] <- p_meta$name
-          if (exists(".dx_cache")) assign(pid, p_meta$name, envir = .dx_cache)
         } else {
           proj_map[[pid]] <- pid
         }
       } else {
-        proj_map[[pid]] <- pid # Fallback to ID for non-cached projects in local view
+        proj_map[[pid]] <- pid
       }
     }
 
