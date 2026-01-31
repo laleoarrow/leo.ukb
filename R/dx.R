@@ -225,7 +225,7 @@ dx_extract <- function(file = NULL,
   .dx_run(c("rm", "-f", dx_file_path), ignore.stderr = TRUE)
 
   upload_exit <- tryCatch({
-    res <- .dx_run(c("upload", shQuote(fields_file), "--path", dx_file_path), intern = FALSE, ignore.stderr = TRUE)
+    res <- .dx_run(c("upload", shQuote(fields_file), "--path", dx_file_path, "--parents"), intern = FALSE, ignore.stderr = TRUE)
     if (is.null(res)) 1L else res
   }, error = function(e) {
     leo.basic::leo_log(paste0("Upload error: ", e$message), level = "danger")

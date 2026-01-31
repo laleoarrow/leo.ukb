@@ -19,7 +19,11 @@
   if (dx_path == "") dx_path <- "dx"
 
   # Use system2
-  res <- system2(dx_path, args = args, stdout = intern, stderr = if (ignore.stderr) FALSE else TRUE, ...)
+  if (ignore.stderr) {
+    res <- suppressWarnings(system2(dx_path, args = args, stdout = intern, stderr = FALSE, ...))
+  } else {
+    res <- system2(dx_path, args = args, stdout = intern, stderr = TRUE, ...)
+  }
 
   # Handle exit status if intern=TRUE
   if (intern && !is.null(attr(res, "status")) && attr(res, "status") != 0 && !ignore.stderr) {
