@@ -1,6 +1,4 @@
-<h1 align="center">===== LEO·UKB =====</h1> <img src="man/figures/logo.png" align="right" height="120" alt="leo.ukb logo" />
-
-<div align="center">
+# LEO·UKB <img src="man/figures/logo.png" align="right" height="120" alt="leo.ukb logo" />
 
 <!-- badges: start -->
 [![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/laleoarrow/leo.ukb/releases)
@@ -8,8 +6,6 @@
 [![License: Proprietary](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 [![R](https://img.shields.io/badge/R-%3E%3D%203.5-blue.svg)](https://cran.r-project.org/)
 <!-- badges: end -->
-
-</div>
 
 `leo.ukb` is an internal toolkit for working with UK Biobank (UKB) data. It provides a small set of helper functions that streamline common workflows—field parsing/decoding, format conversion, batch processing, and preparing analysis-ready datasets—for large-scale biomedical studies.
 
