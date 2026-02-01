@@ -1,4 +1,4 @@
-# LEO·UKB <img src="man/figures/logo.png" align="right" height="120" alt="leo.ukb logo" />
+<h1 align="center">===== LEO·UKB =====</h1> <img src="man/figures/logo.png" align="right" height="120" alt="leo.ukb logo" />
 
 <div align="center">
 
@@ -13,13 +13,13 @@
 
 `leo.ukb` is an internal toolkit for working with UK Biobank (UKB) data. It provides a small set of helper functions that streamline common workflows—field parsing/decoding, format conversion, batch processing, and preparing analysis-ready datasets—for large-scale biomedical studies.
 
-<p align="center">
+<div align="center">
   <img src="man/figures/banner.png" alt="leo.ukb banner" width="700"/>
-</p>
+</div>
 
-UK Biobank: https://www.ukbiobank.ac.uk/
-UKB Showcase: https://biobank.ndph.ox.ac.uk/showcase/
-UKB Schema: https://biobank.ndph.ox.ac.uk/showcase/schema.cgi
+- [UK Biobank](https://www.ukbiobank.ac.uk/)
+- [UKB Showcase](https://biobank.ndph.ox.ac.uk/showcase/)
+- [UKB Schema](https://biobank.ndph.ox.ac.uk/showcase/schema.cgi)
 
 ## Installation
 
