@@ -1,4 +1,4 @@
-# leo.ukb <img src="man/figures/logo.png" align="right" height="120" alt="leo.ukb logo" />
+# LEO·UKB <img src="man/figures/logo.png" align="right" height="120" alt="leo.ukb logo" />
 
 <!-- badges: start -->
 [![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/laleoarrow/leo.ukb/releases)
