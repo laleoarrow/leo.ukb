@@ -16,6 +16,8 @@
 </p>
 
 UK Biobank: https://www.ukbiobank.ac.uk/
+UKB Showcase: https://biobank.ndph.ox.ac.uk/showcase/
+UKB Schema: https://biobank.ndph.ox.ac.uk/showcase/schema.cgi
 
 ## Installation
 
