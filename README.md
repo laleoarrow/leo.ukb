@@ -9,6 +9,8 @@
 
 `leo.ukb` is an internal toolkit for working with UK Biobank (UKB) data. It provides a small set of helper functions that streamline common workflows—field parsing/decoding, format conversion, batch processing, and preparing analysis-ready datasets—for large-scale biomedical studies.
 
+> **Note**: This package is intended for academic research purposes. The code functionalities are experimental and subject to change.
+
 <div align="center">
   <img src="man/figures/banner.png" alt="leo.ukb banner" width="700"/>
 </div>
