@@ -213,8 +213,19 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
     dictionary <- dictionary[dictionary$entity == entity, ]
   }
   
-  # Standardize Inputs
-  cat_ids <- as.character(category_ids)
+  # Internal Map for Common Numeric Categories (since Dictionary lacks them)
+  # Ideally this should be a fuller dataset, but for now we solve key cases.
+  cat_map <- list(
+    "1712" = "First occurrences"
+  )
+  
+  # Standardize Inputs and Map IDs if possible
+  cat_ids_input <- as.character(category_ids)
+  cat_ids <- sapply(cat_ids_input, function(cid) {
+    if (cid %in% names(cat_map)) return(cat_map[[cid]])
+    return(cid)
+  })
+  
   found_fields <- character(0)
   
   # Strategy: Check for 'folder_path' column (standard in dx extract_dataset -ddd)
@@ -236,6 +247,7 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
     for (cid in cat_ids) {
        # Case-insensitive substring match
        # e.g. cid="First occurrences" or cid="1712"
+       # Note: If mapped (1712 -> First occurrences), we search for the name.
        matches <- grep(cid, paths, ignore.case = TRUE, fixed = TRUE)
        if (length(matches) > 0) {
          # Get names (p123_i0) -> extract ID (123)
@@ -246,7 +258,7 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
        } else {
          msg <- paste0("No fields found for category '", cid, "'.")
          if (grepl("^\\d+$", cid)) {
-             msg <- paste0(msg, " (Note: Creating a dictionary with numeric Category IDs requires external mapping. Please try using the Category Name, e.g., 'First occurrences')")
+             msg <- paste0(msg, " (Note: The dictionary currently lacks numeric Category IDs. I've added support for 1712, but others require the Category Name e.g. 'First occurrences' or 'Population characteristics')")
          }
          leo.basic::leo_log(msg, level = "warning")
        }
