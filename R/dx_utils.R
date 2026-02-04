@@ -217,55 +217,25 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
   cat_ids <- as.character(category_ids)
   found_fields <- character(0)
   
-  # Strategy: Check for 'folderPath' column (standard in dx extract_dataset -ddd)
-  # Folder paths usually look like: "Category > Subcategory > Field"
-  # Or they might contain the numeric ID in the path string if we are lucky, 
-  # or we might need to rely on the 'title' if it contains the ID.
-  # However, UKB RAP dictionary usually has 'folderPath'.
+  # Strategy: Check for 'folder_path' column (standard in dx extract_dataset -ddd)
+  # Sometimes it is called 'folderPath'
   
-  if ("folderPath" %in% names(dictionary)) {
+  col_folder <- if ("folder_path" %in% names(dictionary)) "folder_path" else if ("folderPath" %in% names(dictionary)) "folderPath" else NULL
+  
+  if (!is.null(col_folder)) {
     # Extract leaf fields where the folderPath matches the requested category
     # Problem: category_ids are numbers (e.g. 1712), but folderPath text might be "Health-related outcomes > First occurrences"
     # We assume the user might provide the name OR the system needs to map ID -> Name.
     # Since we lack an internal map, we will TRY to match if the folderPath *contains* the ID (unlikely) 
     # OR we assume the user might pass a loose match string.
-    # BUT wait, the official dictionary CSV often has a "Folder" column with just names.
-    
-    # HACK: If the dictionary has a 'LinkID' or 'FieldID' column, we can return those.
-    # Actually, standard dx dictionary has 'name' (p41270_i0).
-    # We need to extract the base field ID from the name and return it.
-    
-    # Let's inspect typical dictionary structure:
-    # name, title, entity, folderPath
-    
-    # If we can't map ID 1712 to "First occurrences", we can't robustly find it by ID.
-    # HOWEVER, the UKB schema usually puts the Category ID in the metadata if downloaded from Showcase.
-    # The RAP dictionary is simpler.
-    
-    # User Request: "category_id = 1712".
-    # If the CSV doesn't have numeric category IDs, we are stuck.
-    # Let's assume for now the user might need to providing a NAME pattern if IDs aren't there, 
-    # OR we search validation against 'title' or 'folderPath'.
     
     # REVISION: We will support regex matching on folderPath for now.
-    # If the user passes "1712", we search for "1712" in folderPath? No, that won't exist.
-    # This implies we might need to fetch the category tree separately or warn the user.
-    # Wait, `dx run app-table-exporter` supports `-icategory=`. 
-    # Maybe we don't need to resolve fields manually?
-    # NO, the user wants to mix fields and categories. `table-exporter` takes `-ifield_names_file_txt`.
-    # It does NOT take a category list file. So we MUST resolve to fields.
-    
-    # To resolve 1712 -> Fields, we theoretically need the UKB schema.
-    # Since we don't have it, we'll try to match strictly on folderPath if the user passes a string,
-    # OR if they pass a number, we simply look for that number in the folder path (maybe it's formatted "1712 - Name"?).
     
     # Let's be aggressive: we iterate all rows, and if the folderPath contains the string provided, we take it.
-    paths <- dictionary$folderPath
+    paths <- dictionary[[col_folder]]
     for (cid in cat_ids) {
        # Case-insensitive substring match
        # e.g. cid="First occurrences" or cid="1712"
-       # If 1712 doesn't appear in text, this fails. 
-       # We'll log a warning if no matches found.
        matches <- grep(cid, paths, ignore.case = TRUE, fixed = TRUE)
        if (length(matches) > 0) {
          # Get names (p123_i0) -> extract ID (123)
@@ -274,11 +244,15 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
          found_fields <- c(found_fields, ids)
          leo.basic::leo_log("Category '{cid}' matched {length(ids)} fields.", level = "info")
        } else {
-         leo.basic::leo_log("No fields found for category '{cid}' (checked folderPath). Try using the category Name instead of ID?", level = "warning")
+         msg <- paste0("No fields found for category '", cid, "'.")
+         if (grepl("^\\d+$", cid)) {
+             msg <- paste0(msg, " (Note: Creating a dictionary with numeric Category IDs requires external mapping. Please try using the Category Name, e.g., 'First occurrences')")
+         }
+         leo.basic::leo_log(msg, level = "warning")
        }
     }
   } else {
-    leo.basic::leo_log("Dictionary missing 'folderPath'. Cannot filter by Category.", level = "warning")
+    leo.basic::leo_log("Dictionary missing 'folder_path'. Cannot filter by Category.", level = "warning")
   }
   
   return(unique(found_fields))
