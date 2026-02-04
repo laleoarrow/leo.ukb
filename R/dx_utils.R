@@ -206,6 +206,43 @@ dx_find_columns <- function(fields, dictionary, entity = "participant") {
 #' @noRd
 dx_find_fields_by_category <- function(category_ids, dictionary, entity = "participant") {
   if (is.null(category_ids) || length(category_ids) == 0) return(character(0))
+  
+  # -------------------------------------------------------
+  # 1. OFFICIAL LOGIC: Use Schema Metadata (field.tsv)
+  # -------------------------------------------------------
+  
+  # Attempt to fetch schemas
+  f_path <- dx_get_schema("field")
+  
+  # If we successfully get the schema, use it for PRECISE lookup
+  if (!is.null(f_path)) {
+      # Warn if data.table not available? function is internal, pkg suggests it.
+      if (requireNamespace("data.table", quietly = TRUE)) {
+          field_schema <- data.table::fread(f_path, select = c("field_id", "main_category"))
+      } else {
+          field_schema <- read.table(f_path, header = TRUE, sep = "\t", quote = "", fill = TRUE, stringsAsFactors = FALSE)
+      }
+      
+      # Filter fields where main_category is in our requested IDs
+      # category_ids might be string or numeric
+      target_cats <- as.integer(category_ids) 
+      
+      # Official Logic: Filter schema for these categories
+      matched_fields <- field_schema$field_id[field_schema$main_category %in% target_cats]
+      
+      if (length(matched_fields) > 0) {
+          leo.basic::leo_log("Found {length(matched_fields)} fields in {length(target_cats)} categories using Official Schema.", level = "success")
+          return(as.character(matched_fields))
+      } else {
+           leo.basic::leo_log("No fields found for categories {paste(category_ids, collapse=', ')} in Schema.", level = "warning")
+           return(character(0))
+      }
+  }
+  
+  # -------------------------------------------------------
+  # 2. FALLBACK: Dictionary Text Search (Legacy/Offline)
+  # -------------------------------------------------------
+  
   if (is.null(dictionary) || nrow(dictionary) == 0) return(character(0))
   
   # Filter by entity first
@@ -268,4 +305,74 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
   }
   
   return(unique(found_fields))
+}
+
+#' Get UKB Dataset Schema (Metadata)
+#' 
+#' Fetches official UK Biobank schema files (field.tsv, category.tsv).
+#' Prioritizes:
+#' 1. Local cache in `tmp/`
+#' 2. DNAnexus project `Showcase metadata/` folder
+#' 3. Official UKB Showcase website (public download)
+#'
+#' @param type type of schema: "field" or "category"
+#' @return Path to the downloaded TSV file
+#' @keywords internal
+#' @noRd
+dx_get_schema <- function(type = c("field", "category")) {
+  type <- match.arg(type)
+  
+  # Schema IDs on showcase: 1 = Field, 2 = Category
+  # https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=1
+  schema_id <- if (type == "field") 1 else 2
+  filename <- paste0(type, ".tsv")
+  
+  # Define paths
+  storage_dir <- if (dir.exists("tmp")) "tmp" else tempdir()
+  local_path <- file.path(storage_dir, filename)
+  
+  # 1. Check Local Cache
+  if (file.exists(local_path) && file.size(local_path) > 0) {
+    # Optional: check age? For now assume stable.
+    leo.basic::leo_log("Using cached schema: {local_path}", level = "info")
+    return(local_path)
+  }
+  
+  # 2. Try DNAnexus (official location in RAP)
+  # Path: "/Showcase metadata/<type>.tsv"
+  leo.basic::leo_log("Looking for {filename}...", level = "info")
+  
+  rap_path <- paste0("Showcase metadata/", filename)
+  
+  # Try download from RAP
+  # dx download "Showcase metadata/field.tsv" -o tmp/field.tsv -f
+  res <- tryCatch({
+      .dx_run(c("download", shQuote(rap_path), "-o", shQuote(local_path), "-f"), intern = TRUE, ignore.stderr = TRUE)
+      TRUE
+  }, error = function(e) FALSE)
+  
+  if (file.exists(local_path) && file.size(local_path) > 0) {
+      leo.basic::leo_log("Downloaded {filename} from RAP project.", level = "success")
+      return(local_path)
+  }
+  
+  # 3. Fallback: Download from UK Biobank Public Showcase
+  # URL: https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=1&down=yes
+  leo.basic::leo_log("Metadata not found in project. Fetching from UKBiobank Showcase...", level = "info")
+  
+  url <- paste0("https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=", schema_id, "&down=yes")
+  
+  tryCatch({
+      # Use curl or wget style download via R
+      utils::download.file(url, destfile = local_path, quiet = TRUE, method = "auto")
+  }, error = function(e) {
+      leo.basic::leo_log("Failed to download from UKB Showcase: {e$message}", level = "danger")
+  })
+  
+  if (file.exists(local_path) && file.size(local_path) > 0) {
+      leo.basic::leo_log("Downloaded {filename} from UKB Showcase.", level = "success")
+      return(local_path)
+  }
+  
+  return(NULL)
 }
