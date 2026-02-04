@@ -160,6 +160,7 @@ dx_get_dataset_dictionary <- function(dataset) {
 #' 3. Official UKB Showcase website (public download)
 #'
 #' @param type type of schema: "field" or "category"
+#' @param force Logical. If TRUE, re-downloads the schema even if a local cache exists.
 #' @return Path to the downloaded TSV file
 #' @keywords internal
 #' @noRd
@@ -171,7 +172,7 @@ dx_get_dataset_dictionary <- function(dataset) {
 #'   # Fetch Category Schema (Schema 2)
 #'   cat_schema_path <- dx_get_schema("category")
 #' }
-dx_get_schema <- function(type = c("field", "category")) {
+dx_get_schema <- function(type = c("field", "category"), force = FALSE) {
   type <- match.arg(type)
   
   # Schema IDs on showcase: 1 = Field, 2 = Category
@@ -184,7 +185,7 @@ dx_get_schema <- function(type = c("field", "category")) {
   local_path <- file.path(storage_dir, filename)
   
   # 1. Check Local Cache
-  if (file.exists(local_path) && file.size(local_path) > 0) {
+  if (!force && file.exists(local_path) && file.size(local_path) > 0) {
     # Optional: check age? For now assume stable.
     leo.basic::leo_log("Using cached schema: {local_path}", level = "info")
     return(local_path)
