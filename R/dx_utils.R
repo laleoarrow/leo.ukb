@@ -309,9 +309,8 @@ dx_find_columns <- function(fields, dictionary, entity = "participant") {
 dx_find_fields_by_category <- function(category_ids, dictionary, entity = "participant") {
   if (is.null(category_ids) || length(category_ids) == 0) return(character(0))
   
-  # -------------------------------------------------------
-  # 1. OFFICIAL LOGIC: Use Schema Metadata (field.tsv)
-  # -------------------------------------------------------
+  # 1. Official Schema Logic (Primary)
+
   
   # Attempt to fetch schemas
   f_path <- dx_get_schema("field")
@@ -341,9 +340,8 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
       }
   }
   
-  # -------------------------------------------------------
-  # 2. FALLBACK: Dictionary Text Search (Legacy/Offline)
-  # -------------------------------------------------------
+  # 2. Fallback: Text Search
+
   
   if (is.null(dictionary) || nrow(dictionary) == 0) return(character(0))
   
