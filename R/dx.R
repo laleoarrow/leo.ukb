@@ -129,6 +129,15 @@ dx_extract <- function(field_id = NULL,
   fields <- process_input(field_id, "fields")
   cats <- process_input(category_id, "categories")
   
+  # Resolve categories if provided
+  if (length(cats) > 0) {
+    leo.basic::leo_log("Resolving {length(cats)} categories...", level = "info")
+    # dx_find_fields_by_category uses Official Schema (no dictionary needed)
+    cat_fields <- dx_find_fields_by_category(cats, entity = entity)
+    # Append found fields to the main list
+    fields <- c(fields, cat_fields)
+  }
+  
   cli::cat_rule("Extracting Data using DNAnexus Table Exporter", col = "blue")
   
   # Display dx environment info
@@ -265,7 +274,7 @@ dx_extract <- function(field_id = NULL,
   .dx_run(c("rm", "-f", dx_file_path), ignore.stderr = TRUE)
 
   upload_exit <- tryCatch({
-    res <- .dx_run(c("upload", shQuote(fields_file), "--path", dx_file_path, "--parents"), intern = FALSE, ignore.stderr = TRUE)
+    res <- .dx_run(c("upload", fields_file, "--path", dx_file_path, "--parents"), intern = FALSE, ignore.stderr = TRUE)
     if (is.null(res)) 1L else res
   }, error = function(e) {
     leo.basic::leo_log(paste0("Upload error: ", e$message), level = "danger")
@@ -362,7 +371,7 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
       return(NA_character_)
     }
     
-    cmd_args <- c("describe", shQuote(job_id), "--json")
+    cmd_args <- c("describe", job_id, "--json")
     res <- tryCatch({.dx_run(cmd_args, intern = TRUE, ignore.stderr = TRUE)}, error = function(e) NULL)
     if (is.null(res) || length(res) == 0) return(NA_character_)
     
