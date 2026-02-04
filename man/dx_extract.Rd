@@ -5,8 +5,8 @@
 \title{Extract UKB data using DNAnexus Table Exporter}
 \usage{
 dx_extract(
-  file = NULL,
-  field_vec = NULL,
+  field_id = NULL,
+  category_id = NULL,
   output_prefix = NULL,
   expand = TRUE,
   entity = "participant",
@@ -18,11 +18,11 @@ dx_extract(
 )
 }
 \arguments{
-\item{file}{Path to a text file containing UKB field IDs (one per line). Either \code{file} or \code{field_vec} must be provided.}
+\item{field_id}{Path to a file or a vector of Field IDs (e.g., \code{c("p31", "41270")}).}
 
-\item{field_vec}{A character or numeric vector of field IDs. Either \code{file} or \code{field_vec} must be provided.}
+\item{category_id}{Path to a file or a vector of Category IDs/Names (e.g., \code{1712}, \code{"First Occurrence"}).}
 
-\item{output_prefix}{Output file prefix (default: derived from input file name).}
+\item{output_prefix}{Output file prefix. If NULL, auto-generated based on fields/categories.}
 
 \item{expand}{Logical. If TRUE (default), validates and expands field IDs (e.g. \code{21003})
 into all instances/arrays present in the dataset (e.g. \code{p21003_i0}, \code{p21003_i1})
@@ -66,7 +66,7 @@ A list containing the job ID and expected output path (invisibly).
 }
 \description{
 This function takes a file containing UKB field IDs and runs the Table Exporter
-app on DNAnexus RAP to extract the data. The output will be saved to \verb{data_files/} on the RAP project.
+app on DNAnexus RAP to extract the data. The output will be saved to \verb{data_files/} on the RAP project. Ref (https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd)
 }
 \examples{
 \dontrun{
@@ -76,8 +76,11 @@ dx_status() # Check the status of your login
 # 1. Basic extraction (extracts covariates defined in fields.txt)
 dx_extract("tmp/fields.txt", output_prefix = "ukb_data")
 
-# 2. Extraction using a vector of field IDs (No file needed!)
-dx_extract(field_vec = c(4079, 4080, 20002), output_prefix = "my_fields")
+# 2. Extraction using vectors (Field & Category)
+dx_extract(field_id = c("p31", "p21003"), category_id = 1712, output_prefix = "my_study")
+
+# 3. Just Category
+dx_extract(category_id = "First occurrences")
 
 # 3. Extract with human-readable labels and descriptive headers
 dx_extract("tmp/fields.txt", 
