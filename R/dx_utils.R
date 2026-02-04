@@ -288,19 +288,26 @@ dx_find_columns <- function(fields, dictionary, entity = "participant") {
 #'
 #' Scans the dataset dictionary for fields belonging to a specific category ID (or folder path).
 #'
-#' @param category_ids Vector of category IDs (e.g. `1712`) or Names (e.g. "First occurrences").
-#' @param dictionary The dictionary dataframe (used for fallback text search).
+#' @param category_ids Vector of category IDs (e.g. `1712`, `c(100, 101)`).
+#' @param dictionary The dictionary dataframe.
 #' @param entity Entity type to filter for (default: "participant").
 #' @return Character vector of field IDs (e.g. `c("41270", "41271")`).
 #' @keywords internal
 #' @noRd
+#' @examples
+#' \dontrun{
+#'   # Find fields for Category 1712 (First occurrences)
+#'   # Automatically downloads schema if missing
+#'   fields_1712 <- dx_find_fields_by_category(1712, dict)
+#'   
+#'   # Use vector of categories
+#'   fields_mix <- dx_find_fields_by_category(c(1712, 100), dict)
+#' }
 dx_find_fields_by_category <- function(category_ids, dictionary, entity = "participant") {
   if (is.null(category_ids) || length(category_ids) == 0) return(character(0))
   
-  # =========================================================================
-  # Strategy 1: Official Schema Lookup (Primary)
+  # 1. Official Schema Lookup (Primary)
   # Best for numeric IDs (e.g. 1712). Uses field.tsv metadata.
-  # =========================================================================
   f_path <- dx_get_schema("field")
   
   if (!is.null(f_path)) {
@@ -324,10 +331,8 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
     }
   }
   
-  # =========================================================================
-  # Strategy 2: Dictionary Text Search (Fallback)
+  # 2. Dictionary Text Search (Fallback)
   # Best for descriptive names (e.g. "Recruitment"). Uses local dictionary CSV.
-  # =========================================================================
   if (is.null(dictionary) || nrow(dictionary) == 0) return(character(0))
   
   # Filter by entity
