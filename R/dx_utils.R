@@ -250,33 +250,22 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
     dictionary <- dictionary[dictionary$entity == entity, ]
   }
   
-  # -------------------------------------------------------
-  # 1. OFFICIAL LOGIC: Use Schema Metadata (field.tsv)
-  # -------------------------------------------------------
-  # This is the PRIMARY method for numeric Category IDs, satisfying strict compliance.
-  
-  # Attempt to fetch schemas (checks Local -> RAP -> UKB Web)
+  # 1. Official Schema Logic (Primary)
+  # Uses field.tsv metadata if available (Local -> RAP -> Web)
   f_path <- dx_get_schema("field")
   
-  # If we successfully get the schema, use it for PRECISE lookup
   if (!is.null(f_path)) {
-      # Warn if data.table not available? function is internal, pkg suggests it.
       if (requireNamespace("data.table", quietly = TRUE)) {
           field_schema <- data.table::fread(f_path, select = c("field_id", "main_category"))
       } else {
           field_schema <- read.table(f_path, header = TRUE, sep = "\t", quote = "", fill = TRUE, stringsAsFactors = FALSE)
       }
       
-      # Filter fields where main_category is in our requested IDs
-      # category_ids might be string or numeric
       target_cats <- as.integer(category_ids) 
-      # Suppress warnings for NAs introduced by coercion (if cat_ids contains strings)
       target_cats <- target_cats[!is.na(target_cats)]
       
       if (length(target_cats) > 0) {
-          # Official Logic: Filter schema for these categories
           matched_fields <- field_schema$field_id[field_schema$main_category %in% target_cats]
-          
           if (length(matched_fields) > 0) {
               leo.basic::leo_log("Found {length(matched_fields)} fields in {length(target_cats)} categories using Official Schema.", level = "success")
               return(as.character(matched_fields))
@@ -284,12 +273,8 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
       }
   }
   
-  # -------------------------------------------------------
-  # 2. FALLBACK: Dictionary Text Search (Legacy/Offline)
-  # -------------------------------------------------------
-  # Only runs if schema failed OR if inputs were non-numeric Strings (e.g. "First Occurrences")
-  
-  # Standardize Inputs (No more internal map!)
+  # 2. Text Search Fallback (Legacy/Offline)
+  # Only for string inputs (e.g. "Name") or if schema failed
   cat_ids <- as.character(category_ids)
   found_fields <- character(0)
   # Sometimes it is called 'folderPath'
