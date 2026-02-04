@@ -199,8 +199,9 @@ dx_get_schema <- function(type = c("field", "category"), force = FALSE) {
   
   # Try download from RAP
   # dx download "Showcase metadata/field.tsv" -o tmp/field.tsv -f
+  # Note: .dx_run uses system2, so we do NOT need shQuote, otherwise quotes become part of the filename.
   res <- tryCatch({
-      .dx_run(c("download", shQuote(rap_path), "-o", shQuote(local_path), "-f"), intern = TRUE, ignore.stderr = TRUE)
+      .dx_run(c("download", rap_path, "-o", local_path, "-f"), intern = TRUE, ignore.stderr = TRUE)
       TRUE
   }, error = function(e) FALSE)
   
