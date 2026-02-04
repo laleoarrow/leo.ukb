@@ -36,7 +36,7 @@
   }
 
   return(res)
-} 
+}
 
 #' Get Dataset Dictionary (Official Method)
 #'
@@ -195,13 +195,10 @@ dx_get_schema <- function(type = c("field", "category"), force = FALSE) {
     leo.basic::leo_log("Using cached schema: {local_path}", level = "info")
     return(local_path)
   }
-  
   # 2. Try DNAnexus (official location in RAP)
   # Path: "/Showcase metadata/<type>.tsv"
   leo.basic::leo_log("Looking for {filename}...", level = "info")
   rap_path <- paste0("Showcase metadata/", filename)
-  
-  # Try download from RAP
   res <- tryCatch({
       .dx_run(c("download", rap_path, "-o", local_path, "-f"), intern = TRUE, ignore.stderr = TRUE)
       TRUE
@@ -220,12 +217,10 @@ dx_get_schema <- function(type = c("field", "category"), force = FALSE) {
   }, error = function(e) {
       leo.basic::leo_log("Failed to download from UKB Showcase: {e$message}", level = "danger")
   })
-  
   if (file.exists(local_path) && file.size(local_path) > 0) {
       leo.basic::leo_log("Downloaded {filename} from UKB Showcase.", level = "success")
       return(local_path)
   }
-  
   return(NULL)
 }
 
@@ -293,130 +288,84 @@ dx_find_columns <- function(fields, dictionary, entity = "participant") {
 #'
 #' Scans the dataset dictionary for fields belonging to a specific category ID (or folder path).
 #'
-#' @param category_ids Vector of category IDs (e.g. `1712`, `c(100, 101)`).
-#' @param dictionary The dictionary dataframe.
+#' @param category_ids Vector of category IDs (e.g. `1712`) or Names (e.g. "First occurrences").
+#' @param dictionary The dictionary dataframe (used for fallback text search).
 #' @param entity Entity type to filter for (default: "participant").
 #' @return Character vector of field IDs (e.g. `c("41270", "41271")`).
 #' @keywords internal
 #' @noRd
-#' @examples
-#' \dontrun{
-#'   # Find fields for Category 1712 (First occurrences)
-#'   # Automatically downloads schema if missing
-#'   fields_1712 <- dx_find_fields_by_category(1712, dict)
-#'   
-#'   # Use vector of categories
-#'   fields_mix <- dx_find_fields_by_category(c(1712, 100), dict)
-#' }
 dx_find_fields_by_category <- function(category_ids, dictionary, entity = "participant") {
   if (is.null(category_ids) || length(category_ids) == 0) return(character(0))
   
-  # 1. Official Schema Logic (Primary)
-
-  
-  # Attempt to fetch schemas
+  # =========================================================================
+  # Strategy 1: Official Schema Lookup (Primary)
+  # Best for numeric IDs (e.g. 1712). Uses field.tsv metadata.
+  # =========================================================================
   f_path <- dx_get_schema("field")
   
-  # If we successfully get the schema, use it for PRECISE lookup
   if (!is.null(f_path)) {
-      # Warn if data.table not available? function is internal, pkg suggests it.
-      if (requireNamespace("data.table", quietly = TRUE)) {
-          field_schema <- data.table::fread(f_path, select = c("field_id", "main_category"))
-      } else {
-          field_schema <- read.table(f_path, header = TRUE, sep = "\t", quote = "", fill = TRUE, stringsAsFactors = FALSE)
+    # Load schema
+    if (requireNamespace("data.table", quietly = TRUE)) {
+      field_schema <- data.table::fread(f_path, select = c("field_id", "main_category"))
+    } else {
+      field_schema <- read.table(f_path, header = TRUE, sep = "\t", quote = "", fill = TRUE, stringsAsFactors = FALSE)
+    }
+    
+    # Filter for numeric IDs
+    target_cats <- suppressWarnings(as.integer(category_ids))
+    target_cats <- target_cats[!is.na(target_cats)]
+    
+    if (length(target_cats) > 0) {
+      matched <- field_schema$field_id[field_schema$main_category %in% target_cats]
+      if (length(matched) > 0) {
+        leo.basic::leo_log("Found {length(matched)} fields in {length(target_cats)} categories via Official Schema.", level = "success")
+        return(as.character(matched))
       }
-      
-      # Filter fields where main_category is in our requested IDs
-      # category_ids might be string or numeric
-      target_cats <- as.integer(category_ids) 
-      
-      # Official Logic: Filter schema for these categories
-      matched_fields <- field_schema$field_id[field_schema$main_category %in% target_cats]
-      
-      if (length(matched_fields) > 0) {
-          leo.basic::leo_log("Found {length(matched_fields)} fields in {length(target_cats)} categories using Official Schema.", level = "success")
-          return(as.character(matched_fields))
-      } else {
-           leo.basic::leo_log("No fields found for categories {paste(category_ids, collapse=', ')} in Schema.", level = "warning")
-           return(character(0))
-      }
+    }
   }
   
-  # 2. Fallback: Text Search
-
-  
+  # =========================================================================
+  # Strategy 2: Dictionary Text Search (Fallback)
+  # Best for descriptive names (e.g. "Recruitment"). Uses local dictionary CSV.
+  # =========================================================================
   if (is.null(dictionary) || nrow(dictionary) == 0) return(character(0))
   
-  # Filter by entity first
+  # Filter by entity
   if ("entity" %in% names(dictionary)) {
     dictionary <- dictionary[dictionary$entity == entity, ]
   }
   
-  # 1. Official Schema Logic (Primary)
-  # Uses field.tsv metadata if available (Local -> RAP -> Web)
-  f_path <- dx_get_schema("field")
-  
-  if (!is.null(f_path)) {
-      if (requireNamespace("data.table", quietly = TRUE)) {
-          field_schema <- data.table::fread(f_path, select = c("field_id", "main_category"))
-      } else {
-          field_schema <- read.table(f_path, header = TRUE, sep = "\t", quote = "", fill = TRUE, stringsAsFactors = FALSE)
-      }
-      
-      target_cats <- as.integer(category_ids) 
-      target_cats <- target_cats[!is.na(target_cats)]
-      
-      if (length(target_cats) > 0) {
-          matched_fields <- field_schema$field_id[field_schema$main_category %in% target_cats]
-          if (length(matched_fields) > 0) {
-              leo.basic::leo_log("Found {length(matched_fields)} fields in {length(target_cats)} categories using Official Schema.", level = "success")
-              return(as.character(matched_fields))
-          }
-      }
-  }
-  
-  # 2. Text Search Fallback (Legacy/Offline)
-  # Only for string inputs (e.g. "Name") or if schema failed
-  cat_ids <- as.character(category_ids)
-  found_fields <- character(0)
-  # Sometimes it is called 'folderPath'
-  
+  # Identify folder column (folder_path or folderPath)
   col_folder <- if ("folder_path" %in% names(dictionary)) "folder_path" else if ("folderPath" %in% names(dictionary)) "folderPath" else NULL
   
   if (!is.null(col_folder)) {
-    # Extract leaf fields where the folderPath matches the requested category
-    # Problem: category_ids are numbers (e.g. 1712), but folderPath text might be "Health-related outcomes > First occurrences"
-    # We assume the user might provide the name OR the system needs to map ID -> Name.
-    # Since we lack an internal map, we will TRY to match if the folderPath *contains* the ID (unlikely) 
-    # OR we assume the user might pass a loose match string.
-    
-    # REVISION: We will support regex matching on folderPath for now.
-    
-    # Let's be aggressive: we iterate all rows, and if the folderPath contains the string provided, we take it.
     paths <- dictionary[[col_folder]]
-    for (cid in cat_ids) {
-       # Case-insensitive substring match
-       # e.g. cid="First occurrences" or cid="1712"
-       # Note: If mapped (1712 -> First occurrences), we search for the name.
-       matches <- grep(cid, paths, ignore.case = TRUE, fixed = TRUE)
-       if (length(matches) > 0) {
-         # Get names (p123_i0) -> extract ID (123)
-         names_matched <- dictionary$name[matches]
-         ids <- unique(sub("^p(\\d+).*", "\\1", names_matched))
-         found_fields <- c(found_fields, ids)
-         leo.basic::leo_log("Category '{cid}' matched {length(ids)} fields.", level = "info")
-       } else {
-         msg <- paste0("No fields found for category '", cid, "'.")
+    found_fields <- character(0)
+    
+    for (cid in as.character(category_ids)) {
+      # Use loose text matching (grep)
+      if (length(grep(cid, paths, fixed = TRUE)) > 0) {
+        matches <- grep(cid, paths, ignore.case = TRUE, fixed = TRUE)
+        names_matched <- dictionary$name[matches]
+        
+        # Extract ID from name (p123_i0 -> 123)
+        ids <- unique(sub("^p(\\d+).*", "\\1", names_matched))
+        found_fields <- c(found_fields, ids)
+        leo.basic::leo_log("Category '{cid}' matched {length(ids)} fields via text search.", level = "info")
+      } else {
+         # Warn only if it looks like an ID but wasn't found in Schema
          if (grepl("^\\d+$", cid)) {
-             msg <- paste0(msg, " (Note: The dictionary currently lacks numeric Category IDs. I've added support for 1712, but others require the Category Name e.g. 'First occurrences' or 'Population characteristics')")
+             leo.basic::leo_log("Category ID {cid} not found in Schema and no text match in dictionary.", level = "warning")
+         } else {
+             leo.basic::leo_log("No fields matched text '{cid}'.", level = "warning")
          }
-         leo.basic::leo_log(msg, level = "warning")
-       }
+      }
     }
+    return(unique(found_fields))
+    
   } else {
     leo.basic::leo_log("Dictionary missing 'folder_path'. Cannot filter by Category.", level = "warning")
+    return(character(0))
   }
-  
-  return(unique(found_fields))
 }
 
