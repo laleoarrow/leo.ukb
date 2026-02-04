@@ -250,22 +250,48 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
     dictionary <- dictionary[dictionary$entity == entity, ]
   }
   
-  # Internal Map for Common Numeric Categories (since Dictionary lacks them)
-  # Ideally this should be a fuller dataset, but for now we solve key cases.
-  cat_map <- list(
-    "1712" = "First occurrences"
-  )
+  # -------------------------------------------------------
+  # 1. OFFICIAL LOGIC: Use Schema Metadata (field.tsv)
+  # -------------------------------------------------------
+  # This is the PRIMARY method for numeric Category IDs, satisfying strict compliance.
   
-  # Standardize Inputs and Map IDs if possible
-  cat_ids_input <- as.character(category_ids)
-  cat_ids <- sapply(cat_ids_input, function(cid) {
-    if (cid %in% names(cat_map)) return(cat_map[[cid]])
-    return(cid)
-  })
+  # Attempt to fetch schemas (checks Local -> RAP -> UKB Web)
+  f_path <- dx_get_schema("field")
   
+  # If we successfully get the schema, use it for PRECISE lookup
+  if (!is.null(f_path)) {
+      # Warn if data.table not available? function is internal, pkg suggests it.
+      if (requireNamespace("data.table", quietly = TRUE)) {
+          field_schema <- data.table::fread(f_path, select = c("field_id", "main_category"))
+      } else {
+          field_schema <- read.table(f_path, header = TRUE, sep = "\t", quote = "", fill = TRUE, stringsAsFactors = FALSE)
+      }
+      
+      # Filter fields where main_category is in our requested IDs
+      # category_ids might be string or numeric
+      target_cats <- as.integer(category_ids) 
+      # Suppress warnings for NAs introduced by coercion (if cat_ids contains strings)
+      target_cats <- target_cats[!is.na(target_cats)]
+      
+      if (length(target_cats) > 0) {
+          # Official Logic: Filter schema for these categories
+          matched_fields <- field_schema$field_id[field_schema$main_category %in% target_cats]
+          
+          if (length(matched_fields) > 0) {
+              leo.basic::leo_log("Found {length(matched_fields)} fields in {length(target_cats)} categories using Official Schema.", level = "success")
+              return(as.character(matched_fields))
+          }
+      }
+  }
+  
+  # -------------------------------------------------------
+  # 2. FALLBACK: Dictionary Text Search (Legacy/Offline)
+  # -------------------------------------------------------
+  # Only runs if schema failed OR if inputs were non-numeric Strings (e.g. "First Occurrences")
+  
+  # Standardize Inputs (No more internal map!)
+  cat_ids <- as.character(category_ids)
   found_fields <- character(0)
-  
-  # Strategy: Check for 'folder_path' column (standard in dx extract_dataset -ddd)
   # Sometimes it is called 'folderPath'
   
   col_folder <- if ("folder_path" %in% names(dictionary)) "folder_path" else if ("folderPath" %in% names(dictionary)) "folderPath" else NULL
