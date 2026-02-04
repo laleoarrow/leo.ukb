@@ -194,12 +194,12 @@ dx_get_schema <- function(type = c("field", "category"), force = FALSE) {
   # 2. Try DNAnexus (official location in RAP)
   # Path: "/Showcase metadata/<type>.tsv"
   leo.basic::leo_log("Looking for {filename}...", level = "info")
-  
   rap_path <- paste0("Showcase metadata/", filename)
   
   # Try download from RAP
-  # dx download "Showcase metadata/field.tsv" -o tmp/field.tsv -f
-  # Note: .dx_run uses system2, so we do NOT need shQuote, otherwise quotes become part of the filename.
+  # Note: .dx_run uses system2. We log the command for transparency.
+  leo.basic::leo_log("Executing: dx download \"{rap_path}\" -o \"{local_path}\" -f", level = "info")
+  
   res <- tryCatch({
       .dx_run(c("download", rap_path, "-o", local_path, "-f"), intern = TRUE, ignore.stderr = TRUE)
       TRUE
@@ -212,11 +212,8 @@ dx_get_schema <- function(type = c("field", "category"), force = FALSE) {
   # 3. Fallback: Download from UK Biobank Public Showcase
   # URL: https://biobank.ndph.ox.ac.uk/ukb/scdown.cgi?fmt=txt&id={1,2}
   leo.basic::leo_log("Metadata not found in project. Fetching from UKBiobank Showcase...", level = "info")
-  
   url <- paste0("https://biobank.ndph.ox.ac.uk/ukb/scdown.cgi?fmt=txt&id=", schema_id)
-  
   tryCatch({
-      # Use curl or wget style download via R
       utils::download.file(url, destfile = local_path, quiet = TRUE, method = "auto")
   }, error = function(e) {
       leo.basic::leo_log("Failed to download from UKB Showcase: {e$message}", level = "danger")
