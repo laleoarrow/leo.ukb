@@ -42,6 +42,14 @@
 #' @return A data.table/data.frame containing the dictionary (must have a `name` column).
 #' @keywords internal
 #' @noRd
+#' @examples
+#' \dontrun{
+#'   # Download and load dictionary for a specific dataset
+#'   dict <- dx_get_dataset_dictionary("project-X:record-Y")
+#'   
+#'   # Uses cached version if available
+#'   dict2 <- dx_get_dataset_dictionary("project-X:record-Y")
+#' }
 dx_get_dataset_dictionary <- function(dataset) {
   # Determine storage location: prefer "tmp" in project, otherwise tempdir()
   storage_dir <- if (dir.exists("tmp")) "tmp" else tempdir()
@@ -141,6 +149,84 @@ dx_get_dataset_dictionary <- function(dataset) {
   return(dict_df)
 }
 
+
+
+#' Get UKB Dataset Schema (Metadata)
+#' 
+#' Fetches official UK Biobank schema files (field.tsv, category.tsv).
+#' Prioritizes:
+#' 1. Local cache in `tmp/`
+#' 2. DNAnexus project `Showcase metadata/` folder
+#' 3. Official UKB Showcase website (public download)
+#'
+#' @param type type of schema: "field" or "category"
+#' @return Path to the downloaded TSV file
+#' @keywords internal
+#' @noRd
+#' @examples
+#' \dontrun{
+#'   # Fetch Field Schema (Schema 1)
+#'   field_schema_path <- dx_get_schema("field")
+#'   
+#'   # Fetch Category Schema (Schema 2)
+#'   cat_schema_path <- dx_get_schema("category")
+#' }
+dx_get_schema <- function(type = c("field", "category")) {
+  type <- match.arg(type)
+  
+  # Schema IDs on showcase: 1 = Field, 2 = Category
+  # https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=1
+  schema_id <- if (type == "field") 1 else 2
+  filename <- paste0(type, ".tsv")
+  
+  # Define paths
+  storage_dir <- if (dir.exists("tmp")) "tmp" else tempdir()
+  local_path <- file.path(storage_dir, filename)
+  
+  # 1. Check Local Cache
+  if (file.exists(local_path) && file.size(local_path) > 0) {
+    # Optional: check age? For now assume stable.
+    leo.basic::leo_log("Using cached schema: {local_path}", level = "info")
+    return(local_path)
+  }
+  
+  # 2. Try DNAnexus (official location in RAP)
+  # Path: "/Showcase metadata/<type>.tsv"
+  leo.basic::leo_log("Looking for {filename}...", level = "info")
+  
+  rap_path <- paste0("Showcase metadata/", filename)
+  
+  # Try download from RAP
+  # dx download "Showcase metadata/field.tsv" -o tmp/field.tsv -f
+  res <- tryCatch({
+      .dx_run(c("download", shQuote(rap_path), "-o", shQuote(local_path), "-f"), intern = TRUE, ignore.stderr = TRUE)
+      TRUE
+  }, error = function(e) FALSE)
+  
+  if (file.exists(local_path) && file.size(local_path) > 0) {
+      leo.basic::leo_log("Downloaded {filename} from RAP project.", level = "success")
+      return(local_path)
+  }
+  # 3. Fallback: Download from UK Biobank Public Showcase
+  # URL: https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=1&down=yes
+  leo.basic::leo_log("Metadata not found in project. Fetching from UKBiobank Showcase...", level = "info")
+  url <- paste0("https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=", schema_id, "&down=yes")
+  
+  tryCatch({
+      # Use curl or wget style download via R
+      utils::download.file(url, destfile = local_path, quiet = TRUE, method = "auto")
+  }, error = function(e) {
+      leo.basic::leo_log("Failed to download from UKB Showcase: {e$message}", level = "danger")
+  })
+  
+  if (file.exists(local_path) && file.size(local_path) > 0) {
+      leo.basic::leo_log("Downloaded {filename} from UKB Showcase.", level = "success")
+      return(local_path)
+  }
+  
+  return(NULL)
+}
+
 #' Find Valid Columns in Dataset (Official Regex)
 #'
 #' Uses the official UKB RAP regex strategy to find all columns belonging to a field ID.
@@ -153,6 +239,13 @@ dx_get_dataset_dictionary <- function(dataset) {
 #' @return Character vector of valid column names found in the dictionary for the specified entity.
 #' @keywords internal
 #' @noRd
+#' @examples
+#' \dontrun{
+#'   dict <- dx_get_dataset_dictionary("project-X:record-Y")
+#'   
+#'   # Find columns for specific fields
+#'   cols <- dx_find_columns(c("p31", "21003"), dict)
+#' }
 dx_find_columns <- function(fields, dictionary, entity = "participant") {
   if (is.null(dictionary) || nrow(dictionary) == 0) return(character(0))
   if (!("name" %in% names(dictionary))) {
@@ -204,6 +297,15 @@ dx_find_columns <- function(fields, dictionary, entity = "participant") {
 #' @return Character vector of field IDs (e.g. `c("41270", "41271")`).
 #' @keywords internal
 #' @noRd
+#' @examples
+#' \dontrun{
+#'   # Find fields for Category 1712 (First occurrences)
+#'   # Automatically downloads schema if missing
+#'   fields_1712 <- dx_find_fields_by_category(1712, dict)
+#'   
+#'   # Use vector of categories
+#'   fields_mix <- dx_find_fields_by_category(c(1712, 100), dict)
+#' }
 dx_find_fields_by_category <- function(category_ids, dictionary, entity = "participant") {
   if (is.null(category_ids) || length(category_ids) == 0) return(character(0))
   
@@ -318,72 +420,3 @@ dx_find_fields_by_category <- function(category_ids, dictionary, entity = "parti
   return(unique(found_fields))
 }
 
-#' Get UKB Dataset Schema (Metadata)
-#' 
-#' Fetches official UK Biobank schema files (field.tsv, category.tsv).
-#' Prioritizes:
-#' 1. Local cache in `tmp/`
-#' 2. DNAnexus project `Showcase metadata/` folder
-#' 3. Official UKB Showcase website (public download)
-#'
-#' @param type type of schema: "field" or "category"
-#' @return Path to the downloaded TSV file
-#' @keywords internal
-#' @noRd
-dx_get_schema <- function(type = c("field", "category")) {
-  type <- match.arg(type)
-  
-  # Schema IDs on showcase: 1 = Field, 2 = Category
-  # https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=1
-  schema_id <- if (type == "field") 1 else 2
-  filename <- paste0(type, ".tsv")
-  
-  # Define paths
-  storage_dir <- if (dir.exists("tmp")) "tmp" else tempdir()
-  local_path <- file.path(storage_dir, filename)
-  
-  # 1. Check Local Cache
-  if (file.exists(local_path) && file.size(local_path) > 0) {
-    # Optional: check age? For now assume stable.
-    leo.basic::leo_log("Using cached schema: {local_path}", level = "info")
-    return(local_path)
-  }
-  
-  # 2. Try DNAnexus (official location in RAP)
-  # Path: "/Showcase metadata/<type>.tsv"
-  leo.basic::leo_log("Looking for {filename}...", level = "info")
-  
-  rap_path <- paste0("Showcase metadata/", filename)
-  
-  # Try download from RAP
-  # dx download "Showcase metadata/field.tsv" -o tmp/field.tsv -f
-  res <- tryCatch({
-      .dx_run(c("download", shQuote(rap_path), "-o", shQuote(local_path), "-f"), intern = TRUE, ignore.stderr = TRUE)
-      TRUE
-  }, error = function(e) FALSE)
-  
-  if (file.exists(local_path) && file.size(local_path) > 0) {
-      leo.basic::leo_log("Downloaded {filename} from RAP project.", level = "success")
-      return(local_path)
-  }
-  
-  # 3. Fallback: Download from UK Biobank Public Showcase
-  # URL: https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=1&down=yes
-  leo.basic::leo_log("Metadata not found in project. Fetching from UKBiobank Showcase...", level = "info")
-  
-  url <- paste0("https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=", schema_id, "&down=yes")
-  
-  tryCatch({
-      # Use curl or wget style download via R
-      utils::download.file(url, destfile = local_path, quiet = TRUE, method = "auto")
-  }, error = function(e) {
-      leo.basic::leo_log("Failed to download from UKB Showcase: {e$message}", level = "danger")
-  })
-  
-  if (file.exists(local_path) && file.size(local_path) > 0) {
-      leo.basic::leo_log("Downloaded {filename} from UKB Showcase.", level = "success")
-      return(local_path)
-  }
-  
-  return(NULL)
-}
