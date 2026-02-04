@@ -17,6 +17,11 @@
   }
 
   if (dx_path == "") dx_path <- "dx"
+  
+  # Log command for transparency
+  # Quote args that have spaces for display clarity (system2 handles actual args)
+  pretty_args <- sapply(args, function(x) if (grepl(" ", x)) shQuote(x) else x)
+  leo.basic::leo_log("Executing: dx {paste(pretty_args, collapse = ' ')}", level = "info")
 
   # Use system2
   if (ignore.stderr) {
@@ -197,9 +202,6 @@ dx_get_schema <- function(type = c("field", "category"), force = FALSE) {
   rap_path <- paste0("Showcase metadata/", filename)
   
   # Try download from RAP
-  # Note: .dx_run uses system2. We log the command for transparency.
-  leo.basic::leo_log("Executing: dx download \"{rap_path}\" -o \"{local_path}\" -f", level = "info")
-  
   res <- tryCatch({
       .dx_run(c("download", rap_path, "-o", local_path, "-f"), intern = TRUE, ignore.stderr = TRUE)
       TRUE
