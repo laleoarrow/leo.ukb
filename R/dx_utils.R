@@ -208,9 +208,10 @@ dx_get_schema <- function(type = c("field", "category")) {
       return(local_path)
   }
   # 3. Fallback: Download from UK Biobank Public Showcase
-  # URL: https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=1&down=yes
+  # URL: https://biobank.ndph.ox.ac.uk/ukb/scdown.cgi?fmt=txt&id={1,2}
   leo.basic::leo_log("Metadata not found in project. Fetching from UKBiobank Showcase...", level = "info")
-  url <- paste0("https://biobank.ndph.ox.ac.uk/showcase/schema.cgi?id=", schema_id, "&down=yes")
+  
+  url <- paste0("https://biobank.ndph.ox.ac.uk/ukb/scdown.cgi?fmt=txt&id=", schema_id)
   
   tryCatch({
       # Use curl or wget style download via R
