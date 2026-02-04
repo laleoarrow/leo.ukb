@@ -81,7 +81,7 @@ dx_login <- function(token = NULL) {
 #' 
 #' # 2. Extraction using vectors (Field & Category)
 #' dx_extract(field_id = c("p31", "p21003"), category_id = 1712, output_prefix = "my_study")
-#' 
+#' dx_extract(field_id = c("p41270", "p41271", "p41280", "p41281", "p53", "p191", "p40000"), category_id = 1712) # useful for diagnosis
 #' # 3. Just Category
 #' dx_extract(category_id = "First occurrences")
 #' 
@@ -199,28 +199,46 @@ dx_extract <- function(field_id = NULL,
     }
   }
 
-  # Generate output prefix from file name if not provided
+  # Generate output prefix provided
   if (is.null(output_prefix)) {
       # Smart naming based on inputs
-      # If categories used, mention them
+      # Logic:
+      # 1. Gather all explicit inputs: categories (c) and original fields (f)
+      # 2. If distinct items < 3, SHOW ALL (e.g. c1712_f41270_f41271)
+      # 3. If string length <= 20, SHOW ALL
+      # 4. Otherwise use summary: c@{num_cats}_f@{num_fields}
+      
+      # Clean inputs for naming
+      # Remove 'p' prefix if present for cleaner names
+      clean_fields <- sub("^p", "", unique(process_input(field_id, "")))
+      clean_cats <- unique(cats)
+      
+      # Build candidate parts
       parts <- character(0)
-      if (length(cats) > 0) {
-          parts <- c(parts, paste0("cat", head(cats, 1)))
-          if (length(cats) > 1) parts <- c(parts, paste0("plus", length(cats)-1))
+      if (length(clean_cats) > 0) parts <- c(parts, paste0("c", clean_cats))
+      if (length(clean_fields) > 0) parts <- c(parts, paste0("f", clean_fields))
+      
+      candidate_base <- paste(parts, collapse = "_")
+      total_items <- length(clean_cats) + length(clean_fields)
+      
+      final_base <- ""
+      if (total_items < 3) {
+          final_base <- candidate_base
+      } else if (nchar(candidate_base) <= 20) {
+          final_base <- candidate_base
+      } else {
+          # Fallback summary
+          # Note: If 0 fields provided, we omit f@0 to be clean? 
+          # Or user wants consistent f@M_c@N format?
+          # "use f@[fieldID count]_c@[cate count]"
+          sum_parts <- character(0)
+          if (length(clean_fields) > 0) sum_parts <- c(sum_parts, paste0("f@", length(clean_fields)))
+          if (length(clean_cats) > 0) sum_parts <- c(sum_parts, paste0("c@", length(clean_cats)))
+          final_base <- paste(sum_parts, collapse = "_")
       }
       
-      # If fields used (explicitly), mention first one
-      # Note: 'fields' now contains merged list. We should look at original input logic or just use result.
-      # Let's use the result fields (excluding eid)
-      actual_fields <- fields[fields != "eid"]
-      
-      if (length(parts) == 0 && length(actual_fields) > 0) {
-          # Only fields mode
-          parts <- c(parts, paste0("f", head(actual_fields, 1)))
-      }
-      
-      parts <- c(parts, paste0("n", length(fields)))
-      output_prefix <- paste0("extract_", paste(parts, collapse = "_"))
+      # Always append total column count
+      output_prefix <- paste0("extract_", final_base, "_n", length(fields))
   }
 
   # Save fields to file (locally)
