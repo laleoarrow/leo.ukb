@@ -1,6 +1,6 @@
 Package: leo.ukb
 Title: LEO package for UK Biobank database analysis
-Version: 0.5.0
+Version: 0.5.1
 Authors@R: 
     person("Ao", "Lu", , "luao@stu.cqmu.edu.cn", role = c("aut", "cre"),
            comment = c(ORCID = "0009-0001-0927-4468"))
