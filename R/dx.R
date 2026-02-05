@@ -33,7 +33,9 @@ dx_login <- function(token = NULL) {
 #' Extract UKB data using DNAnexus Table Exporter
 #'
 #' This function takes a file containing UKB field IDs and runs the Table Exporter
-#' app on DNAnexus RAP to extract the data. The output will be saved to `data_files/` on the RAP project (or the specified project). Ref (https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd)
+#' app on DNAnexus RAP to extract the data. The output will be saved to `data_files/` on the RAP project
+#' (or the specified project).
+#' Reference: \url{https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd}
 #'
 #' @param field_id Path to a file or a vector of Field IDs (e.g., `c("p31", "41270")`).
 #' @param category_id Path to a file or a vector of numeric Category IDs (e.g., `1712`, `c(1712, 100)`).
@@ -49,12 +51,12 @@ dx_login <- function(token = NULL) {
 #' @param project Optional target project ID (e.g., \code{"project-XXX"}).
 #'   If `dataset` includes a project prefix, it must match `project` (otherwise error).
 #'   If `dataset` is a name only and `project` is provided, the dataset is resolved within that project.
-#'   To list all projects you have access to:
+#'   To list accessible projects:
 #'   \code{projects <- dx_run(c("find", "projects", "--brief"), intern = TRUE)}
-#'   \code{projects <- dx_run(c("find", "projects"), intern = TRUE)} # for more details.
+#'   \code{projects <- dx_run(c("find", "projects"), intern = TRUE)} # more details
 #' @param dataset The dataset ID/name to extract from (e.g., \code{"app12345_20240101.dataset"} or \code{"project-Gk2...:record-Fp3..."}).
 #'   Defaults to the latest dataset in the project if NULL.
-#'   To list all datasets:
+#'   To list datasets across all projects:
 #'   \code{datasets <- dx_run(c("find", "data", "--name", "*.dataset", "--brief", "--all-projects"), intern = TRUE)}
 #' @param entity Entity type. Options:
 #'   \itemize{
