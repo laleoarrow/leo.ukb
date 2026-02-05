@@ -72,3 +72,5 @@ rsconnect/
 .quarto
 *.swp
 tmp/
+^leo\.ukb\.Rproj$
+^\.Rproj\.user$

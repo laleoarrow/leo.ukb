@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(awk:*)",
+      "Read(//Users/leoarrow/Project/mypackage/leo.ukb/**)",
+      "WebFetch(domain:github.com)",
+      "Bash(curl:*)",
+      "Bash(R:*)",
+      "Bash(Rscript:*)",
+      "Bash(grep:*)"
+    ]
+  }
+}

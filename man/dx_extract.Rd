@@ -8,21 +8,31 @@ dx_extract(
   field_id = NULL,
   category_id = NULL,
   output_prefix = NULL,
+  title_pattern_to_keep = NULL,
+  title_pattern_to_exclude = NULL,
   expand = TRUE,
   entity = "participant",
   coding_option = "RAW",
   output_format = "CSV",
   header_style = "FIELD-NAME",
   instance_type = "mem1_ssd1_v2_x4",
-  dataset = NULL
+  dataset = NULL,
+  dry_run = FALSE
 )
 }
 \arguments{
 \item{field_id}{Path to a file or a vector of Field IDs (e.g., \code{c("p31", "41270")}).}
 
-\item{category_id}{Path to a file or a vector of Category IDs/Names (e.g., \code{1712}, \code{"First Occurrence"}).}
+\item{category_id}{Path to a file or a vector of numeric Category IDs (e.g., \code{1712}, \code{c(1712, 100)}).
+Category IDs must be integers and correspond to UKB data categories in the hierarchy schema.}
 
 \item{output_prefix}{Output file prefix. If NULL, auto-generated based on fields/categories.}
+
+\item{title_pattern_to_keep}{Optional regex to keep category-expanded fields by \code{title}
+(case-insensitive). Only applies when \code{category_id} is provided.}
+
+\item{title_pattern_to_exclude}{Optional regex to drop category-expanded fields by \code{title}
+(case-insensitive). Applied after \code{title_pattern_to_keep}.}
 
 \item{expand}{Logical. If TRUE (default), validates and expands field IDs (e.g. \code{21003})
 into all instances/arrays present in the dataset (e.g. \code{p21003_i0}, \code{p21003_i1})
@@ -60,6 +70,10 @@ For large extracts, \code{"mem1_hdd1_v2_x8"} is recommended.}
 
 \item{dataset}{The dataset ID/name to extract from (e.g., \code{"app12345_20240101.dataset"} or \code{"project-Gk2...:record-Fp3..."}).
 Defaults to the latest dataset in the project if NULL.}
+
+\item{dry_run}{Logical. If TRUE, only skips the Table Exporter job submission.
+All other steps (dataset detection, dictionary validation, file upload) still run.
+Useful for testing command generation without launching jobs. Default is FALSE.}
 }
 \value{
 A list containing the job ID and expected output path (invisibly).
@@ -74,22 +88,44 @@ dx_login() # Make sure you have logged in to DNAnexus
 dx_status() # Check the status of your login
 
 # 1. Basic extraction (extracts covariates defined in fields.txt)
-dx_extract("tmp/fields.txt", output_prefix = "ukb_data")
+dx_extract("tmp/fields.txt", output_prefix = "ukb_data", dry_run = TRUE)
 
 # 2. Extraction using vectors (Field & Category)
-dx_extract(field_id = c("p31", "p21003"), category_id = 1712, output_prefix = "my_study")
+dx_extract(field_id = c("p53", "p191", "p40000", # basic demographics
+                        "p41270", "p41271", "p41280", "p41281"), # ICD codes
+           category_id = 1712, # First occurrences
+           title_pattern_to_exclude = "^Source",
+           output_prefix = "dignosis20260205")
 
-# 3. Just Category
-dx_extract(category_id = "First occurrences")
+# 3. Just Category (numeric ID or vector of IDs)
+dx_extract(category_id = 1712)  # Extract all fields in category 1712
+dx_extract(category_id = c(1712, 100))  # Multiple categories
 
-# 3. Extract with human-readable labels and descriptive headers
-dx_extract("tmp/fields.txt", 
+# 3b. First occurrences (FO) title filters
+# Keep only titles starting with "Date"
+dx_extract(category_id = 1712, title_pattern_to_keep = "^Date")
+# Exclude titles starting with "Source"
+dx_extract(category_id = 1712, title_pattern_to_exclude = "^Source")
+
+# 4. Extract with human-readable labels and descriptive headers
+dx_extract("tmp/fields.txt",
                output_prefix = "ukb_data_readable",
                coding_option = "REPLACE",
                header_style = "FIELD-TITLE")
-               
-# 4. Explicitly specifying the dataset (Recommended for reproducibility)
-dx_extract("tmp/fields.txt", 
+
+# 5. Explicitly specifying the dataset (Recommended for reproducibility)
+dx_extract("tmp/fields.txt",
                dataset = "project-Gk2PzX0Jj1X4Y5Z6:record-Fp37890Qj9k2X1Y4")
+
+# 6. Dry run mode - Test without actually submitting the job
+# Useful for debugging and verifying the command before execution
+result <- dx_extract(
+  field_id = c("p31", "p21003"),
+  category_id = 1712,
+  output_prefix = "test_run",
+  dry_run = TRUE
+)
+# Shows all commands that would be executed
+# Returns: list(job_id = "job-DRYRUN123456", output_path = "...", dry_run = TRUE)
 }
 }
