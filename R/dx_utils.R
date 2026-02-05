@@ -1,4 +1,4 @@
-#' Internal robust dx runner
+#' Robust dx runner
 #'
 #' Executes dx CLI commands with automatic path detection and logging.
 #' Supports macOS Homebrew installations and dry-run mode for testing.
@@ -11,12 +11,11 @@
 #' @param ... Additional arguments passed to `system2()`.
 #' @return If `intern=TRUE`, returns character vector of stdout. If `intern=FALSE`, returns exit code.
 #'   In dry_run mode, returns `character(0)` if intern=TRUE, or `0L` if intern=FALSE.
-#' @keywords internal
-#' @noRd
+#' @export
 #' @examples
 #' \dontrun{
 #'   # Get current project info
-#'   env_info <- .dx_run(c("env"), intern = TRUE)
+#'   env_info <- dx_run(c("env"), intern = TRUE)
 #'
 #'   # Extract project ID from environment
 #'   # Output format: "Current workspace\tproject-XXX"
@@ -24,21 +23,21 @@
 #'   project_id <- sub(".*\\t(project-[^\\s]+).*", "\\1", workspace_line)
 #'
 #'   # Now use the extracted project ID
-#'   result <- .dx_run(c("describe", project_id), intern = TRUE)
+#'   result <- dx_run(c("describe", project_id), intern = TRUE)
 #'
 #'   # Find datasets in current project
-#'   datasets <- .dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE)
+#'   datasets <- dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE)
 #'
 #'   # Upload file without capturing output (dry run)
-#'   exit_code <- .dx_run(c("upload", "file.txt", "--path", "/data/"), intern = FALSE, dry_run = TRUE)
+#'   exit_code <- dx_run(c("upload", "file.txt", "--path", "/data/"), intern = FALSE, dry_run = TRUE)
 #'
 #'   # Test command without execution (dry run)
-#'   .dx_run(c("run", "app-table-exporter", "-y"), dry_run = TRUE)
+#'   dx_run(c("run", "app-table-exporter", "-y"), dry_run = TRUE)
 #'
 #'   # Ignore stderr for commands that may produce warnings
-#'   .dx_run(c("find", "data", "--brief"), ignore.stderr = TRUE)
+#'   dx_run(c("find", "data", "--brief"), ignore.stderr = TRUE)
 #' }
-.dx_run <- function(args, intern = TRUE, ignore.stderr = FALSE, dry_run = FALSE, verbose = TRUE, ...) {
+dx_run <- function(args, intern = TRUE, ignore.stderr = FALSE, dry_run = FALSE, verbose = TRUE, ...) {
   # Find dx
   dx_path <- Sys.which("dx")
 
@@ -102,7 +101,7 @@
 #' \dontrun{
 #'   # Find dataset record in current project
 #'   # Step 1: Find all datasets in the project
-#'   datasets <- .dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE)
+#'   datasets <- dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE)
 #'
 #'   # Step 2: Use the first dataset found (or select specific one)
 #'   dataset_id <- datasets[1]  # e.g., "project-XXX:record-YYY"
@@ -137,7 +136,7 @@ dx_get_dataset_dictionary <- function(dataset, dry_run = FALSE) {
 
   sys_cmd_args <- c("describe", dataset, "--json")
   desc_json <- tryCatch({
-    .dx_run(sys_cmd_args, intern = TRUE, ignore.stderr = TRUE, dry_run = dry_run)
+    dx_run(sys_cmd_args, intern = TRUE, ignore.stderr = TRUE, dry_run = dry_run)
   }, error = function(e) NULL)
 
   record_name <- NULL
@@ -288,7 +287,7 @@ dx_get_schema <- function(type = c("field", "category", "hierarchy"), force = FA
   leo.basic::leo_log("Looking for {filename}...")
   rap_path <- paste0("Showcase metadata/", filename)
   res <- tryCatch({
-      .dx_run(c("download", rap_path, "-o", local_path, "-f"), intern = TRUE, ignore.stderr = TRUE, dry_run = dry_run)
+      dx_run(c("download", rap_path, "-o", local_path, "-f"), intern = TRUE, ignore.stderr = TRUE, dry_run = dry_run)
       TRUE
   }, error = function(e) FALSE)
 
@@ -330,7 +329,7 @@ dx_get_schema <- function(type = c("field", "category", "hierarchy"), force = FA
 #' @examples
 #' \dontrun{
 #'   # Get dictionary first (find dataset record in project)
-#'   datasets <- .dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE)
+#'   datasets <- dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE)
 #'   dict <- dx_get_dataset_dictionary(datasets[1])
 #'
 #'   # Expand field IDs to column names

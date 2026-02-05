@@ -11,12 +11,13 @@ dx_extract(
   title_pattern_to_keep = NULL,
   title_pattern_to_exclude = NULL,
   expand = TRUE,
+  project = NULL,
+  dataset = NULL,
   entity = "participant",
   coding_option = "RAW",
   output_format = "CSV",
   header_style = "FIELD-NAME",
   instance_type = "mem1_ssd1_v2_x4",
-  dataset = NULL,
   dry_run = FALSE
 )
 }
@@ -37,6 +38,18 @@ Category IDs must be integers and correspond to UKB data categories in the hiera
 \item{expand}{Logical. If TRUE (default), validates and expands field IDs (e.g. \code{21003})
 into all instances/arrays present in the dataset (e.g. \code{p21003_i0}, \code{p21003_i1})
 using the official dataset dictionary verification strategy.}
+
+\item{project}{Optional target project ID (e.g., \code{"project-XXX"}).
+If \code{dataset} includes a project prefix, it must match \code{project} (otherwise error).
+If \code{dataset} is a name only and \code{project} is provided, the dataset is resolved within that project.
+To list all projects you have access to:
+\code{projects <- dx_run(c("find", "projects", "--brief"), intern = TRUE)}
+\code{projects <- dx_run(c("find", "projects"), intern = TRUE)} # for more details.}
+
+\item{dataset}{The dataset ID/name to extract from (e.g., \code{"app12345_20240101.dataset"} or \code{"project-Gk2...:record-Fp3..."}).
+Defaults to the latest dataset in the project if NULL.
+To list all datasets:
+\code{datasets <- dx_run(c("find", "data", "--name", "*.dataset", "--brief", "--all-projects"), intern = TRUE)}}
 
 \item{entity}{Entity type. Options:
 \itemize{
@@ -68,9 +81,6 @@ using the official dataset dictionary verification strategy.}
 \item{instance_type}{The DNAnexus instance type for the job. Default: \code{"mem1_ssd1_v2_x4"}.
 For large extracts, \code{"mem1_hdd1_v2_x8"} is recommended.}
 
-\item{dataset}{The dataset ID/name to extract from (e.g., \code{"app12345_20240101.dataset"} or \code{"project-Gk2...:record-Fp3..."}).
-Defaults to the latest dataset in the project if NULL.}
-
 \item{dry_run}{Logical. If TRUE, only skips the Table Exporter job submission.
 All other steps (dataset detection, dictionary validation, file upload) still run.
 Useful for testing command generation without launching jobs. Default is FALSE.}
@@ -80,7 +90,7 @@ A list containing the job ID and expected output path (invisibly).
 }
 \description{
 This function takes a file containing UKB field IDs and runs the Table Exporter
-app on DNAnexus RAP to extract the data. The output will be saved to \verb{data_files/} on the RAP project. Ref (https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd)
+app on DNAnexus RAP to extract the data. The output will be saved to \verb{data_files/} on the RAP project (or the specified project). Ref (https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd)
 }
 \examples{
 \dontrun{
@@ -109,13 +119,24 @@ dx_extract(category_id = 1712, title_pattern_to_exclude = "^Source")
 
 # 4. Extract with human-readable labels and descriptive headers
 dx_extract("tmp/fields.txt",
-               output_prefix = "ukb_data_readable",
-               coding_option = "REPLACE",
-               header_style = "FIELD-TITLE")
+           output_prefix = "ukb_data_readable",
+           coding_option = "REPLACE",
+           header_style = "FIELD-TITLE")
 
-# 5. Explicitly specifying the dataset (Recommended for reproducibility)
-dx_extract("tmp/fields.txt",
-               dataset = "project-Gk2PzX0Jj1X4Y5Z6:record-Fp37890Qj9k2X1Y4")
+# 5a. Explicitly specifying the dataset (Recommended for reproducibility)
+datasets <- dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE)
+dx_extract("tmp/fields.txt", dataset = datasets[1])
+
+# 5b. Extract in a specified project
+projects_all <- dx_run(c("find", "projects"), intern = TRUE); projects_all
+projects_all_brief <- dx_run(c("find", "projects", "--brief"), intern = TRUE); projects_all_brief
+datasets_all <- dx_run(c("find", "data", "--name", "*.dataset", "--brief", "--all-projects"), intern = TRUE)
+dx_extract(field_id = c("p53", "p191", "p40000", # basic demographics
+                        "p41270", "p41271", "p41280", "p41281"), # ICD codes
+           category_id = 1712, # First occurrences
+           title_pattern_to_exclude = "^Source",
+           output_prefix = "dignosis20260205",
+           project = projects_all_brief[2])
 
 # 6. Dry run mode - Test without actually submitting the job
 # Useful for debugging and verifying the command before execution

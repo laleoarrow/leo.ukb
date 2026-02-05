@@ -20,7 +20,7 @@ dx_login <- function(token = NULL) {
 
   if (!is.null(token)) {
     # Token-based login (non-interactive)
-    .dx_run(c("login", "--token", token), intern = FALSE)
+    dx_run(c("login", "--token", token), intern = FALSE)
   } else {
     # Interactive login: system() handles TTY prompts (keyboard input)
     # much better than system2() in some R consoles
@@ -33,7 +33,7 @@ dx_login <- function(token = NULL) {
 #' Extract UKB data using DNAnexus Table Exporter
 #'
 #' This function takes a file containing UKB field IDs and runs the Table Exporter
-#' app on DNAnexus RAP to extract the data. The output will be saved to `data_files/` on the RAP project. Ref (https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd)
+#' app on DNAnexus RAP to extract the data. The output will be saved to `data_files/` on the RAP project (or the specified project). Ref (https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd)
 #'
 #' @param field_id Path to a file or a vector of Field IDs (e.g., `c("p31", "41270")`).
 #' @param category_id Path to a file or a vector of numeric Category IDs (e.g., `1712`, `c(1712, 100)`).
@@ -46,6 +46,16 @@ dx_login <- function(token = NULL) {
 #' @param expand Logical. If TRUE (default), validates and expands field IDs (e.g. `21003`)
 #'   into all instances/arrays present in the dataset (e.g. `p21003_i0`, `p21003_i1`)
 #'   using the official dataset dictionary verification strategy.
+#' @param project Optional target project ID (e.g., \code{"project-XXX"}).
+#'   If `dataset` includes a project prefix, it must match `project` (otherwise error).
+#'   If `dataset` is a name only and `project` is provided, the dataset is resolved within that project.
+#'   To list all projects you have access to:
+#'   \code{projects <- dx_run(c("find", "projects", "--brief"), intern = TRUE)}
+#'   \code{projects <- dx_run(c("find", "projects"), intern = TRUE)} # for more details.
+#' @param dataset The dataset ID/name to extract from (e.g., \code{"app12345_20240101.dataset"} or \code{"project-Gk2...:record-Fp3..."}).
+#'   Defaults to the latest dataset in the project if NULL.
+#'   To list all datasets:
+#'   \code{datasets <- dx_run(c("find", "data", "--name", "*.dataset", "--brief", "--all-projects"), intern = TRUE)}
 #' @param entity Entity type. Options:
 #'   \itemize{
 #'     \item \code{"participant"} (default): Main phenotype/covariate data.
@@ -71,8 +81,6 @@ dx_login <- function(token = NULL) {
 #'   }
 #' @param instance_type The DNAnexus instance type for the job. Default: \code{"mem1_ssd1_v2_x4"}.
 #'   For large extracts, \code{"mem1_hdd1_v2_x8"} is recommended.
-#' @param dataset The dataset ID/name to extract from (e.g., \code{"app12345_20240101.dataset"} or \code{"project-Gk2...:record-Fp3..."}).
-#'   Defaults to the latest dataset in the project if NULL.
 #' @param dry_run Logical. If TRUE, only skips the Table Exporter job submission.
 #'   All other steps (dataset detection, dictionary validation, file upload) still run.
 #'   Useful for testing command generation without launching jobs. Default is FALSE.
@@ -106,14 +114,25 @@ dx_login <- function(token = NULL) {
 #'
 #' # 4. Extract with human-readable labels and descriptive headers
 #' dx_extract("tmp/fields.txt",
-#'                output_prefix = "ukb_data_readable",
-#'                coding_option = "REPLACE",
-#'                header_style = "FIELD-TITLE")
+#'            output_prefix = "ukb_data_readable",
+#'            coding_option = "REPLACE",
+#'            header_style = "FIELD-TITLE")
 #'
-#' # 5. Explicitly specifying the dataset (Recommended for reproducibility)
-#' dx_extract("tmp/fields.txt",
-#'                dataset = "project-Gk2PzX0Jj1X4Y5Z6:record-Fp37890Qj9k2X1Y4")
+#' # 5a. Explicitly specifying the dataset (Recommended for reproducibility)
+#' datasets <- dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE)
+#' dx_extract("tmp/fields.txt", dataset = datasets[1])
 #'
+#' # 5b. Extract in a specified project
+#' projects_all <- dx_run(c("find", "projects"), intern = TRUE); projects_all
+#' projects_all_brief <- dx_run(c("find", "projects", "--brief"), intern = TRUE); projects_all_brief
+#' datasets_all <- dx_run(c("find", "data", "--name", "*.dataset", "--brief", "--all-projects"), intern = TRUE)
+#' dx_extract(field_id = c("p53", "p191", "p40000", # basic demographics
+#'                         "p41270", "p41271", "p41280", "p41281"), # ICD codes
+#'            category_id = 1712, # First occurrences
+#'            title_pattern_to_exclude = "^Source",
+#'            output_prefix = "dignosis20260205",
+#'            project = projects_all_brief[2])
+#' 
 #' # 6. Dry run mode - Test without actually submitting the job
 #' # Useful for debugging and verifying the command before execution
 #' result <- dx_extract(
@@ -131,23 +150,19 @@ dx_extract <- function(field_id = NULL,
                        title_pattern_to_keep = NULL,
                        title_pattern_to_exclude = NULL,
                        expand = TRUE,
+                       project = NULL,
+                       dataset = NULL,
                        entity = "participant",
                        coding_option = "RAW",
                        output_format = "CSV",
                        header_style = "FIELD-NAME",
                        instance_type = "mem1_ssd1_v2_x4",
-                       dataset = NULL,
-                       dry_run = FALSE
-) {
+                       dry_run = FALSE) {
   # Input validation
-  # Support alias args for backward compatibility (though this is a breaking change version)
-  # We focus on the new signature: field_id, category_id.
-
   if (is.null(field_id) && is.null(category_id)) {
     leo.basic::leo_log("At least one of 'field_id' or 'category_id' must be provided.", level = "danger")
     return(invisible(NULL))
   }
-
   process_input <- function(input, name) {
     if (is.null(input)) return(character(0))
     # Check if input is a single string that looks like a file path existing on disk
@@ -156,38 +171,36 @@ dx_extract <- function(field_id = NULL,
       lines <- readLines(input, warn = FALSE)
       return(lines[trimws(lines) != ""])
     }
-    # Otherwise treat as vector
     return(as.character(input))
   }
-
   fields <- process_input(field_id, "fields")
   cats <- process_input(category_id, "categories")
 
+  dataset_project <- NULL
+  if (!is.null(dataset) && is.character(dataset) && grepl("^project-[^:]+:", dataset)) {
+    dataset_project <- sub("^(project-[^:]+):.*$", "\\1", dataset)
+  }
+  if (!is.null(project) && !is.null(dataset_project) && !identical(project, dataset_project)) {
+    stop("Dataset project does not match 'project' parameter.")
+  }
+  target_project <- if (!is.null(project)) project else dataset_project
+
   # Resolve categories if provided
   if (length(cats) > 0) {
-    # Validate that all category IDs are numeric
     cat_numeric <- suppressWarnings(as.numeric(cats))
     invalid_cats <- cats[is.na(cat_numeric)]
-
     if (length(invalid_cats) > 0) {
-      leo.basic::leo_log("Invalid category IDs detected: {paste(invalid_cats, collapse=', ')}. Category IDs must be numeric (e.g., 1712, not 'First Occurrence').", level = "danger")
+      leo.basic::leo_log("Invalid category IDs detected: {paste(invalid_cats, collapse=', ')}. Category IDs must be numeric (e.g., 1712).", level = "danger")
       return(invisible(NULL))
     }
-
     leo.basic::leo_log("Resolving {length(cats)} categories...")
-    # dx_expand_field_by_category uses Official Schema (no dictionary needed)
     cat_fields <- dx_expand_field_by_category(
       cats,
       title_pattern_to_keep = title_pattern_to_keep,
       title_pattern_to_exclude = title_pattern_to_exclude,
       entity = entity
     )
-
-    if (length(cat_fields) == 0) {
-      leo.basic::leo_log("No fields found for the specified category IDs. Please verify the category IDs are correct.", level = "warning")
-    }
-
-    # Append found fields to the main list
+    if (length(cat_fields) == 0) leo.basic::leo_log("No fields found for the specified category IDs.", level = "warning")
     fields <- c(fields, cat_fields)
   }
 
@@ -195,7 +208,7 @@ dx_extract <- function(field_id = NULL,
 
   # Display dx environment info
   tryCatch({
-    dx_env <- .dx_run("env", intern = TRUE, ignore.stderr = TRUE)
+    dx_env <- dx_run("env", intern = TRUE, ignore.stderr = TRUE)
     user_line <- grep("Current user", dx_env, value = TRUE)
     project_line <- grep("Current workspace name", dx_env, value = TRUE)
     if (length(user_line) > 0) leo.basic::leo_log(trimws(user_line))
@@ -206,24 +219,34 @@ dx_extract <- function(field_id = NULL,
 
   # Auto-detect latest dataset if not specified
   if (is.null(dataset)) {
+    find_args <- c("find", "data", "--name", "*.dataset", "--brief")
+    if (!is.null(target_project)) find_args <- c(find_args, "--project", target_project)
     datasets <- tryCatch({
-      .dx_run(c("find", "data", "--name", "*.dataset", "--brief"), intern = TRUE, ignore.stderr = TRUE)
+      dx_run(find_args, intern = TRUE, ignore.stderr = TRUE)
     }, error = function(e) character(0))
-
     if (length(datasets) > 0) {
       # Take the first (or latest by timestamp if names include dates)
-      # dx find data returns newest first by default
-      dataset <- datasets[1]
+      dataset <- datasets[1] # dx find data returns newest first by default
       leo.basic::leo_log("Auto-detected dataset: {dataset}")
     } else {
       leo.basic::leo_log("No dataset found in project. Please specify the dataset parameter.", level = "danger")
       return(invisible(NULL))
     }
+  } else if (is.character(dataset) && !grepl("^project-[^:]+:", dataset) && !is.null(target_project)) {
+    find_args <- c("find", "data", "--name", dataset, "--brief", "--project", target_project)
+    datasets <- tryCatch({
+      dx_run(find_args, intern = TRUE, ignore.stderr = TRUE)
+    }, error = function(e) character(0))
+    if (length(datasets) == 0) {
+      leo.basic::leo_log("No dataset found in project {target_project} for name: {dataset}", level = "danger")
+      return(invisible(NULL))
+    }
+    dataset <- datasets[1]
+    leo.basic::leo_log("Resolved dataset in project {target_project}: {dataset}")
   }
 
   fields <- trimws(fields)
   fields <- fields[fields != ""]
-
   if (length(fields) == 0) {
     leo.basic::leo_log("No valid field IDs found.", level = "danger")
     return(invisible(NULL))
@@ -236,43 +259,31 @@ dx_extract <- function(field_id = NULL,
   leo.basic::leo_log("Loaded {length(fields)} field IDs (eid + {length(fields) - 1} fields)")
 
   # Expand fields
-  # New Logic: Official Dataset Dictionary Validation - we fetch the actual dataset dictionary and filter.
   if (expand) {
-    # If we haven't fetched dictionary yet (only fields provided), do it now
-    if (!exists("ukb_dd")) {
-      leo.basic::leo_log("Validating fields against dataset dictionary ({dataset})...")
-      ukb_dd <- dx_get_dataset_dictionary(dataset, dry_run = FALSE)
-    }
-
+    if (!exists("ukb_dd")) ukb_dd <- dx_get_dataset_dictionary(dataset, dry_run = FALSE)
     if (!is.null(ukb_dd)) {
-      # 2. Expand field IDs to actual column names (Official Regex), filtered by entity
-      # Exclude 'eid' from lookup as it's added manually later
-      valid_cols <- dx_expand_field(fields[fields != "eid"], ukb_dd, entity = entity)
-
+      valid_cols <- dx_expand_field(fields[fields != "eid"], ukb_dd, entity = entity) # 'eid' excluded from lookup
       if (length(valid_cols) > 0) {
         fields <- c("eid", valid_cols)
         leo.basic::leo_log("Validated and expanded to {length(fields)} existing columns.", level = "success")
       } else {
-        leo.basic::leo_log("No valid columns found for the requested fields in this dataset!", level = "danger")
-        return(invisible(NULL))
+        return(leo.basic::leo_log("No valid columns found for the requested fields in this dataset!", level = "danger"))
       }
     } else {
       leo.basic::leo_log("Could not retrieve dataset dictionary. Skipping validation (risky).", level = "warning")
     }
   }
 
-  # Generate output prefix provided
+  # Generate output_prefix if not provided
   if (is.null(output_prefix)) {
-    # Smart naming based on inputs
-    # Logic:
+    # Smart naming based on inputs - Logic:
     # 1. Gather all explicit inputs: categories (c) and original fields (f)
     # 2. If distinct items < 3, SHOW ALL (e.g. c1712_f41270_f41271)
     # 3. If string length <= 20, SHOW ALL
     # 4. Otherwise use summary: c@{num_cats}_f@{num_fields}
 
     # Clean inputs for naming
-    # Remove 'p' prefix if present for cleaner names
-    clean_fields <- sub("^p", "", unique(process_input(field_id, "")))
+    clean_fields <- sub("^p", "", unique(process_input(field_id, ""))) # Remove 'p' prefix if present for cleaner names
     clean_cats <- unique(cats)
 
     # Build candidate parts
@@ -289,10 +300,7 @@ dx_extract <- function(field_id = NULL,
     } else if (nchar(candidate_base) <= 20) {
       final_base <- candidate_base
     } else {
-      # Fallback summary
-      # Note: If 0 fields provided, we omit f@0 to be clean? — If 0, then do not use f@0, just put c@xxx
-      # Or user wants consistent f@M_c@N format?
-      # "use f@[fieldID count]_c@[cate count]"
+      # Fallback name rule: only include f@ when fields are provided; only include c@ when categories are provided.
       sum_parts <- character(0)
       if (length(clean_fields) > 0) sum_parts <- c(sum_parts, paste0("f@", length(clean_fields)))
       if (length(clean_cats) > 0) sum_parts <- c(sum_parts, paste0("c@", length(clean_cats)))
@@ -300,18 +308,15 @@ dx_extract <- function(field_id = NULL,
     }
 
     # Always append total column count
-    output_prefix <- paste0("extract_", final_base, "_n", length(fields))
+    output_prefix <- paste0(final_base, "_n", length(fields))
   }
 
   # Save fields to file (locally)
-  # If tmp/ exists, save there for user inspection (and do not delete).
-  # Otherwise use tempdir().
-
+  # If tmp/ exists, save there for user inspection (and do not delete). Otherwise use tempdir().
   if (dir.exists("tmp")) {
     fields_file <- file.path("tmp", paste0(output_prefix, "_fields.txt"))
     writeLines(fields, fields_file)
     leo.basic::leo_log("Saved expanded fields locally: {fields_file}", level = "success")
-    # Do NOT unlink if in project tmp
   } else {
     fields_file <- tempfile(fileext = ".txt")
     writeLines(fields, fields_file)
@@ -320,14 +325,18 @@ dx_extract <- function(field_id = NULL,
 
   # Upload the field names file to fields_files/ folder
   dx_file_name <- paste0(output_prefix, "_fields.txt")
-  dx_file_path <- paste0("/fields_files/", dx_file_name)
+  if (!is.null(target_project)) {
+    dx_file_path <- paste0(target_project, ":/fields_files/", dx_file_name)
+  } else {
+    dx_file_path <- paste0("/fields_files/", dx_file_name)
+  }
   leo.basic::leo_log("Uploading field names file to: {dx_file_path}")
 
   # Delete existing file if present (to avoid duplicates)
-  .dx_run(c("rm", "-f", dx_file_path), ignore.stderr = TRUE, dry_run = FALSE)
+  dx_run(c("rm", "-f", dx_file_path), ignore.stderr = TRUE, dry_run = FALSE)
 
   upload_exit <- tryCatch({
-    res <- .dx_run(c("upload", normalizePath(fields_file, mustWork = TRUE), "--path", dx_file_path, "--parents"), intern = FALSE, ignore.stderr = TRUE, dry_run = FALSE)
+    res <- dx_run(c("upload", normalizePath(fields_file, mustWork = TRUE), "--path", dx_file_path, "--parents", "--tag", "dx_extract"), intern = FALSE, ignore.stderr = TRUE, dry_run = FALSE)
     if (is.null(res)) 1L else res
   }, error = function(e) {
     leo.basic::leo_log(paste0("Upload error: ", e$message), level = "danger")
@@ -338,13 +347,13 @@ dx_extract <- function(field_id = NULL,
     leo.basic::leo_log("Failed to upload field names file", level = "danger")
     return(invisible(NULL))
   }
-
   leo.basic::leo_log("Upload successful", level = "success")
 
-  # Run Table Exporter app
+  # Run Table Exporter app --- Important !
   # dx run app-table-exporter -ientity=participant -ioutput=<prefix> -icoding_option=RAW
   #   -idataset_or_cohort_or_dashboard=<dataset> -ifield_names_file_txt=<file>
   #   -ioutput_format=CSV -iheader_style=FIELD-NAME --destination data_files/
+  destination_path <- if (!is.null(target_project)) paste0(target_project, ":/data_files/") else "/data_files/"
   args <- c(
     "run", "app-table-exporter",
     paste0("-ientity=", entity),
@@ -354,30 +363,27 @@ dx_extract <- function(field_id = NULL,
     paste0("-ifield_names_file_txt=", dx_file_path),
     paste0("-ioutput_format=", output_format),
     paste0("-iheader_style=", header_style),
-    "--destination", "/data_files/",
+    "--destination", destination_path,
     "--priority", "high",
     "--instance-type", instance_type,
+    "--tag", "dx_extract",
     "-y"  # auto-confirm
-  )
+ )
 
   if (dry_run) {
-    leo.basic::leo_log("[DRY RUN] Would run Table Exporter with command:", level = "warning")
-    leo.basic::leo_log("dx {paste(args, collapse = ' ')}")
+    leo.basic::leo_log("[DRY RUN] dx {paste(args, collapse = ' ')}", level = "warning")
     leo.basic::leo_log("[DRY RUN] Skipping actual job submission", level = "warning")
     return(invisible(list(
       job_id = "job-DRYRUN123456",
-      output_path = paste0("project:/data_files/", output_prefix, ".", tolower(output_format)),
+      output_path = paste0(if (!is.null(target_project)) paste0(target_project, ":") else "project:", "/data_files/", output_prefix, ".", tolower(output_format)),
       dry_run = TRUE
     )))
   }
 
-  leo.basic::leo_log("Running Table Exporter...")
-  leo.basic::leo_log("dx {paste(args, collapse = ' ')}")
-
-  res <- .dx_run(args, intern = TRUE, ignore.stderr = FALSE, dry_run = dry_run)
+  leo.basic::leo_log("Running Table Exporter --> dx {paste(args, collapse = ' ')}")
+  res <- dx_run(args, intern = TRUE, ignore.stderr = FALSE, dry_run = dry_run)
   exit_code <- attr(res, "status")
   if (is.null(exit_code)) exit_code <- 0L
-
   if (exit_code != 0L) {
     leo.basic::leo_log("Table Exporter failed with exit code {exit_code}", level = "danger")
     leo.basic::leo_log("Output: {paste(res, collapse = '\\n')}")
@@ -388,15 +394,11 @@ dx_extract <- function(field_id = NULL,
   job_line <- grep("Job ID:", res, value = TRUE)
   job_id <- if (length(job_line) > 0) {
     sub(".*Job ID:\\s*", "", job_line[1])
-  } else {
-    NA_character_
-  }
+  } else { NA_character_ }
 
-  output_path <- paste0("project:/data_files/", output_prefix, ".", tolower(output_format))
-
+  output_path <- paste0(if (!is.null(target_project)) paste0(target_project, ":") else "project:", "/data_files/", output_prefix, ".", tolower(output_format))
   leo.basic::leo_log("Job submitted: {job_id}", level = "success")
-  leo.basic::leo_log("Output will be saved to: {output_path}")
-
+  leo.basic::leo_log("Output will be saved to: {output_path}", level = "success")
   return(invisible(list(job_id = job_id, output_path = output_path)))
 }
 
@@ -437,7 +439,7 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
     }
 
     cmd_args <- c("describe", job_id, "--json")
-    res <- tryCatch({.dx_run(cmd_args, intern = TRUE, ignore.stderr = TRUE, verbose = FALSE)}, error = function(e) NULL)
+    res <- tryCatch({dx_run(cmd_args, intern = TRUE, ignore.stderr = TRUE, verbose = FALSE)}, error = function(e) NULL)
     if (is.null(res) || length(res) == 0) return(NA_character_)
 
     json_str <- paste(res, collapse = " ")
@@ -457,7 +459,7 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
   on.exit(cli::cli_status_clear(status_id), add = TRUE)
 
   # Get environment info (contains user and project)
-  env_info <- tryCatch(.dx_run("env", intern = TRUE, ignore.stderr = TRUE, verbose = FALSE), error = function(e) NULL)
+  env_info <- tryCatch(dx_run("env", intern = TRUE, ignore.stderr = TRUE, verbose = FALSE), error = function(e) NULL)
   if (is.null(env_info) || length(env_info) == 0) {
     leo.basic::leo_log("Could not get DNAnexus environment. Please run 'dx login' in terminal.", level = "danger")
     return(invisible(NULL))
@@ -486,7 +488,7 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
   # Fetch recent jobs
   cmd_args <- c("find", "jobs", if(all_projects) "--all-projects" else character(0), "--num-results", as.character(limit), "--json")
   res <- tryCatch({
-    .dx_run(cmd_args, intern = TRUE, ignore.stderr = TRUE, verbose = FALSE)
+    dx_run(cmd_args, intern = TRUE, ignore.stderr = TRUE, verbose = FALSE)
   }, error = function(e) NULL)
 
   if (is.null(res) || length(res) == 0) {
@@ -504,7 +506,7 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
     jobs <- as.data.frame(jobs_raw)
   } else {
     leo.basic::leo_log("jsonlite not installed. Reverting to base dx display.", level = "warning")
-    .dx_run(cmd_args, intern = FALSE)
+    dx_run(cmd_args, intern = FALSE)
     return(invisible(NULL))
   }
 
@@ -515,7 +517,7 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
     if (pid == curr_proj_id) {
       proj_map[[pid]] <- curr_proj_name
     } else if (all_projects) {
-      p_info <- tryCatch(.dx_run(c("describe", pid, "--json"), intern = TRUE, ignore.stderr = TRUE), error = function(e) NULL)
+      p_info <- tryCatch(dx_run(c("describe", pid, "--json"), intern = TRUE, ignore.stderr = TRUE), error = function(e) NULL)
       if (!is.null(p_info)) {
         p_meta <- jsonlite::fromJSON(paste(p_info, collapse = " "))
         proj_map[[pid]] <- p_meta$name
