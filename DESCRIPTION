@@ -18,11 +18,15 @@ Imports:
     glue,
     leo.basic (>= 0.0.1),
     lifecycle,
+    mice,
+    missRanger,
     nortest,
+    rlang,
     stringr,
     tableone,
     tibble,
     tidyr,
+    tools,
     VIM,
     xtable
 Remotes: 
