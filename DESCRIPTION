@@ -23,6 +23,7 @@ Imports:
     tableone,
     tibble,
     tidyr,
+    VIM,
     xtable
 Remotes: 
     github::laleoarrow/leo.basic
