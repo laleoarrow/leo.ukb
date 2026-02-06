@@ -42,13 +42,13 @@ using the official dataset dictionary verification strategy.}
 \item{project}{Optional target project ID (e.g., \code{"project-XXX"}).
 If \code{dataset} includes a project prefix, it must match \code{project} (otherwise error).
 If \code{dataset} is a name only and \code{project} is provided, the dataset is resolved within that project.
-To list all projects you have access to:
+To list accessible projects:
 \code{projects <- dx_run(c("find", "projects", "--brief"), intern = TRUE)}
-\code{projects <- dx_run(c("find", "projects"), intern = TRUE)} # for more details.}
+\code{projects <- dx_run(c("find", "projects"), intern = TRUE)} # more details}
 
 \item{dataset}{The dataset ID/name to extract from (e.g., \code{"app12345_20240101.dataset"} or \code{"project-Gk2...:record-Fp3..."}).
 Defaults to the latest dataset in the project if NULL.
-To list all datasets:
+To list datasets across all projects:
 \code{datasets <- dx_run(c("find", "data", "--name", "*.dataset", "--brief", "--all-projects"), intern = TRUE)}}
 
 \item{entity}{Entity type. Options:
@@ -90,7 +90,9 @@ A list containing the job ID and expected output path (invisibly).
 }
 \description{
 This function takes a file containing UKB field IDs and runs the Table Exporter
-app on DNAnexus RAP to extract the data. The output will be saved to \verb{data_files/} on the RAP project (or the specified project). Ref (https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd)
+app on DNAnexus RAP to extract the data. The output will be saved to \verb{data_files/} on the RAP project
+(or the specified project).
+Reference: \url{https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd}
 }
 \examples{
 \dontrun{
