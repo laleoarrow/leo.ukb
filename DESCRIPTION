@@ -10,10 +10,20 @@ Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 Imports: 
+    broom,
     cli,
+    data.table,
     dplyr,
+    flextable,
+    glue,
     leo.basic (>= 0.0.1),
-    lifecycle
+    lifecycle,
+    nortest,
+    stringr,
+    tableone,
+    tibble,
+    tidyr,
+    xtable
 Remotes: 
     github::laleoarrow/leo.basic
 Depends: 
