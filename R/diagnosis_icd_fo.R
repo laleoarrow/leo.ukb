@@ -21,14 +21,14 @@
 #'   p40000_i1 = as.Date(c("2023-01-01", NA, NA, "2024-04-04", NA, "2025-12-12")),
 #'   p20002_0_0 = as.Date(c("2015-01-01", "2016-02-02", "1900-01-01", NA, "2018-03-03", "2019-04-04"))
 #' )
-#' dignosis_process_fo(ukb_df, "p20002_0_0", censored = "2025-01-01") # This is the results.
-dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base_line="p53_i0", filter_NA = T) {
+#' diagnosis_process_fo(ukb_df, "p20002_0_0", censored = "2025-01-01") # This is the results.
+diagnosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base_line="p53_i0", filter_NA = T) {
   # check
   required_cols <- c("eid", base_line, "p191", "p40000_i0", "p40000_i1", fo_date_col)
   missing_required <- setdiff(required_cols, names(data))
   if (length(missing_required) > 0) {
-    leo.basic::leo_log("dignosis_process_fo: missing [{paste(missing_required, collapse = ', ')}] - re-check data", level = "danger");return(NULL)
-  } else { leo.basic::leo_log("dignosis_process_fo: processing [{fo_date_col}] using [{censored}] as censored date.") }
+    leo.basic::leo_log("diagnosis_process_fo: missing [{paste(missing_required, collapse = ', ')}] - re-check data", level = "danger");return(NULL)
+  } else { leo.basic::leo_log("diagnosis_process_fo: processing [{fo_date_col}] using [{censored}] as censored date.") }
 
   # subset and format date columns
   tmp <- data %>% dplyr::select(dplyr::all_of(required_cols))
@@ -39,7 +39,7 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base
   censored <- as.Date(censored, format = "%Y-%m-%d")  # censored as Date
 
   # combine death date p40000 - just in case
-  leo.basic::leo_log("dignosis_process_fo: combining death dates p40000_i0 and p40000_i1.", level = "info")
+  leo.basic::leo_log("diagnosis_process_fo: combining death dates p40000_i0 and p40000_i1.", level = "info")
   tmp <- tmp %>%
     dplyr::mutate(p40000 = dplyr::coalesce(p40000_i0, p40000_i1)) %>%
     dplyr::select(-p40000_i0, -p40000_i1)
@@ -55,8 +55,8 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base
   tmp$is_abnormal_fo <- tmp[[fo_date_col]] %in% abnormal_dates
   n_abnormal <- sum(tmp$is_abnormal_fo, na.rm = TRUE)
   if (n_abnormal > 0) {
-    leo.basic::leo_log("dignosis_process_fo: detected <{n_abnormal}> abnormal FO dates in [{fo_date_col}], recoding to NA.")
-  } else {leo.basic::leo_log("dignosis_process_fo: no abnormal FO dates detected in [{fo_date_col}].")}
+    leo.basic::leo_log("diagnosis_process_fo: detected <{n_abnormal}> abnormal FO dates in [{fo_date_col}], recoding to NA.")
+  } else {leo.basic::leo_log("diagnosis_process_fo: no abnormal FO dates detected in [{fo_date_col}].")}
 
   tmp <- tmp %>%
     dplyr::mutate(
@@ -89,9 +89,9 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base
     tmp <- tmp %>%
       dplyr::filter(!is.na(.data[[disease_status_col]]) & !is.na(.data[[disease_time_col]]))
     n_after <- nrow(tmp)
-    leo.basic::leo_log("dignosis_process_fo: filtered NA - rows before: {n_before}, after: {n_after}.", level = "info")
+    leo.basic::leo_log("diagnosis_process_fo: filtered NA - rows before: {n_before}, after: {n_after}.", level = "info")
   }
-  leo.basic::leo_log("dignosis_process_fo: created [{disease_status_col}] and [{disease_time_col}] - ALL DONE.", level = "success")
+  leo.basic::leo_log("diagnosis_process_fo: created [{disease_status_col}] and [{disease_time_col}] - ALL DONE.", level = "success")
   return(tmp)
 }
 

@@ -102,7 +102,7 @@ dx_login <- function(token = NULL) {
 #'                         "p41270", "p41271", "p41280", "p41281"), # ICD codes
 #'            category_id = 1712, # First occurrences
 #'            title_pattern_to_exclude = "^Source",
-#'            output_prefix = "dignosis20260205")
+#'            output_prefix = "diagnosis20260205")
 #'
 #' # 3. Just Category (numeric ID or vector of IDs)
 #' dx_extract(category_id = 1712)  # Extract all fields in category 1712
@@ -132,7 +132,7 @@ dx_login <- function(token = NULL) {
 #'                         "p41270", "p41271", "p41280", "p41281"), # ICD codes
 #'            category_id = 1712, # First occurrences
 #'            title_pattern_to_exclude = "^Source",
-#'            output_prefix = "dignosis20260205",
+#'            output_prefix = "diagnosis20260205",
 #'            project = projects_all_brief[2])
 #' 
 #' # 6. Dry run mode - Test without actually submitting the job
