@@ -128,23 +128,23 @@ dignosis_process_fo <- function(data, fo_date_col, censored = "2025-01-01", base
 #' )
 #'
 #' # Prefix matching: D261 matches only D261 (icd_rank = 1)
-#' dignosis_process_icd(df_example, icd_code = "D261", icd = 10, icd_rank = 1)
+#' diagnosis_process_icd(df_example, icd_code = "D261", icd = 10, icd_rank = 1)
 #'
 #' # Prefix matching: M10 matches M101 / M102 (icd_rank = 1)
-#' dignosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 1)
+#' diagnosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 1)
 #'
 #' # Prefix matching: E113 matches E113 only (icd_rank = 1)
-#' dignosis_process_icd(df_example, icd_code = "E113", icd = 10, icd_rank = 1)
+#' diagnosis_process_icd(df_example, icd_code = "E113", icd = 10, icd_rank = 1)
 #'
 #' # Prefix matching: M10 matches M101 / M102 (icd_rank = 2)
-#' dignosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 2)
+#' diagnosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 2)
 #'
 #' # Multiple ICD codes: c("M10", "E113") - takes global earliest date among all matches
-#' dignosis_process_icd(df_example, icd_code = c("M10", "E113"), icd = 10, icd_rank = 1)
+#' diagnosis_process_icd(df_example, icd_code = c("M10", "E113"), icd = 10, icd_rank = 1)
 #' # Output columns: M10_E113_status, M10_E113_time
-dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-01", icd_rank = 1, baseline_date = "p53_i0", filter_NA = FALSE) {
+diagnosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-01", icd_rank = 1, baseline_date = "p53_i0", filter_NA = FALSE) {
   icd <- as.integer(icd)
-  if (!icd %in% c(9L, 10L)) stop("dignosis_process_icd: `icd` must be 9 or 10.")
+  if (!icd %in% c(9L, 10L)) stop("diagnosis_process_icd: `icd` must be 9 or 10.")
 
   # Resolve ICD columns by version
   icd_col <- if (icd == 10L) "p41270" else "p41271"
@@ -155,21 +155,21 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
   required_cols <- c("eid", baseline_date, "p191", "p40000_i0", "p40000_i1", icd_col, date_cols)
   missing_required <- setdiff(required_cols, names(data))
   if (length(missing_required) > 0) {
-    leo.basic::leo_log("dignosis_process_icd: missing [{paste(missing_required, collapse = ', ')}] - re-check data", level = "danger");return(NULL)
+    leo.basic::leo_log("diagnosis_process_icd: missing [{paste(missing_required, collapse = ', ')}] - re-check data", level = "danger");return(NULL)
   }
-  leo.basic::leo_log("dignosis_process_icd: processing ICD{icd} [{icd_code}] using [{censored}] as censored date.", level = "info")
+  leo.basic::leo_log("diagnosis_process_icd: processing ICD{icd} [{icd_code}] using [{censored}] as censored date.", level = "info")
 
   df <- data %>% dplyr::select(dplyr::all_of(required_cols))
 
   # Convert date columns
-  leo.basic::leo_log("dignosis_process_icd: converting date columns to <Date>.", level = "info")
+  leo.basic::leo_log("diagnosis_process_icd: converting date columns to <Date>.", level = "info")
   date_columns <- c(baseline_date, "p191", "p40000_i0", "p40000_i1", date_cols)
   df <- df %>% dplyr::mutate(dplyr::across(dplyr::all_of(date_columns),
                                            ~ suppressWarnings(as.Date(.x, "%Y-%m-%d"))))
   censored <- as.Date(censored, "%Y-%m-%d")
 
   # Merge death dates
-  leo.basic::leo_log("dignosis_process_icd: combining death dates.", level = "info")
+  leo.basic::leo_log("diagnosis_process_icd: combining death dates.", level = "info")
   df <- df %>% dplyr::mutate(p40000 = dplyr::coalesce(p40000_i0, p40000_i1)) %>%
     dplyr::select(-p40000_i0, -p40000_i1)
 
@@ -179,7 +179,7 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
 
   # Match ICD prefix(es) and extract diagnosis date by rank
   icd_pattern <- paste0("^(", paste(icd_code, collapse = "|"), ")")
-  leo.basic::leo_log("dignosis_process_icd: matching ICD{icd} pattern [{icd_pattern}].", level = "info")
+  leo.basic::leo_log("diagnosis_process_icd: matching ICD{icd} pattern [{icd_pattern}].", level = "info")
   diagnosis_list <- df[[icd_col]]
 
   df$event_date <- sapply(seq_len(nrow(df)), function(i) {
@@ -199,7 +199,7 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
   }) %>% as.Date()
 
   # Compute survival time and status
-  leo.basic::leo_log("dignosis_process_icd: calculating survival time and status.", level = "info")
+  leo.basic::leo_log("diagnosis_process_icd: calculating survival time and status.", level = "info")
   df <- df %>%
     dplyr::mutate(censor_base = pmin(p191, p40000, censored, na.rm = T),
                   censor_base = dplyr::if_else(is.na(censor_base), censored, censor_base),
@@ -217,17 +217,17 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
     result <- result %>%
       dplyr::filter(!is.na(.data[[status_col]]) & !is.na(.data[[time_col]]))
     n_after <- nrow(result)
-    leo.basic::leo_log("dignosis_process_icd: filtered NA - rows before: {n_before}, after: {n_after}.", level = "info")
+    leo.basic::leo_log("diagnosis_process_icd: filtered NA - rows before: {n_before}, after: {n_after}.", level = "info")
   }
 
-  leo.basic::leo_log("dignosis_process_icd: created [{status_col}], [{time_col}] - ALL DONE.", level = "success")
+  leo.basic::leo_log("diagnosis_process_icd: created [{status_col}], [{time_col}] - ALL DONE.", level = "success")
 
   return(result)
 }
 
 #' Process multiple ICD definitions in bulk
 #'
-#' Apply dignosis_process_icd() to a list or table of ICD code sets and
+#' Apply diagnosis_process_icd() to a list or table of ICD code sets and
 #' return one status/time pair per diagnosis.
 #'
 #' @param data A data.frame containing UKB baseline, censoring, ICD code and date columns.
@@ -241,7 +241,7 @@ dignosis_process_icd <- function(data, icd_code, icd = 10, censored = "2025-01-0
 #'
 #' @return A data.frame with eid and {diagnosis}_status/{diagnosis}_time columns.
 #' @export
-dignosis_process_icd_multi <- function(data, icd_map, icd = 10, censored = "2025-01-01", icd_rank = 1, baseline_date = "p53_i0") {
+diagnosis_process_icd_multi <- function(data, icd_map, icd = 10, censored = "2025-01-01", icd_rank = 1, baseline_date = "p53_i0") {
   if (is.data.frame(icd_map)) {
     dn <- as.character(icd_map[[1]])
     if (ncol(icd_map) == 2L) {
@@ -260,7 +260,7 @@ dignosis_process_icd_multi <- function(data, icd_map, icd = 10, censored = "2025
     icd_map <- code_list
   }
   if (!is.list(icd_map) || is.null(names(icd_map))) {
-    stop("dignosis_process_icd_multi: `icd_map` must be a named list or a data.frame with diagnosis names.")
+    stop("diagnosis_process_icd_multi: `icd_map` must be a named list or a data.frame with diagnosis names.")
   }
 
   results <- list()
@@ -270,7 +270,7 @@ dignosis_process_icd_multi <- function(data, icd_map, icd = 10, censored = "2025
     if (length(codes) == 0L) next
 
     per_code <- lapply(codes, function(code) {
-      dignosis_process_icd(data, icd_code = code, icd = icd, censored = censored,
+      diagnosis_process_icd(data, icd_code = code, icd = icd, censored = censored,
                            icd_rank = icd_rank, baseline_date = baseline_date)
     })
     df <- Reduce(function(x, y) dplyr::left_join(x, y, by = "eid"), per_code)
