@@ -6,6 +6,8 @@ plot/
 log/
 *.Rproj
 .DS_Store
+.claude/
+project
 
 # History files
 .Rhistory

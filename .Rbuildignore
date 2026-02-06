@@ -1,2 +1,11 @@
 ^leo\.ukb\.Rproj$
 ^\.Rproj\.user$
+^tmp$
+^\.DS_Store$
+^\.Rhistory$
+^\.vscode$
+^\.claude$
+^\.git$
+^\.gitignore$
+^project$
+^README\.md$
