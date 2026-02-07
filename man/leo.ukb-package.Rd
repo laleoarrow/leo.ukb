@@ -10,8 +10,15 @@
 
 This package is used to analyze UK Biobank data. But it may be extended to other clincial studies.
 }
+\seealso{
+Useful links:
+\itemize{
+  \item \url{https://laleoarrow.github.io/leo.ukb/}
+}
+
+}
 \author{
-\strong{Maintainer}: Ao Lu \email{luao@stu.cqmu.edu.cn} (\href{https://orcid.org/0009-0001-0927-4468}{ORCID})
+\strong{Maintainer}: Ao Lu \email{luao@stu.cqmu.edu.cn} (\href{https://orcid.org/0009-0001-0927-4468}{ORCID}) [copyright holder]
 
 }
 \keyword{internal}
