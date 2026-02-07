@@ -1,7 +1,8 @@
 # LEO·UKB <img src="man/figures/logo.png" align="right" height="120" alt="leo.ukb logo" />
 
 <!-- badges: start -->
-[![Version](https://img.shields.io/badge/version-0.5.0-blue.svg)](https://github.com/laleoarrow/leo.ukb/releases)
+[![Dev status](https://img.shields.io/badge/dev%20status-experimental-orange.svg)](https://github.com/laleoarrow/leo.ukb)
+[![Version](https://img.shields.io/badge/version-0.5.1-blue.svg)](https://github.com/laleoarrow/leo.ukb/releases)
 [![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
 [![License: Proprietary](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 [![R](https://img.shields.io/badge/R-%3E%3D%203.5-blue.svg)](https://cran.r-project.org/)
