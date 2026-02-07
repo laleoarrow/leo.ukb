@@ -1,0 +1,179 @@
+# Package index
+
+## All functions
+
+- [`combine_two_eye()`](https://laleoarrow.github.io/leo.ukb/reference/combine_two_eye.md)
+  : Combine Measurements from Two Eyes
+
+- [`convert_iop()`](https://laleoarrow.github.io/leo.ukb/reference/convert_iop.md)
+  : Convert IOP Measurements
+
+- [`convert_to_logMAR()`](https://laleoarrow.github.io/leo.ukb/reference/convert_to_logMAR.md)
+  : Convert Visual Acuity Measurements to logMAR
+
+- [`diagnosis_process_fo()`](https://laleoarrow.github.io/leo.ukb/reference/diagnosis_process_fo.md)
+  : Process first occurrence (FO) data in UKB —-
+
+- [`diagnosis_process_icd()`](https://laleoarrow.github.io/leo.ukb/reference/diagnosis_process_icd.md)
+  : Process UKB ICD data for survival analysis
+
+- [`diagnosis_process_icd_multi()`](https://laleoarrow.github.io/leo.ukb/reference/diagnosis_process_icd_multi.md)
+  : Process multiple ICD definitions in bulk
+
+- [`dx_extract()`](https://laleoarrow.github.io/leo.ukb/reference/dx_extract.md)
+  : Extract UKB data using DNAnexus Table Exporter
+
+- [`dx_login()`](https://laleoarrow.github.io/leo.ukb/reference/dx_login.md)
+  : Log in to DNAnexus
+
+- [`dx_run()`](https://laleoarrow.github.io/leo.ukb/reference/dx_run.md)
+  : Robust dx runner
+
+- [`dx_status()`](https://laleoarrow.github.io/leo.ukb/reference/dx_status.md)
+  : Check DNAnexus Job Status & Dashboard
+
+- [`format_p_value()`](https://laleoarrow.github.io/leo.ukb/reference/format_p_value.md)
+  : Helper function to format p-values according to common publication
+  standards
+
+- [`get_max_date()`](https://laleoarrow.github.io/leo.ukb/reference/get_max_date.md)
+  :
+
+  Find the max date in given date columns **\[stable\]**
+
+- [`leo.impute_na()`](https://laleoarrow.github.io/leo.ukb/reference/leo.impute_na.md)
+  : Basic imputation function for missing values
+
+- [`leo.table1.help()`](https://laleoarrow.github.io/leo.ukb/reference/leo.table1.help.md)
+  : Table 1 Help
+
+- [`leo.table1.save()`](https://laleoarrow.github.io/leo.ukb/reference/leo.table1.save.md)
+  : Save Table 1 to Word or CSV
+
+- [`leo.table1.step1()`](https://laleoarrow.github.io/leo.ukb/reference/leo.table1.step1.md)
+  : Step 1: Check Normality for Variables
+
+- [`leo.table1.step2()`](https://laleoarrow.github.io/leo.ukb/reference/leo.table1.step2.md)
+  : Step 2: Generate Table 1 for Cohort Study
+
+- [`leo_BMI()`](https://laleoarrow.github.io/leo.ukb/reference/leo_BMI.md)
+  : Recode BMI into categories (Underweight/Normal
+  weight/Overweight/Obese)
+  https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21001
+
+- [`leo_TyG()`](https://laleoarrow.github.io/leo.ukb/reference/leo_TyG.md)
+  : Calculate Triglyceride-Glucose Index (TyG)
+
+- [`leo_age()`](https://laleoarrow.github.io/leo.ukb/reference/leo_age.md)
+  : Recode age (years)
+  https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21003
+
+- [`leo_career()`](https://laleoarrow.github.io/leo.ukb/reference/leo_career.md)
+  : Recode employment status
+
+- [`leo_diet_us()`](https://laleoarrow.github.io/leo.ukb/reference/leo_diet_us.md)
+  : healthy diet score by U.S. Dietary Guidelines
+
+- [`leo_drinking_consumption()`](https://laleoarrow.github.io/leo.ukb/reference/leo_drinking_consumption.md)
+  : Recode drinking consumption
+
+- [`leo_drinking_status()`](https://laleoarrow.github.io/leo.ukb/reference/leo_drinking_status.md)
+  : Recode drinking status (Never/Previous/Current)
+  https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20117
+
+- [`leo_eGDR()`](https://laleoarrow.github.io/leo.ukb/reference/leo_eGDR.md)
+  : Calculate Estimated Glucose Disposal Rate (eGDR)
+
+- [`leo_education()`](https://laleoarrow.github.io/leo.ukb/reference/leo_education.md)
+  : Recode UKB qualifications into 3 categories
+
+- [`leo_ethnicity()`](https://laleoarrow.github.io/leo.ukb/reference/leo_ethnicity.md)
+  : Recode ethnicity to White vs non-White
+  https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21000
+
+- [`leo_ethnicity_finer()`](https://laleoarrow.github.io/leo.ukb/reference/leo_ethnicity_finer.md)
+  : Recode ethnicity into finer categories (top-level 1–6)
+  https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21000
+
+- [`leo_gender()`](https://laleoarrow.github.io/leo.ukb/reference/leo_gender.md)
+  : Recode sex (Male/Female)
+  https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=31
+
+- [`leo_hba1c()`](https://laleoarrow.github.io/leo.ukb/reference/leo_hba1c.md)
+  : Recode HbA1c (IFCC, mmol/mol)
+  https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=30750
+
+- [`leo_hba1c_percent()`](https://laleoarrow.github.io/leo.ukb/reference/leo_hba1c_percent.md)
+  : Convert HbA1c from IFCC (mmol/mol) to NGSP (%)
+  https://ngsp.org/ifcc.asp
+
+- [`leo_heterogeneity_p()`](https://laleoarrow.github.io/leo.ukb/reference/leo_heterogeneity_p.md)
+  :
+
+  Calculate P-value for Heterogeneity from Subgroup Summary Statistics
+  **\[stable\]**
+
+- [`leo_household_income()`](https://laleoarrow.github.io/leo.ukb/reference/leo_household_income.md)
+  : Recode household income (UKB 738) into readable categories
+
+- [`leo_household_income_2()`](https://laleoarrow.github.io/leo.ukb/reference/leo_household_income_2.md)
+  : Recode household income (UKB 738) into readable categories (2
+  categories)
+
+- [`leo_linear_regression()`](https://laleoarrow.github.io/leo.ukb/reference/leo_linear_regression.md)
+  :
+
+  Linear regression analysis **\[experimental\]**
+
+- [`leo_linear_regression_loop()`](https://laleoarrow.github.io/leo.ukb/reference/leo_linear_regression_loop.md)
+  : Batch linear regression analysis for multiple predictors
+
+- [`leo_logistic_regression()`](https://laleoarrow.github.io/leo.ukb/reference/leo_logistic_regression.md)
+  : General looped logistic regression: y (binary) ~ x (+ covariates)
+
+- [`leo_new_clinical_indicators()`](https://laleoarrow.github.io/leo.ukb/reference/leo_new_clinical_indicators.md)
+  : Generate New Clinical Indicators
+
+- [`leo_physical_activity()`](https://laleoarrow.github.io/leo.ukb/reference/leo_physical_activity.md)
+  :
+
+  Calculate Physical Activity Indicator **\[stable\]**
+
+- [`leo_quantile()`](https://laleoarrow.github.io/leo.ukb/reference/leo_quantile.md)
+  : Bin a continuous variable by quantiles
+
+- [`leo_regression_result()`](https://laleoarrow.github.io/leo.ukb/reference/leo_regression_result.md)
+  :
+
+  Extract and format linear regression results for publication
+  **\[experimental\]**
+
+- [`leo_sleep_score()`](https://laleoarrow.github.io/leo.ukb/reference/leo_sleep_score.md)
+  : Calculate Sleep Score and Pattern
+
+- [`leo_smoking_status()`](https://laleoarrow.github.io/leo.ukb/reference/leo_smoking_status.md)
+  : Recode smoking status (Never/Previous/Current)
+  https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20116
+
+- [`leo_tdi()`](https://laleoarrow.github.io/leo.ukb/reference/leo_tdi.md)
+  : Recode Townsend deprivation index (TDI)
+  https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=22189
+
+- [`ukb_hla_clean()`](https://laleoarrow.github.io/leo.ukb/reference/ukb_hla_clean.md)
+  : Clean HLA carrier output to a wide format
+
+- [`ukb_hla_header()`](https://laleoarrow.github.io/leo.ukb/reference/ukb_hla_header.md)
+  :
+
+  Read UK Biobank HLA v2 header (ukb_hla_v2.txt) **\[stable\]**
+
+- [`ukb_hla_specify()`](https://laleoarrow.github.io/leo.ukb/reference/ukb_hla_specify.md)
+  :
+
+  Specify carrier status for given HLA allele(s) in UK Biobank
+  **\[stable\]**
+
+- [`ukb_hla_typing()`](https://laleoarrow.github.io/leo.ukb/reference/ukb_hla_typing.md)
+  :
+
+  HLA Genotyping in UKB **\[stable\]**
