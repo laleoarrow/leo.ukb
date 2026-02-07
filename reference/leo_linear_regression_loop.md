@@ -43,6 +43,6 @@ A data frame with consolidated results from all regression models
 x_vars <- c("PRS_plink", "PRS_catboost", "PRS_lasso")
 results <- leo_linear_regression_loop(prs_zh8, "va1y", x_vars,
                                      covariates = c("age_onset", "gender"))
-#> ℹ [15:53:46] leo_linear_regression_loop function placeholder - to be implemented
-#> ℹ [15:53:46] Would analyze 3 predictors against outcome va1y
+#> ℹ [16:10:43] leo_linear_regression_loop function placeholder - to be implemented
+#> ℹ [16:10:43] Would analyze 3 predictors against outcome va1y
 ```

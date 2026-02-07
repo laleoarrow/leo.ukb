@@ -76,12 +76,12 @@ including mean, median, random forest, KNN, and multiple imputation.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Mean imputation</span></span></span>
 <span class="r-in"><span><span class="fu">leo.impute_na</span><span class="op">(</span><span class="va">sample_data</span>, method <span class="op">=</span> <span class="st">"mean"</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:43]</span> Missing values per column (count/percentage):</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:43]</span>   age: 1/5 (20%)</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:43]</span>   score: 2/5 (40%)</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:43]</span>   group: 1/5 (20%)</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #BBBB00;">!</span> <span style="color: #BBBB00;">[15:53:43]</span> Remaining missing values after imputation:</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #BBBB00;">!</span> <span style="color: #BBBB00;">[15:53:43]</span>   group: 1</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:40]</span> Missing values per column (count/percentage):</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:40]</span>   age: 1/5 (20%)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:40]</span>   score: 2/5 (40%)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:40]</span>   group: 1/5 (20%)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #BBBB00;">!</span> <span style="color: #BBBB00;">[16:10:40]</span> Remaining missing values after imputation:</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #BBBB00;">!</span> <span style="color: #BBBB00;">[16:10:40]</span>   group: 1</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   age score group</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1  25    80     A</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2  30    85     B</span>
@@ -91,10 +91,10 @@ including mean, median, random forest, KNN, and multiple imputation.</p>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Random forest imputation</span></span></span>
 <span class="r-in"><span><span class="fu">leo.impute_na</span><span class="op">(</span><span class="va">sample_data</span>, method <span class="op">=</span> <span class="st">"rf"</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:43]</span> Missing values per column (count/percentage):</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:43]</span>   age: 1/5 (20%)</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:43]</span>   score: 2/5 (40%)</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:43]</span>   group: 1/5 (20%)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:40]</span> Missing values per column (count/percentage):</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:40]</span>   age: 1/5 (20%)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:40]</span>   score: 2/5 (40%)</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:40]</span>   group: 1/5 (20%)</span>
 <span class="r-msg co"><span class="r-pr">#&gt;</span> Missing value imputation by random forests</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> Variables to impute:		age, group, score</span>
@@ -102,7 +102,7 @@ including mean, median, random forest, KNN, and multiple imputation.</p>
 <span class="r-out co"><span class="r-pr">#&gt;</span> </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> iter 1 </span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   |                                                                              |                                                                      |   0%  |                                                                              |=======================                                               |  33%  |                                                                              |===============================================                       |  67%  |                                                                              |======================================================================| 100%</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:43]</span> Imputation completed using rf method</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:40]</span> Imputation completed using rf method</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   age score group</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1  25 80.00     A</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2  30 84.91     B</span>

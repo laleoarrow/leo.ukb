@@ -52,11 +52,11 @@ ukb_df <- tibble::tibble(
   p20002_0_0 = as.Date(c("2015-01-01", "2016-02-02", "1900-01-01", NA, "2018-03-03", "2019-04-04"))
 )
 diagnosis_process_fo(ukb_df, "p20002_0_0", censored = "2025-01-01") # This is the results.
-#> ℹ [15:53:42] diagnosis_process_fo: processing [p20002_0_0] using [2025-01-01] as censored date.
-#> ℹ [15:53:42] diagnosis_process_fo: combining death dates p40000_i0 and p40000_i1.
-#> ℹ [15:53:42] diagnosis_process_fo: detected <1> abnormal FO dates in [p20002_0_0], recoding to NA.
-#> ℹ [15:53:42] diagnosis_process_fo: filtered NA - rows before: 6, after: 5.
-#> ✔ [15:53:42] diagnosis_process_fo: created [p20002_status] and [p20002_time] - ALL DONE.
+#> ℹ [16:10:39] diagnosis_process_fo: processing [p20002_0_0] using [2025-01-01] as censored date.
+#> ℹ [16:10:39] diagnosis_process_fo: combining death dates p40000_i0 and p40000_i1.
+#> ℹ [16:10:39] diagnosis_process_fo: detected <1> abnormal FO dates in [p20002_0_0], recoding to NA.
+#> ℹ [16:10:39] diagnosis_process_fo: filtered NA - rows before: 6, after: 5.
+#> ✔ [16:10:39] diagnosis_process_fo: created [p20002_status] and [p20002_time] - ALL DONE.
 #> # A tibble: 5 × 3
 #>     eid p20002_status p20002_time
 #>   <int>         <int>       <dbl>

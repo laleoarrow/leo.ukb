@@ -96,15 +96,15 @@ retained (high-confidence) allele calls.</p>
     <div class="sourceCode"><pre class="sourceCode r"><code><span class="r-in"><span><span class="co"># `res` are from ukb_hla_typing()</span></span></span>
 <span class="r-in"><span><span class="co"># 1) Single query: family-level (2-digit)</span></span></span>
 <span class="r-in"><span><span class="va">res_s1</span> <span class="op">&lt;-</span> <span class="fu">ukb_hla_specify</span><span class="op">(</span><span class="va">res</span>, <span class="st">"B27"</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:51]</span> ukb_hla_specify: extracting B27</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:48]</span> ukb_hla_specify: extracting B27</span>
 <span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error:</span> object 'res' not found</span>
 <span class="r-in"><span><span class="co"># 2) Multiple queries: mixed formats</span></span></span>
 <span class="r-in"><span><span class="va">res_s2</span> <span class="op">&lt;-</span> <span class="fu">ukb_hla_specify</span><span class="op">(</span><span class="va">res</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"B27"</span>, <span class="st">"A*02:01"</span>, <span class="st">"DRB1_1501"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:51]</span> ukb_hla_specify: extracting B27, A*02:01, DRB1_1501</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:48]</span> ukb_hla_specify: extracting B27, A*02:01, DRB1_1501</span>
 <span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error:</span> object 'res' not found</span>
 <span class="r-in"><span><span class="co"># 3) Queries with optional HLA- prefix and family-level with "*"</span></span></span>
 <span class="r-in"><span><span class="va">res_s3</span> <span class="op">&lt;-</span> <span class="fu">ukb_hla_specify</span><span class="op">(</span><span class="va">res</span>, <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"HLA-B27"</span>, <span class="st">"DQB1*06"</span><span class="op">)</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:51]</span> ukb_hla_specify: extracting HLA-B27, DQB1*06</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[16:10:48]</span> ukb_hla_specify: extracting HLA-B27, DQB1*06</span>
 <span class="r-err co"><span class="r-pr">#&gt;</span> <span class="error">Error:</span> object 'res' not found</span>
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co">### Now normally we only need to know if one is a carrier for each allele</span></span></span>

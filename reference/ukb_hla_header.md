@@ -28,7 +28,7 @@ both fail, it errors.
 
 ``` r
 header <- ukb_hla_header()
-#> ℹ [15:53:48] Loading UKB HLA header; description source: https://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=2182
+#> ℹ [16:10:45] Loading UKB HLA header; description source: https://biobank.ctsu.ox.ac.uk/crystal/refer.cgi?id=2182
 head(header)
 #> [1] "A_101" "A_102" "A_103" "A_201" "A_202" "A_203"
 ```
