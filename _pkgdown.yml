@@ -1,71 +1,61 @@
 url: https://laleoarrow.github.io/leo.ukb/
 template:
   bootstrap: 5
-
 reference:
-  - title: "DNAnexus Interaction"
-    desc: "Functions for interacting with UK Biobank data via DNAnexus platform"
-    contents:
-      - starts_with("dx_")
-
-  - title: "Diagnosis & ICD Processing"
-    desc: "Functions for processing ICD codes and first occurrence data"
-    contents:
-      - starts_with("diagnosis_")
-      - get_max_date
-
-  - title: "Statistical Analysis"
-    desc: "Regression, heterogeneity, and data analysis utilities"
-    contents:
-      - leo_quantile
-      - leo_heterogeneity_p
-      - leo_linear_regression
-      - leo_regression_result
-      - leo_linear_regression_loop
-      - leo_logistic_regression
-      - leo.impute_na
-      - format_p_value
-
-  - title: "Clinical Variables & Lifestyle"
-    desc: "Functions for processing clinical indicators and lifestyle factors"
-    contents:
-      - leo_new_clinical_indicators
-      - leo_age
-      - leo_BMI
-      - leo_gender
-      - leo_ethnicity
-      - leo_ethnicity_finer
-      - leo_tdi
-      - leo_education
-      - leo_career
-      - leo_household_income
-      - leo_household_income_2
-      - leo_LGI
-      - leo_hba1c
-      - leo_hba1c_percent
-      - leo_eGDR
-      - leo_TyG
-      - leo_smoking_status
-      - leo_drinking_status
-      - leo_drinking_consumption
-      - leo_diet_us
-      - leo_physical_activity
-      - leo_sleep_score
-
-  - title: "Ophthalmology Variables"
-    desc: "Functions for processing ophthalmology-specific measurements"
-    contents:
-      - convert_to_logMAR
-      - convert_iop
-      - combine_two_eye
-
-  - title: "Genotype & HLA Typing"
-    desc: "Functions for processing HLA typing data"
-    contents:
-      - starts_with("ukb_hla_")
-
-  - title: "Table 1 Generation"
-    desc: "Functions for creating baseline characteristics tables"
-    contents:
-      - starts_with("leo.table1")
+- title: DNAnexus Interaction
+  desc: Functions for interacting with UK Biobank data via DNAnexus platform
+  contents: starts_with("dx_")
+- title: Diagnosis & ICD Processing
+  desc: Functions for processing ICD codes and first occurrence data
+  contents:
+  - starts_with("diagnosis_")
+  - get_max_date
+- title: Statistical Analysis
+  desc: Regression, heterogeneity, and data analysis utilities
+  contents:
+  - leo_quantile
+  - leo_heterogeneity_p
+  - leo_linear_regression
+  - leo_regression_result
+  - leo_linear_regression_loop
+  - leo_logistic_regression
+  - leo.impute_na
+  - format_p_value
+- title: Clinical Variables & Lifestyle
+  desc: Functions for processing clinical indicators and lifestyle factors
+  contents:
+  - leo_new_clinical_indicators
+  - leo_age
+  - leo_BMI
+  - leo_gender
+  - leo_ethnicity
+  - leo_ethnicity_finer
+  - leo_tdi
+  - leo_education
+  - leo_career
+  - leo_household_income
+  - leo_household_income_2
+  - leo_LGI
+  - leo_hba1c
+  - leo_hba1c_percent
+  - leo_eGDR
+  - leo_TyG
+  - leo_smoking_status
+  - leo_drinking_status
+  - leo_drinking_consumption
+  - leo_diet_us
+  - leo_physical_activity
+  - leo_sleep_score
+- title: Ophthalmology Variables
+  desc: Functions for processing ophthalmology-specific measurements
+  contents:
+  - convert_to_logMAR
+  - convert_iop
+  - combine_two_eye
+- title: Genotype & HLA Typing
+  desc: Functions for processing HLA typing data
+  contents: starts_with("ukb_hla_")
+- title: Table 1 Generation
+  desc: Functions for creating baseline characteristics tables
+  contents: starts_with("leo.table1")
 
