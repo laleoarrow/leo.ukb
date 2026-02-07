@@ -30,3 +30,21 @@ remotes::install_github("laleoarrow/leo.ukb")
 ## License
 
 This software is proprietary. All rights reserved. See [LICENSE](LICENSE) for details.
+
+## Authors
+
+Ao Lu. Author, maintainer, copyright holder.
+
+## Citation
+
+Lu A (2026). leo.ukb: LEO package for UK Biobank database analysis. R package version 0.5.1, https://laleoarrow.github.io/leo.ukb/.
+
+```bibtex
+@Manual{leo.ukb,
+  title = {leo.ukb: LEO package for UK Biobank database analysis},
+  author = {Ao Lu},
+  year = {2026},
+  note = {R package version 0.5.1},
+  url = {https://laleoarrow.github.io/leo.ukb/}
+}
+```
