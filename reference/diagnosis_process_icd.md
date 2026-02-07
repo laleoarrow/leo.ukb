@@ -72,12 +72,12 @@ df_example <- data.frame(
 
 # Prefix matching: D261 matches only D261 (icd_rank = 1)
 diagnosis_process_icd(df_example, icd_code = "D261", icd = 10, icd_rank = 1)
-#> ℹ [15:27:59] diagnosis_process_icd: processing ICD10 [D261] using [2025-01-01] as censored date.
-#> ℹ [15:27:59] diagnosis_process_icd: converting date columns to <Date>.
-#> ℹ [15:27:59] diagnosis_process_icd: combining death dates.
-#> ℹ [15:27:59] diagnosis_process_icd: matching ICD10 pattern [^(D261)].
-#> ℹ [15:28:00] diagnosis_process_icd: calculating survival time and status.
-#> ✔ [15:28:00] diagnosis_process_icd: created [D261_status], [D261_time] - ALL DONE.
+#> ℹ [15:53:42] diagnosis_process_icd: processing ICD10 [D261] using [2025-01-01] as censored date.
+#> ℹ [15:53:42] diagnosis_process_icd: converting date columns to <Date>.
+#> ℹ [15:53:42] diagnosis_process_icd: combining death dates.
+#> ℹ [15:53:42] diagnosis_process_icd: matching ICD10 pattern [^(D261)].
+#> ℹ [15:53:42] diagnosis_process_icd: calculating survival time and status.
+#> ✔ [15:53:42] diagnosis_process_icd: created [D261_status], [D261_time] - ALL DONE.
 #>   eid D261_status D261_time
 #> 1   1           1  4.331507
 #> 2   2           0 12.591781
@@ -87,12 +87,12 @@ diagnosis_process_icd(df_example, icd_code = "D261", icd = 10, icd_rank = 1)
 
 # Prefix matching: M10 matches M101 / M102 (icd_rank = 1)
 diagnosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 1)
-#> ℹ [15:28:00] diagnosis_process_icd: processing ICD10 [M10] using [2025-01-01] as censored date.
-#> ℹ [15:28:00] diagnosis_process_icd: converting date columns to <Date>.
-#> ℹ [15:28:00] diagnosis_process_icd: combining death dates.
-#> ℹ [15:28:00] diagnosis_process_icd: matching ICD10 pattern [^(M10)].
-#> ℹ [15:28:00] diagnosis_process_icd: calculating survival time and status.
-#> ✔ [15:28:00] diagnosis_process_icd: created [M10_status], [M10_time] - ALL DONE.
+#> ℹ [15:53:42] diagnosis_process_icd: processing ICD10 [M10] using [2025-01-01] as censored date.
+#> ℹ [15:53:42] diagnosis_process_icd: converting date columns to <Date>.
+#> ℹ [15:53:42] diagnosis_process_icd: combining death dates.
+#> ℹ [15:53:42] diagnosis_process_icd: matching ICD10 pattern [^(M10)].
+#> ℹ [15:53:42] diagnosis_process_icd: calculating survival time and status.
+#> ✔ [15:53:42] diagnosis_process_icd: created [M10_status], [M10_time] - ALL DONE.
 #>   eid M10_status  M10_time
 #> 1   1          1  9.624658
 #> 2   2          1  7.257534
@@ -102,12 +102,12 @@ diagnosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 1)
 
 # Prefix matching: E113 matches E113 only (icd_rank = 1)
 diagnosis_process_icd(df_example, icd_code = "E113", icd = 10, icd_rank = 1)
-#> ℹ [15:28:00] diagnosis_process_icd: processing ICD10 [E113] using [2025-01-01] as censored date.
-#> ℹ [15:28:00] diagnosis_process_icd: converting date columns to <Date>.
-#> ℹ [15:28:00] diagnosis_process_icd: combining death dates.
-#> ℹ [15:28:00] diagnosis_process_icd: matching ICD10 pattern [^(E113)].
-#> ℹ [15:28:00] diagnosis_process_icd: calculating survival time and status.
-#> ✔ [15:28:00] diagnosis_process_icd: created [E113_status], [E113_time] - ALL DONE.
+#> ℹ [15:53:42] diagnosis_process_icd: processing ICD10 [E113] using [2025-01-01] as censored date.
+#> ℹ [15:53:42] diagnosis_process_icd: converting date columns to <Date>.
+#> ℹ [15:53:42] diagnosis_process_icd: combining death dates.
+#> ℹ [15:53:42] diagnosis_process_icd: matching ICD10 pattern [^(E113)].
+#> ℹ [15:53:42] diagnosis_process_icd: calculating survival time and status.
+#> ✔ [15:53:42] diagnosis_process_icd: created [E113_status], [E113_time] - ALL DONE.
 #>   eid E113_status E113_time
 #> 1   1           1  6.191781
 #> 2   2           1  4.136986
@@ -117,12 +117,12 @@ diagnosis_process_icd(df_example, icd_code = "E113", icd = 10, icd_rank = 1)
 
 # Prefix matching: M10 matches M101 / M102 (icd_rank = 2)
 diagnosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 2)
-#> ℹ [15:28:00] diagnosis_process_icd: processing ICD10 [M10] using [2025-01-01] as censored date.
-#> ℹ [15:28:00] diagnosis_process_icd: converting date columns to <Date>.
-#> ℹ [15:28:00] diagnosis_process_icd: combining death dates.
-#> ℹ [15:28:00] diagnosis_process_icd: matching ICD10 pattern [^(M10)].
-#> ℹ [15:28:00] diagnosis_process_icd: calculating survival time and status.
-#> ✔ [15:28:00] diagnosis_process_icd: created [M10_status], [M10_time] - ALL DONE.
+#> ℹ [15:53:42] diagnosis_process_icd: processing ICD10 [M10] using [2025-01-01] as censored date.
+#> ℹ [15:53:42] diagnosis_process_icd: converting date columns to <Date>.
+#> ℹ [15:53:42] diagnosis_process_icd: combining death dates.
+#> ℹ [15:53:42] diagnosis_process_icd: matching ICD10 pattern [^(M10)].
+#> ℹ [15:53:42] diagnosis_process_icd: calculating survival time and status.
+#> ✔ [15:53:42] diagnosis_process_icd: created [M10_status], [M10_time] - ALL DONE.
 #>   eid M10_status M10_time
 #> 1   1          0 14.00822
 #> 2   2          0 12.59178
@@ -132,12 +132,12 @@ diagnosis_process_icd(df_example, icd_code = "M10", icd = 10, icd_rank = 2)
 
 # Multiple ICD codes: c("M10", "E113") - takes global earliest date among all matches
 diagnosis_process_icd(df_example, icd_code = c("M10", "E113"), icd = 10, icd_rank = 1)
-#> ℹ [15:28:00] diagnosis_process_icd: processing ICD10 [M10 and E113] using [2025-01-01] as censored date.
-#> ℹ [15:28:00] diagnosis_process_icd: converting date columns to <Date>.
-#> ℹ [15:28:00] diagnosis_process_icd: combining death dates.
-#> ℹ [15:28:00] diagnosis_process_icd: matching ICD10 pattern [^(M10|E113)].
-#> ℹ [15:28:00] diagnosis_process_icd: calculating survival time and status.
-#> ✔ [15:28:00] diagnosis_process_icd: created [M10_E113_status], [M10_E113_time] - ALL DONE.
+#> ℹ [15:53:42] diagnosis_process_icd: processing ICD10 [M10 and E113] using [2025-01-01] as censored date.
+#> ℹ [15:53:42] diagnosis_process_icd: converting date columns to <Date>.
+#> ℹ [15:53:42] diagnosis_process_icd: combining death dates.
+#> ℹ [15:53:42] diagnosis_process_icd: matching ICD10 pattern [^(M10|E113)].
+#> ℹ [15:53:42] diagnosis_process_icd: calculating survival time and status.
+#> ✔ [15:53:42] diagnosis_process_icd: created [M10_E113_status], [M10_E113_time] - ALL DONE.
 #>   eid M10_E113_status M10_E113_time
 #> 1   1               1      6.191781
 #> 2   2               1      4.136986

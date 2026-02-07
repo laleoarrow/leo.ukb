@@ -95,15 +95,15 @@ allele calls.
 # `res` are from ukb_hla_typing()
 # 1) Single query: family-level (2-digit)
 res_s1 <- ukb_hla_specify(res, "B27")
-#> ℹ [15:28:08] ukb_hla_specify: extracting B27
+#> ℹ [15:53:51] ukb_hla_specify: extracting B27
 #> Error: object 'res' not found
 # 2) Multiple queries: mixed formats
 res_s2 <- ukb_hla_specify(res, c("B27", "A*02:01", "DRB1_1501"))
-#> ℹ [15:28:08] ukb_hla_specify: extracting B27, A*02:01, DRB1_1501
+#> ℹ [15:53:51] ukb_hla_specify: extracting B27, A*02:01, DRB1_1501
 #> Error: object 'res' not found
 # 3) Queries with optional HLA- prefix and family-level with "*"
 res_s3 <- ukb_hla_specify(res, c("HLA-B27", "DQB1*06"))
-#> ℹ [15:28:08] ukb_hla_specify: extracting HLA-B27, DQB1*06
+#> ℹ [15:53:51] ukb_hla_specify: extracting HLA-B27, DQB1*06
 #> Error: object 'res' not found
 
 ### Now normally we only need to know if one is a carrier for each allele

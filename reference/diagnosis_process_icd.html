@@ -101,12 +101,12 @@
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Prefix matching: D261 matches only D261 (icd_rank = 1)</span></span></span>
 <span class="r-in"><span><span class="fu">diagnosis_process_icd</span><span class="op">(</span><span class="va">df_example</span>, icd_code <span class="op">=</span> <span class="st">"D261"</span>, icd <span class="op">=</span> <span class="fl">10</span>, icd_rank <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:27:59]</span> diagnosis_process_icd: processing ICD10 [D261] using [2025-01-01] as censored date.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:27:59]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:27:59]</span> diagnosis_process_icd: combining death dates.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:27:59]</span> diagnosis_process_icd: matching ICD10 pattern [^(D261)].</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: calculating survival time and status.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:28:00]</span> diagnosis_process_icd: created [D261_status], [D261_time] - ALL DONE.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: processing ICD10 [D261] using [2025-01-01] as censored date.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: combining death dates.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: matching ICD10 pattern [^(D261)].</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: calculating survival time and status.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:53:42]</span> diagnosis_process_icd: created [D261_status], [D261_time] - ALL DONE.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   eid D261_status D261_time</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1   1           1  4.331507</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2   2           0 12.591781</span>
@@ -116,12 +116,12 @@
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Prefix matching: M10 matches M101 / M102 (icd_rank = 1)</span></span></span>
 <span class="r-in"><span><span class="fu">diagnosis_process_icd</span><span class="op">(</span><span class="va">df_example</span>, icd_code <span class="op">=</span> <span class="st">"M10"</span>, icd <span class="op">=</span> <span class="fl">10</span>, icd_rank <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: processing ICD10 [M10] using [2025-01-01] as censored date.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: combining death dates.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: matching ICD10 pattern [^(M10)].</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: calculating survival time and status.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:28:00]</span> diagnosis_process_icd: created [M10_status], [M10_time] - ALL DONE.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: processing ICD10 [M10] using [2025-01-01] as censored date.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: combining death dates.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: matching ICD10 pattern [^(M10)].</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: calculating survival time and status.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:53:42]</span> diagnosis_process_icd: created [M10_status], [M10_time] - ALL DONE.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   eid M10_status  M10_time</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1   1          1  9.624658</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2   2          1  7.257534</span>
@@ -131,12 +131,12 @@
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Prefix matching: E113 matches E113 only (icd_rank = 1)</span></span></span>
 <span class="r-in"><span><span class="fu">diagnosis_process_icd</span><span class="op">(</span><span class="va">df_example</span>, icd_code <span class="op">=</span> <span class="st">"E113"</span>, icd <span class="op">=</span> <span class="fl">10</span>, icd_rank <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: processing ICD10 [E113] using [2025-01-01] as censored date.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: combining death dates.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: matching ICD10 pattern [^(E113)].</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: calculating survival time and status.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:28:00]</span> diagnosis_process_icd: created [E113_status], [E113_time] - ALL DONE.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: processing ICD10 [E113] using [2025-01-01] as censored date.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: combining death dates.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: matching ICD10 pattern [^(E113)].</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: calculating survival time and status.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:53:42]</span> diagnosis_process_icd: created [E113_status], [E113_time] - ALL DONE.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   eid E113_status E113_time</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1   1           1  6.191781</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2   2           1  4.136986</span>
@@ -146,12 +146,12 @@
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Prefix matching: M10 matches M101 / M102 (icd_rank = 2)</span></span></span>
 <span class="r-in"><span><span class="fu">diagnosis_process_icd</span><span class="op">(</span><span class="va">df_example</span>, icd_code <span class="op">=</span> <span class="st">"M10"</span>, icd <span class="op">=</span> <span class="fl">10</span>, icd_rank <span class="op">=</span> <span class="fl">2</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: processing ICD10 [M10] using [2025-01-01] as censored date.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: combining death dates.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: matching ICD10 pattern [^(M10)].</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: calculating survival time and status.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:28:00]</span> diagnosis_process_icd: created [M10_status], [M10_time] - ALL DONE.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: processing ICD10 [M10] using [2025-01-01] as censored date.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: combining death dates.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: matching ICD10 pattern [^(M10)].</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: calculating survival time and status.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:53:42]</span> diagnosis_process_icd: created [M10_status], [M10_time] - ALL DONE.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   eid M10_status M10_time</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1   1          0 14.00822</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2   2          0 12.59178</span>
@@ -161,12 +161,12 @@
 <span class="r-in"><span></span></span>
 <span class="r-in"><span><span class="co"># Multiple ICD codes: c("M10", "E113") - takes global earliest date among all matches</span></span></span>
 <span class="r-in"><span><span class="fu">diagnosis_process_icd</span><span class="op">(</span><span class="va">df_example</span>, icd_code <span class="op">=</span> <span class="fu"><a href="https://rdrr.io/r/base/c.html" class="external-link">c</a></span><span class="op">(</span><span class="st">"M10"</span>, <span class="st">"E113"</span><span class="op">)</span>, icd <span class="op">=</span> <span class="fl">10</span>, icd_rank <span class="op">=</span> <span class="fl">1</span><span class="op">)</span></span></span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: processing ICD10 [M10 and E113] using [2025-01-01] as censored date.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: combining death dates.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: matching ICD10 pattern [^(M10|E113)].</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:28:00]</span> diagnosis_process_icd: calculating survival time and status.</span>
-<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:28:00]</span> diagnosis_process_icd: created [M10_E113_status], [M10_E113_time] - ALL DONE.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: processing ICD10 [M10 and E113] using [2025-01-01] as censored date.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: converting date columns to &lt;Date&gt;.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: combining death dates.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: matching ICD10 pattern [^(M10|E113)].</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BBBB;">ℹ</span> <span style="color: #00BBBB;">[15:53:42]</span> diagnosis_process_icd: calculating survival time and status.</span>
+<span class="r-msg co"><span class="r-pr">#&gt;</span> <span style="color: #00BB00;">✔</span> <span style="color: #00BB00;">[15:53:42]</span> diagnosis_process_icd: created [M10_E113_status], [M10_E113_time] - ALL DONE.</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span>   eid M10_E113_status M10_E113_time</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 1   1               1      6.191781</span>
 <span class="r-out co"><span class="r-pr">#&gt;</span> 2   2               1      4.136986</span>

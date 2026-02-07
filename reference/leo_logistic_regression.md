@@ -115,11 +115,11 @@ y <- tibble::tibble(id = 1:300, outcome = rbinom(300, 1, prob = stats::plogis(li
 res1 <- leo_logistic_regression(x = x, y = y, x_col = "PRS", y_col = "outcome",
                                 id_col = "id", scale_x = T,
                                 y_level = c("0","1"), y_label = c("control","case"))
-#> ℹ [15:28:04] Performing logistic regression with settings:
+#> ℹ [15:53:46] Performing logistic regression with settings:
 #> y = outcome (0=control, 1=case)
 #> x = PRS
 #> cov = (none)
-#> ✔ [15:28:04] Completed. Processed 1 exposure(s). N range: 300–300.
+#> ✔ [15:53:46] Completed. Processed 1 exposure(s). N range: 300–300.
 head(res1)
 #> # A tibble: 1 × 17
 #>   x_name x_type  x_level    ref_level y_name     n r2_mcfadden  beta    se     z
@@ -138,13 +138,13 @@ res2 <- leo_logistic_regression(x = x2, y = y2, cov = cov2,
                                 x_col = "group", y_col = "outcome",
                                 id_col = "id", scale_x = F,
                                 y_level = c("0","1"), y_label = c("control","case"))
-#> ℹ [15:28:04] Performing logistic regression with settings:
+#> ℹ [15:53:46] Performing logistic regression with settings:
 #> y = outcome (0=control, 1=case)
 #> x = group
 #> cov = age
-#> ! [15:28:04] Exposure 'group' is categorical; please ensure factor() with first level as reference. Levels: A, B, C (ref = A).
-#> ℹ [15:28:04] For categorical exposure 'group', interpretation is vs reference 'A'.
-#> ✔ [15:28:04] Completed. Processed 1 exposure(s). N range: 400–400.
+#> ! [15:53:46] Exposure 'group' is categorical; please ensure factor() with first level as reference. Levels: A, B, C (ref = A).
+#> ℹ [15:53:46] For categorical exposure 'group', interpretation is vs reference 'A'.
+#> ✔ [15:53:46] Completed. Processed 1 exposure(s). N range: 400–400.
 res2
 #> # A tibble: 3 × 17
 #>   x_name x_type x_level ref_level y_name     n r2_mcfadden    beta     se      z

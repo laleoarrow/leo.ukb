@@ -29,9 +29,9 @@
     </div>
 
     <div class="section level2">
-      <h2 id="all-functions">All functions<a class="anchor" aria-label="anchor" href="#all-functions"></a></h2>
+      <h2 id="dnanexus-interaction">DNAnexus Interaction<a class="anchor" aria-label="anchor" href="#dnanexus-interaction"></a></h2>
 
-
+      <div class="section-desc"><p>Functions for interacting with UK Biobank data via DNAnexus platform</p></div>
 
       <dl></dl></div><div class="section level2">
 
@@ -39,48 +39,6 @@
 
 
       <dl><dt>
-
-          <code><a href="combine_two_eye.html">combine_two_eye()</a></code>
-
-        </dt>
-        <dd>Combine Measurements from Two Eyes</dd>
-
-        <dt>
-
-          <code><a href="convert_iop.html">convert_iop()</a></code>
-
-        </dt>
-        <dd>Convert IOP Measurements</dd>
-
-        <dt>
-
-          <code><a href="convert_to_logMAR.html">convert_to_logMAR()</a></code>
-
-        </dt>
-        <dd>Convert Visual Acuity Measurements to logMAR</dd>
-
-        <dt>
-
-          <code><a href="diagnosis_process_fo.html">diagnosis_process_fo()</a></code>
-
-        </dt>
-        <dd>Process first occurrence (FO) data in UKB —-</dd>
-
-        <dt>
-
-          <code><a href="diagnosis_process_icd.html">diagnosis_process_icd()</a></code>
-
-        </dt>
-        <dd>Process UKB ICD data for survival analysis</dd>
-
-        <dt>
-
-          <code><a href="diagnosis_process_icd_multi.html">diagnosis_process_icd_multi()</a></code>
-
-        </dt>
-        <dd>Process multiple ICD definitions in bulk</dd>
-
-        <dt>
 
           <code><a href="dx_extract.html">dx_extract()</a></code>
 
@@ -107,13 +65,36 @@
 
         </dt>
         <dd>Check DNAnexus Job Status &amp; Dashboard</dd>
+      </dl></div><div class="section level2">
+      <h2 id="diagnosis-icd-processing">Diagnosis &amp; ICD Processing<a class="anchor" aria-label="anchor" href="#diagnosis-icd-processing"></a></h2>
+
+      <div class="section-desc"><p>Functions for processing ICD codes and first occurrence data</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="diagnosis_process_fo.html">diagnosis_process_fo()</a></code>
+
+        </dt>
+        <dd>Process first occurrence (FO) data in UKB —-</dd>
 
         <dt>
 
-          <code><a href="format_p_value.html">format_p_value()</a></code>
+          <code><a href="diagnosis_process_icd.html">diagnosis_process_icd()</a></code>
 
         </dt>
-        <dd>Helper function to format p-values according to common publication standards</dd>
+        <dd>Process UKB ICD data for survival analysis</dd>
+
+        <dt>
+
+          <code><a href="diagnosis_process_icd_multi.html">diagnosis_process_icd_multi()</a></code>
+
+        </dt>
+        <dd>Process multiple ICD definitions in bulk</dd>
 
         <dt>
 
@@ -121,139 +102,22 @@
 
         </dt>
         <dd>Find the max date in given date columns <a href="https://lifecycle.r-lib.org/articles/stages.html#stable" class="external-link"><img src="figures/lifecycle-stable.svg" alt="[Stable]"></a></dd>
+      </dl></div><div class="section level2">
+      <h2 id="statistical-analysis">Statistical Analysis<a class="anchor" aria-label="anchor" href="#statistical-analysis"></a></h2>
 
-        <dt>
+      <div class="section-desc"><p>Regression, heterogeneity, and data analysis utilities</p></div>
 
-          <code><a href="leo.impute_na.html">leo.impute_na()</a></code>
+      <dl></dl></div><div class="section level2">
 
-        </dt>
-        <dd>Basic imputation function for missing values</dd>
 
-        <dt>
 
-          <code><a href="leo.table1.help.html">leo.table1.help()</a></code>
 
-        </dt>
-        <dd>Table 1 Help</dd>
+      <dl><dt>
 
-        <dt>
-
-          <code><a href="leo.table1.save.html">leo.table1.save()</a></code>
+          <code><a href="leo_quantile.html">leo_quantile()</a></code>
 
         </dt>
-        <dd>Save Table 1 to Word or CSV</dd>
-
-        <dt>
-
-          <code><a href="leo.table1.step1.html">leo.table1.step1()</a></code>
-
-        </dt>
-        <dd>Step 1: Check Normality for Variables</dd>
-
-        <dt>
-
-          <code><a href="leo.table1.step2.html">leo.table1.step2()</a></code>
-
-        </dt>
-        <dd>Step 2: Generate Table 1 for Cohort Study</dd>
-
-        <dt>
-
-          <code><a href="leo_BMI.html">leo_BMI()</a></code>
-
-        </dt>
-        <dd>Recode BMI into categories (Underweight/Normal weight/Overweight/Obese) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21001</dd>
-
-        <dt>
-
-          <code><a href="leo_TyG.html">leo_TyG()</a></code>
-
-        </dt>
-        <dd>Calculate Triglyceride-Glucose Index (TyG)</dd>
-
-        <dt>
-
-          <code><a href="leo_age.html">leo_age()</a></code>
-
-        </dt>
-        <dd>Recode age (years) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21003</dd>
-
-        <dt>
-
-          <code><a href="leo_career.html">leo_career()</a></code>
-
-        </dt>
-        <dd>Recode employment status</dd>
-
-        <dt>
-
-          <code><a href="leo_diet_us.html">leo_diet_us()</a></code>
-
-        </dt>
-        <dd>healthy diet score by U.S. Dietary Guidelines</dd>
-
-        <dt>
-
-          <code><a href="leo_drinking_consumption.html">leo_drinking_consumption()</a></code>
-
-        </dt>
-        <dd>Recode drinking consumption</dd>
-
-        <dt>
-
-          <code><a href="leo_drinking_status.html">leo_drinking_status()</a></code>
-
-        </dt>
-        <dd>Recode drinking status (Never/Previous/Current) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20117</dd>
-
-        <dt>
-
-          <code><a href="leo_eGDR.html">leo_eGDR()</a></code>
-
-        </dt>
-        <dd>Calculate Estimated Glucose Disposal Rate (eGDR)</dd>
-
-        <dt>
-
-          <code><a href="leo_education.html">leo_education()</a></code>
-
-        </dt>
-        <dd>Recode UKB qualifications into 3 categories</dd>
-
-        <dt>
-
-          <code><a href="leo_ethnicity.html">leo_ethnicity()</a></code>
-
-        </dt>
-        <dd>Recode ethnicity to White vs non-White https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21000</dd>
-
-        <dt>
-
-          <code><a href="leo_ethnicity_finer.html">leo_ethnicity_finer()</a></code>
-
-        </dt>
-        <dd>Recode ethnicity into finer categories (top-level 1–6) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21000</dd>
-
-        <dt>
-
-          <code><a href="leo_gender.html">leo_gender()</a></code>
-
-        </dt>
-        <dd>Recode sex (Male/Female) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=31</dd>
-
-        <dt>
-
-          <code><a href="leo_hba1c.html">leo_hba1c()</a></code>
-
-        </dt>
-        <dd>Recode HbA1c (IFCC, mmol/mol) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=30750</dd>
-
-        <dt>
-
-          <code><a href="leo_hba1c_percent.html">leo_hba1c_percent()</a></code>
-
-        </dt>
-        <dd>Convert HbA1c from IFCC (mmol/mol) to NGSP (%) https://ngsp.org/ifcc.asp</dd>
+        <dd>Bin a continuous variable by quantiles</dd>
 
         <dt>
 
@@ -264,24 +128,17 @@
 
         <dt>
 
-          <code><a href="leo_household_income.html">leo_household_income()</a></code>
-
-        </dt>
-        <dd>Recode household income (UKB 738) into readable categories</dd>
-
-        <dt>
-
-          <code><a href="leo_household_income_2.html">leo_household_income_2()</a></code>
-
-        </dt>
-        <dd>Recode household income (UKB 738) into readable categories (2 categories)</dd>
-
-        <dt>
-
           <code><a href="leo_linear_regression.html">leo_linear_regression()</a></code>
 
         </dt>
         <dd>Linear regression analysis <a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="figures/lifecycle-experimental.svg" alt="[Experimental]"></a></dd>
+
+        <dt>
+
+          <code><a href="leo_regression_result.html">leo_regression_result()</a></code>
+
+        </dt>
+        <dd>Extract and format linear regression results for publication <a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="figures/lifecycle-experimental.svg" alt="[Experimental]"></a></dd>
 
         <dt>
 
@@ -299,6 +156,29 @@
 
         <dt>
 
+          <code><a href="leo.impute_na.html">leo.impute_na()</a></code>
+
+        </dt>
+        <dd>Basic imputation function for missing values</dd>
+
+        <dt>
+
+          <code><a href="format_p_value.html">format_p_value()</a></code>
+
+        </dt>
+        <dd>Helper function to format p-values according to common publication standards</dd>
+      </dl></div><div class="section level2">
+      <h2 id="clinical-variables-lifestyle">Clinical Variables &amp; Lifestyle<a class="anchor" aria-label="anchor" href="#clinical-variables-lifestyle"></a></h2>
+
+      <div class="section-desc"><p>Functions for processing clinical indicators and lifestyle factors</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
           <code><a href="leo_new_clinical_indicators.html">leo_new_clinical_indicators()</a></code>
 
         </dt>
@@ -306,31 +186,108 @@
 
         <dt>
 
-          <code><a href="leo_physical_activity.html">leo_physical_activity()</a></code>
+          <code><a href="leo_age.html">leo_age()</a></code>
 
         </dt>
-        <dd>Calculate Physical Activity Indicator <a href="https://lifecycle.r-lib.org/articles/stages.html#stable" class="external-link"><img src="figures/lifecycle-stable.svg" alt="[Stable]"></a></dd>
+        <dd>Recode age (years) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21003</dd>
 
         <dt>
 
-          <code><a href="leo_quantile.html">leo_quantile()</a></code>
+          <code><a href="leo_BMI.html">leo_BMI()</a></code>
 
         </dt>
-        <dd>Bin a continuous variable by quantiles</dd>
+        <dd>Recode BMI into categories (Underweight/Normal weight/Overweight/Obese) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21001</dd>
 
         <dt>
 
-          <code><a href="leo_regression_result.html">leo_regression_result()</a></code>
+          <code><a href="leo_gender.html">leo_gender()</a></code>
 
         </dt>
-        <dd>Extract and format linear regression results for publication <a href="https://lifecycle.r-lib.org/articles/stages.html#experimental" class="external-link"><img src="figures/lifecycle-experimental.svg" alt="[Experimental]"></a></dd>
+        <dd>Recode sex (Male/Female) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=31</dd>
 
         <dt>
 
-          <code><a href="leo_sleep_score.html">leo_sleep_score()</a></code>
+          <code><a href="leo_ethnicity.html">leo_ethnicity()</a></code>
 
         </dt>
-        <dd>Calculate Sleep Score and Pattern</dd>
+        <dd>Recode ethnicity to White vs non-White https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21000</dd>
+
+        <dt>
+
+          <code><a href="leo_ethnicity_finer.html">leo_ethnicity_finer()</a></code>
+
+        </dt>
+        <dd>Recode ethnicity into finer categories (top-level 1–6) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=21000</dd>
+
+        <dt>
+
+          <code><a href="leo_tdi.html">leo_tdi()</a></code>
+
+        </dt>
+        <dd>Recode Townsend deprivation index (TDI) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=22189</dd>
+
+        <dt>
+
+          <code><a href="leo_education.html">leo_education()</a></code>
+
+        </dt>
+        <dd>Recode UKB qualifications into 3 categories</dd>
+
+        <dt>
+
+          <code><a href="leo_career.html">leo_career()</a></code>
+
+        </dt>
+        <dd>Recode employment status</dd>
+
+        <dt>
+
+          <code><a href="leo_household_income.html">leo_household_income()</a></code>
+
+        </dt>
+        <dd>Recode household income (UKB 738) into readable categories</dd>
+
+        <dt>
+
+          <code><a href="leo_household_income_2.html">leo_household_income_2()</a></code>
+
+        </dt>
+        <dd>Recode household income (UKB 738) into readable categories (2 categories)</dd>
+
+        <dt>
+
+          <code><a href="leo_LGI.html">leo_LGI()</a></code>
+
+        </dt>
+        <dd>Calculate Low-Grade Inflammation Score (LGI / INFLA-score)</dd>
+
+        <dt>
+
+          <code><a href="leo_hba1c.html">leo_hba1c()</a></code>
+
+        </dt>
+        <dd>Recode HbA1c (IFCC, mmol/mol) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=30750</dd>
+
+        <dt>
+
+          <code><a href="leo_hba1c_percent.html">leo_hba1c_percent()</a></code>
+
+        </dt>
+        <dd>Convert HbA1c from IFCC (mmol/mol) to NGSP (%) https://ngsp.org/ifcc.asp</dd>
+
+        <dt>
+
+          <code><a href="leo_eGDR.html">leo_eGDR()</a></code>
+
+        </dt>
+        <dd>Calculate Estimated Glucose Disposal Rate (eGDR)</dd>
+
+        <dt>
+
+          <code><a href="leo_TyG.html">leo_TyG()</a></code>
+
+        </dt>
+        <dd>Calculate Triglyceride-Glucose Index (TyG)</dd>
 
         <dt>
 
@@ -341,12 +298,79 @@
 
         <dt>
 
-          <code><a href="leo_tdi.html">leo_tdi()</a></code>
+          <code><a href="leo_drinking_status.html">leo_drinking_status()</a></code>
 
         </dt>
-        <dd>Recode Townsend deprivation index (TDI) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=22189</dd>
+        <dd>Recode drinking status (Never/Previous/Current) https://biobank.ndph.ox.ac.uk/showcase/field.cgi?id=20117</dd>
 
         <dt>
+
+          <code><a href="leo_drinking_consumption.html">leo_drinking_consumption()</a></code>
+
+        </dt>
+        <dd>Recode drinking consumption</dd>
+
+        <dt>
+
+          <code><a href="leo_diet_us.html">leo_diet_us()</a></code>
+
+        </dt>
+        <dd>healthy diet score by U.S. Dietary Guidelines</dd>
+
+        <dt>
+
+          <code><a href="leo_physical_activity.html">leo_physical_activity()</a></code>
+
+        </dt>
+        <dd>Calculate Physical Activity Indicator <a href="https://lifecycle.r-lib.org/articles/stages.html#stable" class="external-link"><img src="figures/lifecycle-stable.svg" alt="[Stable]"></a></dd>
+
+        <dt>
+
+          <code><a href="leo_sleep_score.html">leo_sleep_score()</a></code>
+
+        </dt>
+        <dd>Calculate Sleep Score and Pattern</dd>
+      </dl></div><div class="section level2">
+      <h2 id="ophthalmology-variables">Ophthalmology Variables<a class="anchor" aria-label="anchor" href="#ophthalmology-variables"></a></h2>
+
+      <div class="section-desc"><p>Functions for processing ophthalmology-specific measurements</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="convert_to_logMAR.html">convert_to_logMAR()</a></code>
+
+        </dt>
+        <dd>Convert Visual Acuity Measurements to logMAR</dd>
+
+        <dt>
+
+          <code><a href="convert_iop.html">convert_iop()</a></code>
+
+        </dt>
+        <dd>Convert IOP Measurements</dd>
+
+        <dt>
+
+          <code><a href="combine_two_eye.html">combine_two_eye()</a></code>
+
+        </dt>
+        <dd>Combine Measurements from Two Eyes</dd>
+      </dl></div><div class="section level2">
+      <h2 id="genotype-hla-typing">Genotype &amp; HLA Typing<a class="anchor" aria-label="anchor" href="#genotype-hla-typing"></a></h2>
+
+      <div class="section-desc"><p>Functions for processing HLA typing data</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
 
           <code><a href="ukb_hla_clean.html">ukb_hla_clean()</a></code>
 
@@ -373,8 +397,46 @@
 
         </dt>
         <dd>HLA Genotyping in UKB <a href="https://lifecycle.r-lib.org/articles/stages.html#stable" class="external-link"><img src="figures/lifecycle-stable.svg" alt="[Stable]"></a></dd>
+      </dl></div><div class="section level2">
+      <h2 id="table-generation">Table 1 Generation<a class="anchor" aria-label="anchor" href="#table-generation"></a></h2>
+
+      <div class="section-desc"><p>Functions for creating baseline characteristics tables</p></div>
+
+      <dl></dl></div><div class="section level2">
+
+
+
+
+      <dl><dt>
+
+          <code><a href="leo.table1.help.html">leo.table1.help()</a></code>
+
+        </dt>
+        <dd>Table 1 Help</dd>
+
+        <dt>
+
+          <code><a href="leo.table1.save.html">leo.table1.save()</a></code>
+
+        </dt>
+        <dd>Save Table 1 to Word or CSV</dd>
+
+        <dt>
+
+          <code><a href="leo.table1.step1.html">leo.table1.step1()</a></code>
+
+        </dt>
+        <dd>Step 1: Check Normality for Variables</dd>
+
+        <dt>
+
+          <code><a href="leo.table1.step2.html">leo.table1.step2()</a></code>
+
+        </dt>
+        <dd>Step 2: Generate Table 1 for Cohort Study</dd>
       </dl></div>
-  </main></div>
+  </main><aside class="col-md-3"><nav id="toc" aria-label="Table of contents"><h2>On this page</h2>
+    </nav></aside></div>
 
 
     <footer><div class="pkgdown-footer-left">

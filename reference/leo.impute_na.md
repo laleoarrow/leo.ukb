@@ -42,12 +42,12 @@ sample_data <- data.frame(
 
 # Mean imputation
 leo.impute_na(sample_data, method = "mean")
-#> ℹ [15:28:01] Missing values per column (count/percentage):
-#> ℹ [15:28:01]   age: 1/5 (20%)
-#> ℹ [15:28:01]   score: 2/5 (40%)
-#> ℹ [15:28:01]   group: 1/5 (20%)
-#> ! [15:28:01] Remaining missing values after imputation:
-#> ! [15:28:01]   group: 1
+#> ℹ [15:53:43] Missing values per column (count/percentage):
+#> ℹ [15:53:43]   age: 1/5 (20%)
+#> ℹ [15:53:43]   score: 2/5 (40%)
+#> ℹ [15:53:43]   group: 1/5 (20%)
+#> ! [15:53:43] Remaining missing values after imputation:
+#> ! [15:53:43]   group: 1
 #>   age score group
 #> 1  25    80     A
 #> 2  30    85     B
@@ -57,10 +57,10 @@ leo.impute_na(sample_data, method = "mean")
 
 # Random forest imputation
 leo.impute_na(sample_data, method = "rf")
-#> ℹ [15:28:01] Missing values per column (count/percentage):
-#> ℹ [15:28:01]   age: 1/5 (20%)
-#> ℹ [15:28:01]   score: 2/5 (40%)
-#> ℹ [15:28:01]   group: 1/5 (20%)
+#> ℹ [15:53:43] Missing values per column (count/percentage):
+#> ℹ [15:53:43]   age: 1/5 (20%)
+#> ℹ [15:53:43]   score: 2/5 (40%)
+#> ℹ [15:53:43]   group: 1/5 (20%)
 #> Missing value imputation by random forests
 #> 
 #> Variables to impute:     age, group, score
@@ -68,7 +68,7 @@ leo.impute_na(sample_data, method = "rf")
 #> 
 #> iter 1 
 #>   |                                                                              |                                                                      |   0%  |                                                                              |=======================                                               |  33%  |                                                                              |===============================================                       |  67%  |                                                                              |======================================================================| 100%
-#> ℹ [15:28:01] Imputation completed using rf method
+#> ℹ [15:53:43] Imputation completed using rf method
 #>   age score group
 #> 1  25 80.00     A
 #> 2  30 84.91     B
