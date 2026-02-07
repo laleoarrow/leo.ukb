@@ -2,7 +2,7 @@ Package: leo.ukb
 Title: LEO package for UK Biobank database analysis
 Version: 0.5.1
 Authors@R: 
-    person("Ao", "Lu", , "luao@stu.cqmu.edu.cn", role = c("aut", "cre"),
+    person("Ao", "Lu", , "luao@stu.cqmu.edu.cn", role = c("aut", "cre", "cph"),
            comment = c(ORCID = "0009-0001-0927-4468"))
 Description: This package is used to analyze UK Biobank data. But it may be extended to other clincial studies.
 License: file LICENSE
@@ -34,3 +34,4 @@ Remotes:
 Depends: 
     R (>= 3.5)
 LazyData: true
+URL: https://laleoarrow.github.io/leo.ukb/

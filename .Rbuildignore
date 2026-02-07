@@ -9,3 +9,7 @@
 ^\.gitignore$
 ^project$
 ^README\.md$
+^_pkgdown\.yml$
+^docs$
+^pkgdown$
+^\.github$
