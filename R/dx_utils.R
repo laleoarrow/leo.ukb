@@ -94,7 +94,7 @@ dx_run <- function(args, intern = TRUE, ignore.stderr = FALSE, dry_run = FALSE, 
 #' @param dataset The dataset ID or name (e.g. "app123.dataset" or "project-X:record-Y").
 #' @param dry_run Logical. If TRUE, simulates the download without executing. Returns mock data.
 #' @return A data.frame containing the dictionary with columns: `name`, `title`, etc.
-#'   Returns NULL if download fails (unless dry_run=TRUE).
+#'   Returns NULL if download fails.
 #' @keywords internal
 #' @noRd
 #' @examples
@@ -112,42 +112,30 @@ dx_run <- function(args, intern = TRUE, ignore.stderr = FALSE, dry_run = FALSE, 
 #'
 #'   # Uses cached version if available (checks tmp/ directory)
 #'   dict2 <- dx_get_dataset_dictionary(dataset_id)
-#'
-#'   # Test without actual download
-#'   mock_dict <- dx_get_dataset_dictionary(dataset_id, dry_run = TRUE)
 #' }
-dx_get_dataset_dictionary <- function(dataset, dry_run = FALSE) {
+dx_get_dataset_dictionary <- function(dataset) {
   # Determine storage location: prefer "tmp" in project, otherwise tempdir()
   storage_dir <- if (dir.exists("tmp")) "tmp" else tempdir()
 
-  # Optimization: Try to resolve the record name to check if the file already exists.
-  # We use `dx describe` to get the Name.
-
   # Step 1: Resolve dataset ID if needed
   if (missing(dataset) || is.null(dataset)) stop("Dataset ID is required.")
-
   leo.basic::leo_log("Checking for info on {dataset}...")
-
   # Get dataset name to predict filename
   # Command: dx describe <id> --json
   # We parse the "name" field.
-  # Since we might not have jsonlite, we can try `dx describe` text output.
   # "Name" is usually the first line or labeled "Name".
-
   sys_cmd_args <- c("describe", dataset, "--json")
   desc_json <- tryCatch({
-    dx_run(sys_cmd_args, intern = TRUE, ignore.stderr = TRUE, dry_run = dry_run)
+    dx_run(sys_cmd_args, intern = TRUE, ignore.stderr = TRUE)
   }, error = function(e) NULL)
 
   record_name <- NULL
-  if (!dry_run && !is.null(desc_json) && length(desc_json) > 0) {
+  if (!is.null(desc_json) && length(desc_json) > 0) {
       json_str <- paste(desc_json, collapse = " ")
       matches <- regmatches(json_str, regexec('"name"\\s*:\\s*"([^"]+)"', json_str))
       if (length(matches[[1]]) > 1) {
           record_name <- matches[[1]][2]
       }
-  } else if (dry_run) {
-      record_name <- "mock_dataset_name"
   }
 
   target_file <- NULL
@@ -156,18 +144,10 @@ dx_get_dataset_dictionary <- function(dataset, dry_run = FALSE) {
       if (file.exists(expected_file)) {
           leo.basic::leo_log("Using cached dictionary: {expected_file}", level = "success")
           return(data.table::fread(expected_file, data.table = FALSE))
-      } else if (dry_run) {
-          leo.basic::leo_log("[DRY RUN] Would check for cached dictionary: {expected_file}", level = "warning")
       }
   }
 
   # If not cached or name resolution failed, proceed to download.
-  if (dry_run) {
-    leo.basic::leo_log("[DRY RUN] Would fetch dictionary for {dataset}...", level = "warning")
-    leo.basic::leo_log("[DRY RUN] Would run: dx extract_dataset {dataset} -ddd --output {storage_dir}/", level = "warning")
-    # Return a mock dictionary for dry run
-    return(data.frame(name = c("eid", "p21003_i0", "p31"), title = c("Participant ID", "Age", "Sex"), stringsAsFactors = FALSE))
-  }
 
   leo.basic::leo_log("Fetching dictionary for {dataset}...")
 
@@ -210,11 +190,7 @@ dx_get_dataset_dictionary <- function(dataset, dry_run = FALSE) {
   target_file <- rownames(info)[which.max(info$mtime)]
 
   leo.basic::leo_log("Dictionary downloaded to: {target_file}", level = "success")
-
-  # Read it
   dict_df <- data.table::fread(target_file, data.table = FALSE)
-
-
   return(dict_df)
 }
 
@@ -361,22 +337,32 @@ dx_expand_field <- function(fields, dictionary, entity = "participant") {
     leo.basic::leo_log("Dictionary has no 'entity' column. Cannot filter by entity (risky).", level = "warning")
   }
 
-  # Clean fields -> extract purely numeric ID
-  # 21003 -> "21003", p31 -> "31"
   fields_char <- as.character(fields)
-  clean_ids <- sub("^\\D*(\\d+).*", "\\1", fields_char)
-  clean_ids <- unique(clean_ids[clean_ids != ""]) # Remove empties
-
-  valid_cols <- character(0)
   all_names <- dictionary$name
-  for (fid in clean_ids) {
+  valid_cols <- character(0)
+
+  for (f in fields_char) {
+    # Strategy 1: Direct name match (works for non-participant entities like gp_scripts, hesin, death, etc.)
+    if (f %in% all_names) {
+      valid_cols <- c(valid_cols, f)
+      next
+    }
+
+    # Strategy 2: Numeric UKB field ID expansion (participant entity convention)
+    # 21003 -> "21003", p31 -> "31"
+    fid <- sub("^\\D*(\\d+).*", "\\1", f)
+    if (fid == "" || is.na(fid)) {
+      leo.basic::leo_log("Field '{f}' not found for entity '{entity}'.", level = "warning")
+      next
+    }
+
     # Official tutorial: https://github.com/UK-Biobank/UKB-RAP-Notebooks-Access/blob/main/RStudio/A110_Export_participant_data.Rmd
     regex <- paste0("^p", fid, "(?![0-9])")
     matches <- grep(regex, all_names, value = TRUE, perl = TRUE)
     if (length(matches) > 0) {
       valid_cols <- c(valid_cols, matches)
     } else {
-      leo.basic::leo_log("Field {fid} (p{fid}) not found for entity '{entity}'.", level = "warning")
+      leo.basic::leo_log("Field '{f}' (p{fid}) not found for entity '{entity}'.", level = "warning")
     }
   }
 

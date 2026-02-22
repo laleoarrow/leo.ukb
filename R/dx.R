@@ -63,8 +63,17 @@ dx_login <- function(token = NULL) {
 #'     \item \code{"participant"} (default): Main phenotype/covariate data.
 #'     \item \code{"hesin"}: Hospital episode statistics.
 #'     \item \code{"death"}: Death registry records.
+#'     \item \code{"death_cause"}: Death cause records.
+#'     \item \code{"gp_clinical"}: GP clinical event records.
+#'     \item \code{"gp_scripts"}: GP prescription records.
+#'     \item \code{"gp_registrations"}: GP registration records.
 #'     \item \code{"image"}: Imaging metadata.
 #'   }
+#'   For non-participant entities, field names are plain strings (e.g., \code{"data_provider"},
+#'   \code{"drug_name"}) rather than numeric UKB field IDs.
+#' @param entity_all Logical. If TRUE, extract \strong{all} fields for the specified entity,
+#'   ignoring \code{field_id} and \code{category_id}. Only works for non-participant entities
+#'   (e.g., \code{"gp_scripts"}, \code{"hesin"}, \code{"death"}). Default is FALSE.
 #' @param coding_option How to encode categorical values. Options:
 #'   \itemize{
 #'     \item \code{"RAW"} (default): Return raw numeric codes (e.g., 1, 2, 3).
@@ -145,6 +154,19 @@ dx_login <- function(token = NULL) {
 #' )
 #' # Shows all commands that would be executed
 #' # Returns: list(job_id = "job-DRYRUN123456", output_path = "...", dry_run = TRUE)
+#'
+#' # 7. Extract non-participant entity (e.g., GP prescriptions)
+#' # For non-participant entities, use plain field names (not numeric IDs)
+#' dx_extract(c("data_provider", "issue_date", "read_2",
+#'              "bnf_code", "dmd_code", "drug_name", "quantity"),
+#'            entity = "gp_scripts", output_prefix = "gp_scripts202602")
+#'
+#' # 8. Extract ALL fields for a non-participant entity
+#' # entity_all = TRUE ignores field_id/category_id and extracts everything
+#' dx_extract(entity = "gp_scripts", entity_all = TRUE,
+#'            output_prefix = "gp_scripts_all")
+#' dx_extract(entity = "death", entity_all = TRUE)
+#' dx_extract(entity = "hesin", entity_all = TRUE)
 #' }
 dx_extract <- function(field_id = NULL,
                        category_id = NULL,
@@ -155,13 +177,20 @@ dx_extract <- function(field_id = NULL,
                        project = NULL,
                        dataset = NULL,
                        entity = "participant",
+                       entity_all = FALSE,
                        coding_option = "RAW",
                        output_format = "CSV",
                        header_style = "FIELD-NAME",
                        instance_type = "mem1_ssd1_v2_x4",
                        dry_run = FALSE) {
   # Input validation
-  if (is.null(field_id) && is.null(category_id)) {
+  if (entity_all) {
+    if (entity == "participant") {
+      leo.basic::leo_log("entity_all = TRUE is not supported for entity 'participant' (too many fields). Please specify field_id or category_id.", level = "danger")
+      return(invisible(NULL))
+    }
+    leo.basic::leo_log("entity_all = TRUE: will extract all fields for entity '{entity}'.")
+  } else if (is.null(field_id) && is.null(category_id)) {
     leo.basic::leo_log("At least one of 'field_id' or 'category_id' must be provided.", level = "danger")
     return(invisible(NULL))
   }
@@ -247,6 +276,24 @@ dx_extract <- function(field_id = NULL,
     leo.basic::leo_log("Resolved dataset in project {target_project}: {dataset}")
   }
 
+  # entity_all: extract all fields for the specified non-participant entity
+  if (entity_all) {
+    if (!exists("ukb_dd")) ukb_dd <- dx_get_dataset_dictionary(dataset)
+    if (is.null(ukb_dd)) {
+      leo.basic::leo_log("Could not retrieve dataset dictionary for entity_all.", level = "danger")
+      return(invisible(NULL))
+    }
+    entity_fields <- ukb_dd$name[ukb_dd$entity == entity]
+    entity_fields <- entity_fields[!tolower(entity_fields) %in% c("eid")]
+    if (length(entity_fields) == 0) {
+      leo.basic::leo_log("No fields found for entity '{entity}' in dictionary.", level = "danger")
+      return(invisible(NULL))
+    }
+    fields <- c("eid", entity_fields)
+    leo.basic::leo_log("entity_all: found {length(entity_fields)} fields for entity '{entity}'.", level = "success")
+    expand <- FALSE # already resolved from dictionary, no need to expand
+  }
+
   fields <- trimws(fields)
   fields <- fields[fields != ""]
   if (length(fields) == 0) {
@@ -262,7 +309,7 @@ dx_extract <- function(field_id = NULL,
 
   # Expand fields
   if (expand) {
-    if (!exists("ukb_dd")) ukb_dd <- dx_get_dataset_dictionary(dataset, dry_run = FALSE)
+    if (!exists("ukb_dd")) ukb_dd <- dx_get_dataset_dictionary(dataset)
     if (!is.null(ukb_dd)) {
       valid_cols <- dx_expand_field(fields[fields != "eid"], ukb_dd, entity = entity) # 'eid' excluded from lookup
       if (length(valid_cols) > 0) {
@@ -278,39 +325,44 @@ dx_extract <- function(field_id = NULL,
 
   # Generate output_prefix if not provided
   if (is.null(output_prefix)) {
-    # Smart naming based on inputs - Logic:
-    # 1. Gather all explicit inputs: categories (c) and original fields (f)
-    # 2. If distinct items < 3, SHOW ALL (e.g. c1712_f41270_f41271)
-    # 3. If string length <= 20, SHOW ALL
-    # 4. Otherwise use summary: c@{num_cats}_f@{num_fields}
-
-    # Clean inputs for naming
-    clean_fields <- sub("^p", "", unique(process_input(field_id, ""))) # Remove 'p' prefix if present for cleaner names
-    clean_cats <- unique(cats)
-
-    # Build candidate parts
-    parts <- character(0)
-    if (length(clean_cats) > 0) parts <- c(parts, paste0("c", clean_cats))
-    if (length(clean_fields) > 0) parts <- c(parts, paste0("f", clean_fields))
-
-    candidate_base <- paste(parts, collapse = "_")
-    total_items <- length(clean_cats) + length(clean_fields)
-
-    final_base <- ""
-    if (total_items < 3) {
-      final_base <- candidate_base
-    } else if (nchar(candidate_base) <= 20) {
-      final_base <- candidate_base
+    # Special case: entity_all = TRUE
+    if (entity_all) {
+      output_prefix <- paste0(entity, "_all_n", length(fields))
     } else {
-      # Fallback name rule: only include f@ when fields are provided; only include c@ when categories are provided.
-      sum_parts <- character(0)
-      if (length(clean_fields) > 0) sum_parts <- c(sum_parts, paste0("f@", length(clean_fields)))
-      if (length(clean_cats) > 0) sum_parts <- c(sum_parts, paste0("c@", length(clean_cats)))
-      final_base <- paste(sum_parts, collapse = "_")
-    }
+      # Smart naming based on inputs - Logic:
+      # 1. Gather all explicit inputs: categories (c) and original fields (f)
+      # 2. If distinct items < 3, SHOW ALL (e.g. c1712_f41270_f41271)
+      # 3. If string length <= 20, SHOW ALL
+      # 4. Otherwise use summary: c@{num_cats}_f@{num_fields}
 
-    # Always append total column count
-    output_prefix <- paste0(final_base, "_n", length(fields))
+      # Clean inputs for naming
+      clean_fields <- sub("^p", "", unique(process_input(field_id, ""))) # Remove 'p' prefix if present for cleaner names
+      clean_cats <- unique(cats)
+
+      # Build candidate parts
+      parts <- character(0)
+      if (length(clean_cats) > 0) parts <- c(parts, paste0("c", clean_cats))
+      if (length(clean_fields) > 0) parts <- c(parts, paste0("f", clean_fields))
+
+      candidate_base <- paste(parts, collapse = "_")
+      total_items <- length(clean_cats) + length(clean_fields)
+
+      final_base <- ""
+      if (total_items < 3) {
+        final_base <- candidate_base
+      } else if (nchar(candidate_base) <= 20) {
+        final_base <- candidate_base
+      } else {
+        # Fallback name rule: only include f@ when fields are provided; only include c@ when categories are provided.
+        sum_parts <- character(0)
+        if (length(clean_fields) > 0) sum_parts <- c(sum_parts, paste0("f@", length(clean_fields)))
+        if (length(clean_cats) > 0) sum_parts <- c(sum_parts, paste0("c@", length(clean_cats)))
+        final_base <- paste(sum_parts, collapse = "_")
+      }
+
+      # Always append total column count
+      output_prefix <- paste0(final_base, "_n", length(fields))
+    }
   }
 
   # Save fields to file (locally)
