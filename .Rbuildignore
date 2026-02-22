@@ -13,3 +13,5 @@
 ^docs$
 ^pkgdown$
 ^\.github$
+^\.create_logo\.R$
+^man/figures/icon_processed\.png$
