@@ -1,108 +1,163 @@
+// ── Modern clean theme for leo.ukb ──
+
 :root {
-  --leo-ice-050: #f4f8fb;
-  --leo-ice-100: #e7f1f8;
-  --leo-ice-300: #9ecae1;
-  --leo-ice-600: #2f6f9f;
-  --leo-night-900: #0b1d2a;
+  --leo-bg: #f7f9fc;
+  --leo-card: #ffffff;
+  --leo-border: rgba(27, 73, 101, 0.08);
+  --leo-shadow-sm: 0 1px 3px rgba(11, 29, 42, 0.06);
+  --leo-shadow-md: 0 4px 16px rgba(11, 29, 42, 0.07);
+  --leo-shadow-lg: 0 8px 30px rgba(11, 29, 42, 0.09);
+  --leo-accent: #1b4965;
+  --leo-accent-light: #e8f0f7;
+  --leo-radius: 12px;
 }
 
+// ── Body ──
 body {
-  background:
-    radial-gradient(circle at 8% 0%, rgba(158, 202, 225, 0.2), transparent 35%),
-    radial-gradient(circle at 92% 10%, rgba(47, 111, 159, 0.12), transparent 42%),
-    var(--leo-ice-050);
+  background: var(--leo-bg);
 }
 
+// ── Navbar ──
 .navbar {
-  box-shadow: 0 10px 24px rgba(11, 29, 42, 0.22);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: var(--leo-shadow-sm);
+  border-bottom: none;
+  backdrop-filter: blur(10px);
 }
 
 .navbar-brand {
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
 }
 
 .navbar-brand img {
-  max-height: 2.1rem;
+  max-height: 2rem;
 }
 
+// ── Main container ──
 main.container,
 main.container-fluid {
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(27, 73, 101, 0.08);
-  border-radius: 16px;
-  box-shadow: 0 16px 32px rgba(11, 29, 42, 0.08);
-  margin-top: 1.4rem;
+  background: var(--leo-card);
+  border: 1px solid var(--leo-border);
+  border-radius: var(--leo-radius);
+  box-shadow: var(--leo-shadow-md);
+  margin-top: 1.5rem;
   margin-bottom: 2rem;
-  padding-top: 1.4rem;
-  padding-bottom: 1.4rem;
+  padding-top: 1.5rem;
+  padding-bottom: 1.5rem;
 }
 
+// ── Home page header ──
 .template-home .page-header {
-  background: linear-gradient(125deg, rgba(11, 29, 42, 0.88), rgba(27, 73, 101, 0.76));
-  border: 1px solid rgba(158, 202, 225, 0.35);
-  border-radius: 14px;
-  color: #f8fbff;
-  padding: 1.5rem 1.75rem;
+  background: linear-gradient(135deg, #1b4965 0%, #2f6f9f 100%);
+  border: none;
+  border-radius: var(--leo-radius);
+  color: #fff;
+  padding: 2rem 2rem 1.8rem;
 }
 
 .template-home .page-header h1,
 .template-home .page-header .lead {
-  color: #f8fbff;
+  color: #fff;
 }
 
+.template-home .page-header h1 {
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+// ── Banner image ──
 .template-home main img[src*="banner.png"] {
-  border: 1px solid rgba(11, 29, 42, 0.12);
-  border-radius: 18px;
-  box-shadow: 0 16px 30px rgba(11, 29, 42, 0.2);
+  border: 1px solid var(--leo-border);
+  border-radius: var(--leo-radius);
+  box-shadow: var(--leo-shadow-lg);
   display: block;
   max-width: 900px;
-  margin: 0.8rem auto 1.5rem;
+  margin: 1rem auto 1.5rem;
   width: 100%;
 }
 
+// ── Reference index cards ──
 .template-reference-index .ref-index .section,
 .template-reference .ref-index .section {
-  background: linear-gradient(180deg, #ffffff, #f8fbfe);
-  border: 1px solid rgba(27, 73, 101, 0.14);
-  border-left: 4px solid var(--bs-primary);
-  border-radius: 12px;
-  margin-bottom: 1rem;
-  padding: 1rem 1.2rem;
+  background: var(--leo-card);
+  border: 1px solid var(--leo-border);
+  border-left: 3px solid var(--bs-primary);
+  border-radius: var(--leo-radius);
+  margin-bottom: 0.75rem;
+  padding: 1rem 1.25rem;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
+.template-reference-index .ref-index .section:hover,
+.template-reference .ref-index .section:hover {
+  box-shadow: var(--leo-shadow-md);
+  transform: translateY(-1px);
+}
+
+// ── Code blocks ──
 pre {
-  border: 1px solid rgba(27, 73, 101, 0.16);
-  border-radius: 12px;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  background: #f8fafc;
+  border: 1px solid rgba(27, 73, 101, 0.1);
+  border-radius: 8px;
 }
 
 code {
-  color: #1b4965;
+  color: var(--leo-accent);
 }
 
+// ── Buttons ──
 .btn-primary {
-  background-image: linear-gradient(120deg, #2f6f9f, #1b4965);
-  border-color: #1b4965;
+  background: var(--leo-accent);
+  border-color: var(--leo-accent);
+  border-radius: 8px;
+  transition: opacity 0.2s ease;
 }
 
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+// ── Sidebar ──
+.col-md-3 .links a,
+.col-md-3 .dev-status a {
+  transition: color 0.15s ease;
+}
+
+// ── Footer ──
 footer {
-  background: rgba(248, 252, 255, 0.9);
-  border-top: 1px solid rgba(27, 73, 101, 0.12);
+  background: var(--leo-bg);
+  border-top: 1px solid var(--leo-border);
+  font-size: 0.875rem;
 }
 
+// ── Headings ──
+h1, h2, h3, h4 {
+  font-weight: 700;
+}
+
+h2 {
+  border-bottom: 2px solid var(--leo-accent-light);
+  padding-bottom: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+// ── Links ──
+a {
+  transition: color 0.15s ease;
+}
+
+// ── Responsive ──
 @media (max-width: 767px) {
   main.container,
   main.container-fluid {
-    border-radius: 10px;
+    border-radius: 8px;
     margin-top: 0.8rem;
     padding-top: 1rem;
     padding-bottom: 1rem;
   }
 
   .template-home .page-header {
-    border-radius: 10px;
-    padding: 1rem 1.1rem;
+    border-radius: 8px;
+    padding: 1.25rem 1.25rem 1rem;
   }
 }
