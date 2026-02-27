@@ -3,6 +3,9 @@ url: https://laleoarrow.github.io/leo.ukb/
 template:
   bootstrap: 5
   bootswatch: flatly
+  light-switch: true
+  theme: breeze-light
+  theme-dark: breeze-dark
   bslib:
     primary: "#1b4965"
     secondary: "#4f6d7a"
@@ -12,6 +15,8 @@ template:
     danger: "#d62828"
     light: "#f4f8fb"
     dark: "#0b1d2a"
+    navbar-light-bg: "#1b4965"
+    navbar-dark-bg: "#0b1d2a"
     base_font:
       google: "Source Sans 3"
     heading_font:
@@ -34,11 +39,9 @@ home:
       href: https://github.com/laleoarrow/leo.ukb
 
 navbar:
-  bg: primary
-  type: dark
   structure:
     left: [home, reference]
-    right: [search, github]
+    right: [search, lightswitch, github]
   components:
     home:
       icon: fa-home
