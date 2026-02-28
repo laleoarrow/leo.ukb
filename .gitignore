@@ -8,6 +8,7 @@ log/
 .DS_Store
 .claude/
 project
+tmp/
 
 # History files
 .Rhistory

@@ -14,6 +14,7 @@ dx_extract(
   project = NULL,
   dataset = NULL,
   entity = "participant",
+  entity_all = FALSE,
   coding_option = "RAW",
   output_format = "CSV",
   header_style = "FIELD-NAME",
@@ -56,8 +57,18 @@ To list datasets across all projects:
 \item \code{"participant"} (default): Main phenotype/covariate data.
 \item \code{"hesin"}: Hospital episode statistics.
 \item \code{"death"}: Death registry records.
+\item \code{"death_cause"}: Death cause records.
+\item \code{"gp_clinical"}: GP clinical event records.
+\item \code{"gp_scripts"}: GP prescription records.
+\item \code{"gp_registrations"}: GP registration records.
 \item \code{"image"}: Imaging metadata.
-}}
+}
+For non-participant entities, field names are plain strings (e.g., \code{"data_provider"},
+\code{"drug_name"}) rather than numeric UKB field IDs.}
+
+\item{entity_all}{Logical. If TRUE, extract \strong{all} fields for the specified entity,
+ignoring \code{field_id} and \code{category_id}. Only works for non-participant entities
+(e.g., \code{"gp_scripts"}, \code{"hesin"}, \code{"death"}). Default is FALSE.}
 
 \item{coding_option}{How to encode categorical values. Options:
 \itemize{
@@ -150,5 +161,18 @@ result <- dx_extract(
 )
 # Shows all commands that would be executed
 # Returns: list(job_id = "job-DRYRUN123456", output_path = "...", dry_run = TRUE)
+
+# 7. Extract non-participant entity (e.g., GP prescriptions)
+# For non-participant entities, use plain field names (not numeric IDs)
+dx_extract(c("data_provider", "issue_date", "read_2",
+             "bnf_code", "dmd_code", "drug_name", "quantity"),
+           entity = "gp_scripts", output_prefix = "gp_scripts202602")
+
+# 8. Extract ALL fields for a non-participant entity
+# entity_all = TRUE ignores field_id/category_id and extracts everything
+dx_extract(entity = "gp_scripts", entity_all = TRUE,
+           output_prefix = "gp_scripts_all")
+dx_extract(entity = "death", entity_all = TRUE)
+dx_extract(entity = "hesin", entity_all = TRUE)
 }
 }
