@@ -6,6 +6,7 @@
 ^\.vscode$
 ^\.claude$
 ^\.git$
+^\.worktrees$
 ^\.gitignore$
 ^project$
 ^README\.md$

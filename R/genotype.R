@@ -174,6 +174,7 @@ ukb_hla_typing <- function(df, header, col = "p22182", q_threshold = 0.7) {
 #' @importFrom dplyr %>% distinct filter mutate summarise left_join bind_rows arrange group_by
 #' @export
 #' @examples
+#' \dontrun{
 #' # `res` are from ukb_hla_typing()
 #' # 1) Single query: family-level (2-digit)
 #' res_s1 <- ukb_hla_specify(res, "B27")
@@ -194,6 +195,7 @@ ukb_hla_typing <- function(df, header, col = "p22182", q_threshold = 0.7) {
 #'   select(eid, key, value) %>%
 #'   pivot_wider(names_from = key, values_from = value,
 #'               values_fill = list(value = 0L))
+#' }
 ukb_hla_specify <- function(res, specify_alleles = "B27") {
   leo.basic::leo_log("ukb_hla_specify: extracting {paste(specify_alleles, collapse = ', ')}")
 
@@ -274,11 +276,14 @@ ukb_hla_specify <- function(res, specify_alleles = "B27") {
 #'
 #' @param res A data.frame with columns `eid`, `query`, `copies`, `carrier`.
 #' @return A wide-format data.frame with one row per `eid`.
-#' @examples 
-#' hla <- fread("/Users/leoarrow/Project/UKB/data/HLA.csv") %>%
+#' @examples
+#' \dontrun{
+#' header <- ukb_hla_header()
+#' hla <- data.table::fread("HLA.csv") %>%
 #'   ukb_hla_typing(header) %>%
 #'   ukb_hla_specify("B27") %>%
 #'   ukb_hla_clean()
+#' }
 #' @export
 ukb_hla_clean <- function(res) {
   stopifnot(is.data.frame(res))

@@ -12,7 +12,9 @@ knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
   fig.width = 7,
-  fig.height = 4.5
+  fig.height = 4.5,
+  message = FALSE,
+  warning = FALSE
 )
 ```
 
@@ -27,19 +29,20 @@ Across all three functions, the design is intentionally consistent:
 - one input data frame
 - one exposure at a time
 - one outcome at a time
-- one named model list reused across crude and adjusted analyses
+- one named model list carried into the formatted output
 - default paper-style wide output in `$result`
 - optional tidy output through the paired formatter function
 
-```{r setup}
-library(leo.ukb)
+```{r setup, include = FALSE}
+suppressPackageStartupMessages(library(leo.ukb))
 ```
 
-## Shared model specification
+## Named model specification
 
 All three regression helpers accept `x_cov` as a named list. Those names are
 preserved in the formatted result table, which makes the final columns more
-readable for manuscript work.
+readable for manuscript work. Each dataset can define its own covariate names;
+the key point is that the model labels stay stable across formatted outputs.
 
 ```{r}
 model_list <- list(
@@ -65,7 +68,7 @@ lung_df <- dplyr::transmute(
   outcome_censor = time,
   age = age,
   sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
-  bmi_group = factor(
+  ecog_group = factor(
     ph.ecog,
     levels = 0:3,
     labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3")
@@ -75,7 +78,7 @@ lung_df <- dplyr::transmute(
 cox_model <- list(
   "Crude" = NULL,
   "Model A" = c("sex"),
-  "Model B" = c("sex", "bmi_group")
+  "Model B" = c("sex", "ecog_group")
 )
 
 res_cox <- leo_cox_regression(
@@ -93,7 +96,10 @@ The default `$result` is the manuscript-style wide table. If you want a long
 table for plotting or batch binding, use the paired formatter:
 
 ```{r}
-leo_cox_regression_format(res_cox, style = "tidy")
+dplyr::select(
+  leo_cox_regression_format(res_cox, style = "tidy"),
+  Model, Exposure, Outcome, HR, `95% CI`, `P value`
+)
 ```
 
 Categorical exposures can be handled in the same framework by setting
@@ -103,7 +109,7 @@ Categorical exposures can be handled in the same framework by setting
 res_cox_cat <- leo_cox_regression(
   df = lung_df,
   y_out = c("outcome", "outcome_censor"),
-  x_exp = "bmi_group",
+  x_exp = "ecog_group",
   x_cov = list("Crude" = NULL, "Model A" = c("sex")),
   x_exp_type = "categorical",
   verbose = FALSE
@@ -144,7 +150,10 @@ res_logi$result
 ```
 
 ```{r}
-leo_logistic_regression_format(res_logi, style = "tidy")
+dplyr::select(
+  leo_logistic_regression_format(res_logi, style = "tidy"),
+  Model, Exposure, Outcome, OR, `95% CI`, `P value`
+)
 ```
 
 ## Linear regression
@@ -173,7 +182,10 @@ res_linear$result
 ```
 
 ```{r}
-leo_linear_regression_format(res_linear, style = "tidy")
+dplyr::select(
+  leo_linear_regression_format(res_linear, style = "tidy"),
+  Model, Exposure, Outcome, Beta, `95% CI`, `P value`
+)
 ```
 
 ## Notes for clinical workflows

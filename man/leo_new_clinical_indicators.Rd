@@ -49,13 +49,14 @@ Supported indicators (use values in \code{types}):
 }
 \examples{
 df <- data.frame(
+  eid = 1:3,
   hba1c = c(48, 55, 60),
   waist = c(80, 85, 90),
   hypertension = c(1, 0, 1),
   triglycerides = c(1.5, 1.8, 2.0),
   glucose = c(5.0, 5.5, 6.0)
 )
-leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"))
+leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"), type_id = FALSE)
 }
 \seealso{
 \code{\link{leo_eGFR_v2009}}, \code{\link{leo_eGFR_v2021}}, \code{\link{leo_eGDR}}, \code{\link{leo_TyG}}.
