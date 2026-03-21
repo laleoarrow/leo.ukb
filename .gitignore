@@ -10,6 +10,8 @@ tests/
 .claude/
 project
 tmp/
+output/
+Output/
 .worktrees/
 
 # History files
