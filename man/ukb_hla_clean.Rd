@@ -17,8 +17,11 @@ Convert the long table returned by \code{\link[=ukb_hla_specify]{ukb_hla_specify
 suitable for downstream analysis: \verb{eid, <allele>, <allele>_carrier, ...}
 }
 \examples{
-hla <- fread("/Users/leoarrow/Project/UKB/data/HLA.csv") \%>\%
+\dontrun{
+header <- ukb_hla_header()
+hla <- data.table::fread("HLA.csv") \%>\%
   ukb_hla_typing(header) \%>\%
   ukb_hla_specify("B27") \%>\%
   ukb_hla_clean()
+}
 }

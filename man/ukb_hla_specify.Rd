@@ -65,6 +65,7 @@ posterior threshold in \code{\link[=ukb_hla_typing]{ukb_hla_typing()}}, this fun
 retained (high-confidence) allele calls.
 }
 \examples{
+\dontrun{
 # `res` are from ukb_hla_typing()
 # 1) Single query: family-level (2-digit)
 res_s1 <- ukb_hla_specify(res, "B27")
@@ -85,4 +86,5 @@ carrier_wide <- res_s2 \%>\%
   select(eid, key, value) \%>\%
   pivot_wider(names_from = key, values_from = value,
               values_fill = list(value = 0L))
+}
 }

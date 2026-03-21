@@ -40,13 +40,14 @@
 #' @importFrom leo.basic leo_time_elapsed
 #' @examples
 #' df <- data.frame(
+#'   eid = 1:3,
 #'   hba1c = c(48, 55, 60),
 #'   waist = c(80, 85, 90),
 #'   hypertension = c(1, 0, 1),
 #'   triglycerides = c(1.5, 1.8, 2.0),
 #'   glucose = c(5.0, 5.5, 6.0)
 #' )
-#' leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"))
+#' leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"), type_id = FALSE)
 #' @seealso \code{\link{leo_eGFR_v2009}}, \code{\link{leo_eGFR_v2021}}, \code{\link{leo_eGDR}}, \code{\link{leo_TyG}}.
 leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = TRUE, remove_assist = TRUE, remove_other = TRUE, ...) {
   t0 <- Sys.time()
@@ -167,7 +168,10 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
     assist_cols_to_drop <- unique(assist_cols_to_drop)  # remove duplicates for clarity
     results <- results %>% dplyr::select(-all_of(assist_cols_to_drop))
   }
-  if (remove_other) { results <- results %>% dplyr::select(eid, all_of(generated_types)) }
+  if (remove_other) {
+    keep_cols <- c(if ("eid" %in% colnames(results)) "eid", generated_types)
+    results <- results %>% dplyr::select(all_of(keep_cols))
+  }
   cli::cat_rule("All done!", col = "blue")
   leo.basic::leo_time_elapsed(t0)
   return(results)

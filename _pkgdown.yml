@@ -92,7 +92,7 @@ navbar:
   structure:
     left:
       - intro
-      - tutorials
+      - articles
       - reference
     right:
       - search

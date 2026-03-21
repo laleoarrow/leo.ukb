@@ -685,7 +685,7 @@ leo_cox_regression <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1,
   ), class = "leo_cox_regression")
   out$result <- leo_cox_regression_format(out, style = "wide")
   leo.basic::leo_log("Cox regression completed for {prep$exposure_name} -> {prep$outcome_name} with {length(prep$models)} model(s).", level = "success", verbose = verbose)
-  leo.basic::leo_time_elapsed(t0)
+  if (verbose) leo.basic::leo_time_elapsed(t0)
   return(out)
 }
 
@@ -925,7 +925,7 @@ leo_linear_regression <- function(df, y_out, x_exp, x_cov = NULL, x_exp_type = "
   ), class = "leo_linear_regression")
   out$result <- leo_linear_regression_format(out, style = "wide")
   leo.basic::leo_log("Linear regression completed for {prep$exposure_name} -> {y_out} with {length(prep$models)} model(s).", level = "success", verbose = verbose)
-  leo.basic::leo_time_elapsed(t0)
+  if (verbose) leo.basic::leo_time_elapsed(t0)
   return(out)
 }
 
@@ -1175,7 +1175,7 @@ leo_logistic_regression <- function(df, y_out, x_exp, x_cov = NULL, case_value =
   ), class = "leo_logistic_regression")
   out$result <- leo_logistic_regression_format(out, style = "wide")
   leo.basic::leo_log("Logistic regression completed for {prep$exposure_name} -> {y_out} with {length(prep$models)} model(s).", level = "success", verbose = verbose)
-  leo.basic::leo_time_elapsed(t0)
+  if (verbose) leo.basic::leo_time_elapsed(t0)
   return(out)
 }
 
