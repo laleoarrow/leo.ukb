@@ -4,11 +4,13 @@
 data/
 plot/
 log/
+tests/
 *.Rproj
 .DS_Store
 .claude/
 project
 tmp/
+.worktrees/
 
 # History files
 .Rhistory

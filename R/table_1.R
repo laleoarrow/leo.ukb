@@ -129,6 +129,8 @@ leo.table1.step1 <- function(df, id_to_exclude = c("eid", "iri_time"), num_var =
 #' @param showAllLevels Logical, if TRUE, all levels of factor variables are shown.
 #' @param compare_test Logical, if TRUE, performs group comparison (only works when `strata` is not "none").
 #' @param includeNA Logical, if TRUE, includes NAs as a level in categorical variables.
+#' @param labelNA Character or NULL. If not NULL, replaces NA in categorical variables with this label
+#'   (e.g., "Miss Value") and ensures it appears as the **last** level.
 #' @param verbose Logical, if TRUE, prints the table.
 #'
 #' @return Printed table1
@@ -136,8 +138,20 @@ leo.table1.step1 <- function(df, id_to_exclude = c("eid", "iri_time"), num_var =
 #' @importFrom cli cli_alert_success cli_alert_info
 #' @export
 leo.table1.step2 <- function(df, var_all, var_cat, var_non, strata = NULL, var_exact = NULL,
-                             compare_test = F, includeNA = F, showAllLevels = F, verbose = T) {
+                             compare_test = F, includeNA = F, showAllLevels = F,
+                             labelNA = NULL, verbose = T) {
   cli::cli_alert_info("Generating tableone object...")
+
+  # Replace NA in categorical variables with labelNA and force it to the last level
+  if (!is.null(labelNA)) {
+    for (v in intersect(var_cat, names(df))) {
+      if (any(is.na(df[[v]]))) {
+        orig_levels <- unique(as.character(df[[v]][!is.na(df[[v]])]))
+        df[[v]] <- ifelse(is.na(df[[v]]), labelNA, as.character(df[[v]]))
+        df[[v]] <- factor(df[[v]], levels = c(sort(orig_levels), labelNA))
+      }
+    }
+  }
 
   # Build arguments for CreateTableOne
   tbl_args <- list(

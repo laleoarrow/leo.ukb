@@ -13,22 +13,32 @@ Imports:
     broom,
     cli,
     data.table,
+    dagitty,
     dplyr,
     flextable,
     glue,
+    ggdag,
+    ggplot2,
     leo.basic (>= 0.0.1),
     lifecycle,
     mice,
     missRanger,
     nortest,
+    readr,
     rlang,
     stringr,
+    survival,
     tableone,
     tibble,
     tidyr,
     tools,
     VIM,
     xtable
+Suggests:
+    broom.helpers,
+    gtsummary,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
 Remotes: 
     github::laleoarrow/leo.basic
 Depends: 

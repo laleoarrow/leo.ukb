@@ -1,5 +1,97 @@
-# Helper ----
+# Analysis until tools ----
+#' Basic imputation function for missing values
+#'
+#' This function provides multiple methods for imputing missing values in a dataset,
+#' including mean, median, random forest, KNN, and multiple imputation.
+#'
+#' @param data A data frame containing the data with missing values
+#' @param method Imputation method: "mean", "median", "rf" (random forest),
+#'               "knn" (K-nearest neighbors), or "mice" (multiple imputation)
+#' @param ... Additional arguments passed to the specific imputation function
+#'
+#' @return A data frame with missing values imputed
+#' @export
+#' @importFrom dplyr across mutate where
+#' @importFrom stats median
+#' @importFrom VIM kNN
+#' @importFrom missRanger missRanger
+#' @importFrom mice mice complete
+#'
+#' @examples
+#' # Create sample data with missing values
+#' set.seed(123)
+#' sample_data <- data.frame(
+#'   age = c(25, 30, NA, 40, 45),
+#'   score = c(80, NA, 90, 85, NA),
+#'   group = factor(c("A", "B", "A", NA, "B"))
+#' )
+#'
+#' # Mean imputation
+#' leo_impute_na(sample_data, method = "mean")
+#'
+#' # Random forest imputation
+#' leo_impute_na(sample_data, method = "rf")
+leo_impute_na <- function(data, method = "mean", ...) {
+  if (!method %in% c("mean", "median", "rf", "knn", "mice")) {
+    stop("Invalid method. Choose 'mean', 'median', 'rf', 'knn', or 'mice'")
+  }
 
+  # Calculate missing values per column
+  na_before <- colSums(is.na(data))
+  na_columns <- na_before[na_before > 0]
+
+  if (length(na_columns) > 0) {
+    leo_log("Missing values per column (count/percentage):")
+    for (col_name in names(na_columns)) {
+      na_count <- na_columns[col_name]
+      na_pct <- round(na_count / nrow(data) * 100, 1)
+      leo_log("  {col_name}: {na_count}/{nrow(data)} ({na_pct}%)")
+    }
+  } else {
+    leo_log("No missing values found")
+    return(data)
+  }
+
+  # Apply selected imputation method
+  if (method == "mean") {
+    imputed_data <- data %>%
+      dplyr::mutate(dplyr::across(where(is.numeric), ~ifelse(is.na(.), mean(., na.rm = TRUE), .)))
+  } else if (method == "median") {
+    imputed_data <- data %>%
+      dplyr::mutate(dplyr::across(where(is.numeric), ~ifelse(is.na(.), stats::median(., na.rm = TRUE), .)))
+  } else if (method == "rf") {
+    if (!requireNamespace("missRanger", quietly = TRUE)) {
+      stop("Package 'missRanger' required for random forest imputation")
+    }
+    imputed_data <- missRanger::missRanger(data, ...)
+  } else if (method == "knn") {
+    if (!requireNamespace("VIM", quietly = TRUE)) {
+      stop("Package 'VIM' required for KNN imputation")
+    }
+    imputed_data <- VIM::kNN(data, ...)
+  } else if (method == "mice") {
+    if (!requireNamespace("mice", quietly = TRUE)) {
+      stop("Package 'mice' required for multiple imputation")
+    }
+    imputed <- mice::mice(data, ...)
+    imputed_data <- mice::complete(imputed)
+  }
+
+  # Check remaining missing values
+  na_after <- colSums(is.na(imputed_data))
+  remaining_na <- na_after[na_after > 0]
+
+  if (length(remaining_na) > 0) {
+    leo_log("Remaining missing values after imputation:", level = "warning")
+    for (col_name in names(remaining_na)) {
+      leo_log("  {col_name}: {remaining_na[col_name]}", level = "warning")
+    }
+  } else {
+    leo_log("Imputation completed using {method} method")
+  }
+
+  return(imputed_data)
+}
 #' Bin a continuous variable by quantiles
 #'
 #' A lightweight wrapper of `cut()` using quantile-based breaks (equal-frequency).
@@ -159,11 +251,57 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
   ))
 }
 
+# Helper for regression ----
+
+#' Check whether a variable should be treated as continuous or categorical
+#'
+#' @param x Input vector.
+#' @param var_name Character scalar used in messages.
+#' @param var_type One of `"auto"`, `"continuous"`, or `"categorical"`.
+#' @param verbose Logical; whether to print warning messages.
+#' @return Character scalar: `"continuous"` or `"categorical"`.
+#' @examples
+#' leo.ukb:::.check_var_type(c(0.2, 1.1, -0.3), var_name = "prs")
+#' leo.ukb:::.check_var_type(factor(c("Low", "High")), var_name = "group")
+#' leo.ukb:::.check_var_type(c(0, 1, 2, 0, 1), var_name = "code", var_type = "categorical")
+#' @noRd
+.check_var_type <- function(x, var_name = "variable", var_type = c("auto", "continuous", "categorical"), verbose = TRUE) {
+  var_type <- match.arg(var_type)
+  x_non_missing <- stats::na.omit(x)
+  n_unique <- length(unique(x_non_missing))
+  if (var_type == "categorical") {
+    if (n_unique < 2) stop(var_name, " must contain at least 2 non-missing values when var_type = 'categorical'.", call. = FALSE)
+    if (is.factor(x) || is.character(x) || is.logical(x)) return("categorical")
+    if (!is.numeric(x)) stop(var_name, " has an unsupported type for categorical handling.", call. = FALSE)
+    unique_values <- sort(unique(x_non_missing))
+    integer_like <- all(abs(unique_values - round(unique_values)) < 1e-8)
+    if (!integer_like || length(unique_values) > 10) stop(var_name, " looks continuous and cannot be forced to categorical. Convert it to factor() first if this is intentional.", call. = FALSE)
+    return("categorical")
+  }
+  if (var_type == "continuous") {
+    if (is.character(x) || is.factor(x) || is.logical(x)) stop(var_name, " requires a numeric or integer variable when var_type = 'continuous'.", call. = FALSE)
+    return("continuous")
+  }
+  if (is.factor(x) || is.character(x) || is.logical(x)) return("categorical")
+  if (!is.numeric(x)) stop(var_name, " has an unsupported type for auto detection.", call. = FALSE)
+  unique_values <- sort(unique(x_non_missing))
+  integer_like <- length(unique_values) > 1 && all(abs(unique_values - round(unique_values)) < 1e-8)
+  if (integer_like && length(unique_values) <= 5) {
+    leo.basic::leo_log("Exposure '{var_name}' looks like a coded categorical variable ({paste(unique_values, collapse = ', ')}). Convert it to factor() or set x_exp_type = 'categorical' if that is your intent.", level = "warning", verbose = verbose)
+  }
+  "continuous"
+}
+
 #' Helper function to format p-values according to common publication standards
 #'
 #' @param p_value Numeric p-value
 #' @return Formatted p-value string
-format_p_value <- function(p_value) {
+#' @examples
+#' leo.ukb:::.format_p_value(0.2)
+#' leo.ukb:::.format_p_value(0.0314)
+#' leo.ukb:::.format_p_value(0.0002)
+#' @noRd
+.format_p_value <- function(p_value) {
   if (is.na(p_value)) return("NA")
   if (p_value < 0.001) return("<0.001")
   if (p_value < 0.01) return(as.character(round(p_value, 3)))
@@ -171,8 +309,389 @@ format_p_value <- function(p_value) {
   return(as.character(round(p_value, 3)))
 }
 
+#' Normalize model input into a named covariate list
+#'
+#' @param x_cov `NULL`, a character vector, or a list of character vectors.
+#' @param df_colnames Optional vector of available column names for validation.
+#' @return A named list of covariate vectors for downstream regression.
+#' @examples
+#' leo.ukb:::.normalize_model_list(NULL)
+#' leo.ukb:::.normalize_model_list(c("age", "sex"), df_colnames = c("age", "sex", "bmi"))
+#' leo.ukb:::.normalize_model_list(list(NULL, c("age"), c("age", "sex")), df_colnames = c("age", "sex"))
+#' @noRd
+.normalize_model_list <- function(x_cov, df_colnames = NULL) {
+  if (is.null(x_cov)) {
+    model_list <- list(NULL)
+  } else if (is.character(x_cov)) {
+    model_list <- list(x_cov)
+  } else if (is.list(x_cov)) {
+    model_list <- x_cov
+  } else {
+    stop("x_cov must be NULL, a character vector, or a list of character vectors.", call. = FALSE)
+  }
+
+  model_list <- lapply(model_list, function(x) {
+    if (is.null(x)) return(NULL)
+    if (!is.character(x)) stop("Each model in x_cov must be NULL or a character vector.", call. = FALSE)
+    unique(stats::na.omit(x))
+  })
+  names(model_list) <- paste0("model_", seq_along(model_list))
+
+  if (!is.null(df_colnames)) {
+    missing_vars <- lapply(model_list, function(x) setdiff(if (is.null(x)) character(0) else x, df_colnames))
+    bad_models <- which(vapply(missing_vars, length, integer(1)) > 0)
+    if (length(bad_models) > 0) {
+      msg <- paste(vapply(bad_models, function(i) {
+        paste0(names(model_list)[i], " (", paste(missing_vars[[i]], collapse = ", "), ")")
+      }, character(1)), collapse = "; ")
+      stop("Missing covariates in df: ", msg, call. = FALSE)
+    }
+  }
+
+  model_list
+}
+
+#' Prepare a single-exposure Cox regression dataset
+#'
+#' @param df Analysis data frame.
+#' @param y_out Character vector of length 2 giving the event and follow-up time
+#'   column names: `c(event, time)`.
+#' @param x_exp Character scalar giving the exposure column name.
+#' @param x_cov Covariate specification passed to `.normalize_model_list()`;
+#'   each entry should be a covariate column name.
+#' @param min_followup_time Numeric scalar; keep rows with `time > min_followup_time`.
+#'   Default is `0`, which excludes pre-baseline or baseline events when defining
+#'   an incident outcome.
+#' @param event_value Value in the event column that indicates incident events.
+#' @param verbose Logical; whether to print progress messages.
+#' @return A list containing filtered data, model definitions, and analysis metadata.
+#' @examples
+#' df <- data.frame(
+#'   outcome = c(1, 0, 1),
+#'   outcome_time = c(2, 0, 5),
+#'   prs = c(0.2, -0.1, 0.8),
+#'   age = c(50, 60, 55)
+#' )
+#' leo.ukb:::.prepare_cox_regression_data(
+#'   df = df,
+#'   y_out = c("outcome", "outcome_time"),
+#'   x_exp = "prs",
+#'   x_cov = "age",
+#'   min_followup_time = 0,
+#'   verbose = FALSE
+#' )
+#' @noRd
+.prepare_cox_regression_data <- function(df, y_out, x_exp, x_cov = NULL, min_followup_time = 0, event_value = 1, verbose = TRUE) {
+  if (!is.data.frame(df)) stop("df must be a data.frame.", call. = FALSE)
+  if (!is.character(y_out) || length(y_out) != 2) stop("y_out must be a character vector of length 2: c(event, time).", call. = FALSE)
+  if (!all(y_out %in% names(df))) stop("All y_out columns must exist in df.", call. = FALSE)
+  if (!is.character(x_exp) || length(x_exp) != 1) stop("x_exp must be a single column name.", call. = FALSE)
+  if (!x_exp %in% names(df)) stop("x_exp must exist in df.", call. = FALSE)
+  if (!is.numeric(min_followup_time) || length(min_followup_time) != 1) stop("min_followup_time must be a numeric scalar.", call. = FALSE)
+
+  model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
+  event_raw <- df[[y_out[1]]]
+  time_raw <- suppressWarnings(as.numeric(df[[y_out[2]]]))
+  event <- ifelse(is.na(event_raw), NA_integer_, as.integer(as.character(event_raw) == as.character(event_value)))
+
+  base_df <- data.frame(event = event, time = time_raw, exposure = df[[x_exp]], stringsAsFactors = FALSE)
+  covariates <- unique(unlist(model_list, use.names = FALSE))
+  if (length(covariates) > 0) {
+    base_df[covariates] <- df[covariates]
+  }
+
+  n_total <- nrow(base_df)
+  filtered_df <- base_df[!is.na(base_df$time) & base_df$time > min_followup_time, , drop = FALSE]
+  n_after_followup <- nrow(filtered_df)
+
+  leo.basic::leo_log("Cox data prepared: total = {n_total}, after follow-up filter = {n_after_followup}.", verbose = verbose)
+
+  list(
+    data = filtered_df,
+    models = model_list,
+    outcome_name = y_out[1],
+    outcome_time = y_out[2],
+    exposure_name = x_exp,
+    n_total = n_total,
+    n_after_followup = n_after_followup,
+    min_followup_time = min_followup_time,
+    event_value = event_value
+  )
+}
+
+#' Cox regression fitting and formatting helpers
+#'
+#' `leo_cox_regression()` fits one or more Cox proportional hazards models for a
+#' single exposure and incident outcome. `leo_cox_regression_format()` converts
+#' the returned object into a wide summary table, tidy result table, or
+#' `gtsummary` output.
+#'
+#' @param df Data frame containing the outcome, follow-up time, exposure, and covariates.
+#' @param y_out Character vector of length 2 giving the event and follow-up time
+#'   column names: `c(event, time)`.
+#' @param x_exp Character scalar giving the exposure column name.
+#' @param x_cov `NULL`, a character vector of covariate column names, or a list
+#'   of covariate column-name vectors.
+#' @param min_followup_time Numeric scalar; keep rows with `time > min_followup_time`.
+#'   Default is `0`, which excludes pre-baseline or baseline events when defining
+#'   an incident outcome.
+#' @param event_value Value in the event column that indicates incident events.
+#' @param verbose Logical; print progress messages.
+#' @param x_exp_type Exposure type handling for `x_exp`. Use `"auto"` to infer from the input
+#'   type, `"continuous"` to force a numeric Cox term, or `"categorical"` to
+#'   force factor coding. In `"auto"` mode, small integer-coded exposures will
+#'   trigger a warning because they may represent categorical groups.
+#'
+#' @return A `leo_cox_regression` object containing the default wide table in
+#'   `$result`, the underlying tidy rows in `$result_tidy`, model metadata, and
+#'   optional fitted `coxph` objects.
+#' @export
+#' @examples
+#' lung_df <- stats::na.omit(
+#'   dplyr::transmute(
+#'     survival::lung,
+#'     outcome = as.integer(status == 2),
+#'     outcome_censor = time,
+#'     age = age,
+#'     sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+#'     ph.ecog = factor(ph.ecog)
+#'   )
+#' ); head(lung_df)
+#'
+#' model <- list(
+#'   crude = NULL,
+#'   model_a = c("sex"),
+#'   model_b = c("sex", "ph.ecog")
+#' )
+#'
+#' res <- leo_cox_regression(
+#'   df = lung_df,
+#'   y_out = c("outcome", "outcome_censor"),
+#'   x_exp = "age",
+#'   x_cov = model
+#' )
+#'
+#' leo_cox_regression_format(res, style = "wide")
+#' leo_cox_regression_format(res, style = "tidy")
+#' if (requireNamespace("gtsummary", quietly = TRUE) && requireNamespace("broom.helpers", quietly = TRUE)) {
+#'   leo_cox_regression_format(res, style = "gtsummary")
+#' }
+leo_cox_regression <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1,
+                               min_followup_time = 0, x_exp_type = "auto",
+                               verbose = TRUE) {
+  t0 <- Sys.time()
+  if (verbose) cli::cat_rule("Cox Regression", col = "blue")
+  if (! x_exp_type )
+  x_exp_type <- match.arg(x_exp_type)
+
+  # Normalize and validate inputs
+  prep <- .prepare_cox_regression_data(
+    df = df,
+    y_out = y_out,
+    x_exp = x_exp,
+    x_cov = x_cov,
+    min_followup_time = min_followup_time,
+    event_value = event_value,
+    verbose = verbose
+  )
+  if (nrow(prep$data) == 0) stop("No rows remain after follow-up filtering.", call. = FALSE)
+  exposure_type <- .check_var_type(prep$data$exposure, var_name = prep$exposure_name, var_type = x_exp_type, verbose = verbose)
+
+  # Loop over models
+  model_results <- list()
+  fit_results <- list()
+  for (model_name in names(prep$models)) {
+    covariates <- if (is.null(prep$models[[model_name]])) character(0) else prep$models[[model_name]]
+    leo.basic::leo_log("Fitting {model_name} with {if (length(covariates) == 0) 'no covariates (crude model)' else paste(covariates, collapse = ', ')}.", verbose = verbose)
+
+    # Prepare analysis data
+    model_df <- prep$data[, c("event", "time", "exposure", covariates), drop = FALSE]
+    model_df <- stats::na.omit(model_df)
+    if (nrow(model_df) == 0) stop("No complete-case rows remain for ", model_name, ".", call. = FALSE)
+
+    # Fit Cox model
+    if (exposure_type == "categorical") {
+      model_df$exposure <- droplevels(factor(model_df$exposure))
+      if (nlevels(model_df$exposure) < 2) stop("x_exp must contain at least 2 exposure levels after filtering.", call. = FALSE)
+    } else {
+      if (is.character(model_df$exposure) || is.factor(model_df$exposure) || is.logical(model_df$exposure)) {
+        stop("x_exp_type = 'continuous' requires a numeric or integer exposure.", call. = FALSE)
+      }
+      model_df$exposure <- suppressWarnings(as.numeric(model_df$exposure))
+    }
+    rhs <- "exposure"
+    if (length(covariates) > 0) rhs <- c(rhs, paste0("`", covariates, "`"))
+    formula <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs, collapse = " + ")))
+    fit <- survival::coxph(formula = formula, data = model_df)
+    tidy_fit <- broom::tidy(fit, conf.int = TRUE, exponentiate = TRUE)
+    total_case <- sum(model_df$event == 1, na.rm = TRUE)
+    total_control <- sum(model_df$event == 0, na.rm = TRUE)
+    total_years <- sum(model_df$time, na.rm = TRUE)
+    formula_txt <- Reduce(paste, deparse(formula))
+
+    # Extract HR / CI / p-value and build tidy result rows
+    if (!is.factor(model_df$exposure)) {
+      exposure_row <- tidy_fit[tidy_fit$term == "exposure", , drop = FALSE]
+      model_results[[model_name]] <- data.frame(
+        model = model_name,
+        row_id = 1L,
+        expose = prep$exposure_name,
+        outcome = prep$outcome_name,
+        level = NA_character_,
+        Case_N = total_case,
+        Control_N = total_control,
+        Person_years = total_years,
+        HR = exposure_row$estimate[1],
+        HR_CI_l = exposure_row$conf.low[1],
+        HR_CI_u = exposure_row$conf.high[1],
+        p = exposure_row$p.value[1],
+        class = "continue",
+        formula = formula_txt,
+        check.names = FALSE
+      )
+      fit_results[[model_name]] <- fit
+      next
+    }
+
+    levels_x <- levels(model_df$exposure)
+    level_counts <- do.call(rbind, lapply(levels_x, function(level) {
+      level_df <- model_df[model_df$exposure == level, , drop = FALSE]
+      data.frame(
+        level = level,
+        Case_N = sum(level_df$event == 1, na.rm = TRUE),
+        Control_N = sum(level_df$event == 0, na.rm = TRUE),
+        Person_years = sum(level_df$time, na.rm = TRUE)
+      )
+    }))
+    result_df <- data.frame(
+      model = model_name,
+      row_id = seq_along(levels_x),
+      expose = c("Ref", levels_x[-1]),
+      outcome = prep$outcome_name,
+      level = levels_x,
+      Case_N = level_counts$Case_N[match(levels_x, level_counts$level)],
+      Control_N = level_counts$Control_N[match(levels_x, level_counts$level)],
+      Person_years = level_counts$Person_years[match(levels_x, level_counts$level)],
+      HR = c(1, rep(NA_real_, length(levels_x) - 1)),
+      HR_CI_l = c(1, rep(NA_real_, length(levels_x) - 1)),
+      HR_CI_u = c(1, rep(NA_real_, length(levels_x) - 1)),
+      p = c(NA_real_, rep(NA_real_, length(levels_x) - 1)),
+      class = paste0(length(levels_x), "_class"),
+      formula = formula_txt,
+      check.names = FALSE
+    )
+    if (length(levels_x) > 1) {
+      for (i in seq_along(levels_x[-1])) {
+        tidy_row <- tidy_fit[tidy_fit$term == paste0("exposure", levels_x[-1][i]), , drop = FALSE]
+        result_df$HR[i + 1] <- tidy_row$estimate[1]
+        result_df$HR_CI_l[i + 1] <- tidy_row$conf.low[1]
+        result_df$HR_CI_u[i + 1] <- tidy_row$conf.high[1]
+        result_df$p[i + 1] <- tidy_row$p.value[1]
+      }
+    }
+    model_results[[model_name]] <- result_df
+    fit_results[[model_name]] <- fit
+  }
+
+  # Build tidy result rows
+  result_tidy <- do.call(rbind, model_results)
+
+  # Return result object
+  out <- structure(list(
+    result = NULL,
+    result_tidy = result_tidy,
+    data_info = list(
+      n_total = prep$n_total,
+      n_after_followup = prep$n_after_followup,
+      min_followup_time = prep$min_followup_time,
+      event_value = prep$event_value
+    ),
+    fit = fit_results
+  ), class = "leo_cox_regression")
+  out$result <- leo_cox_regression_format(out, style = "wide")
+  leo.basic::leo_log("Cox regression completed for {prep$exposure_name} -> {prep$outcome_name} with {length(prep$models)} model(s).", level = "success", verbose = verbose)
+  out
+}
+
+#' Format a `leo_cox_regression` result
+#'
+#' @rdname leo_cox_regression
+#' @param x Result returned by `leo_cox_regression()`.
+#' @param style One of `"wide"`, `"tidy"`, or `"gtsummary"`.
+#' @section Formatting output:
+#' `leo_cox_regression_format()` returns:
+#' - `"wide"`: a wide summary data frame with one set of HR / CI / p-value
+#'   columns per model.
+#' - `"tidy"`: the row-level tidy result table stored in `x$result_tidy`, with
+#'   formatted display columns added.
+#' - `"gtsummary"`: a `gtsummary` regression table, or a merged `gtsummary`
+#'   table when multiple models are present.
+#'
+#' @export
+leo_cox_regression_format <- function(x, style = "wide") {
+  if (!inherits(x, "leo_cox_regression")) stop("x must be a leo_cox_regression result.", call. = FALSE)
+  if (!style %in% c("wide", "tidy", "gtsummary")) stop("style must be one of 'wide', 'tidy', or 'gtsummary'.", call. = FALSE)
+  switch(style,
+    wide = {
+      if (!is.null(x$result)) return(x$result)
+      result_tidy <- x$result_tidy
+      model_ids <- unique(result_tidy$model)
+      result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_id", "expose", "outcome", "Case_N", "Control_N", "Person_years", "class"), drop = FALSE]
+      for (model_id in model_ids) {
+        model_df <- result_tidy[result_tidy$model == model_id, c("row_id", "HR", "HR_CI_l", "HR_CI_u", "p"), drop = FALSE]
+        model_df$HR <- round(model_df$HR, 3)
+        model_df$`95%_CI` <- ifelse(is.na(model_df$HR_CI_l) | is.na(model_df$HR_CI_u), "NA", paste0(sprintf("%.3f", round(model_df$HR_CI_l, 3)), ", ", sprintf("%.3f", round(model_df$HR_CI_u, 3))))
+        model_df$`P value` <- vapply(model_df$p, .format_p_value, character(1))
+        model_df <- model_df[, c("row_id", "HR", "95%_CI", "P value"), drop = FALSE]
+        names(model_df) <- c("row_id", paste0(model_id, " HR"), paste0(model_id, " 95%_CI"), paste0(model_id, " P value"))
+        if (grepl("^model_[0-9]+$", model_id)) {
+          idx <- sub("^model_", "", model_id)
+          names(model_df)[2:4] <- paste0("model_", idx, c(" HR", " 95%_CI", " P value"))
+        }
+        result_wide <- merge(result_wide, model_df, by = "row_id", all.x = TRUE, sort = FALSE)
+        result_wide <- result_wide[order(result_wide$row_id), , drop = FALSE]
+      }
+      result_wide$row_id <- NULL
+      result_wide
+    },
+    tidy = {
+      result_tidy <- x$result_tidy
+      result_tidy$HR <- round(result_tidy$HR, 3)
+      result_tidy$HR_CI_l <- round(result_tidy$HR_CI_l, 3)
+      result_tidy$HR_CI_u <- round(result_tidy$HR_CI_u, 3)
+      result_tidy$`95%_CI` <- ifelse(is.na(result_tidy$HR_CI_l) | is.na(result_tidy$HR_CI_u), "NA", paste0(sprintf("%.3f", result_tidy$HR_CI_l), ", ", sprintf("%.3f", result_tidy$HR_CI_u)))
+      result_tidy$`P value` <- vapply(result_tidy$p, .format_p_value, character(1))
+      result_tidy
+    },
+    gtsummary = {
+      if (is.null(x$fit) || length(x$fit) == 0) {
+        stop("x does not contain fitted models required for style = 'gtsummary'.", call. = FALSE)
+      }
+      if (!requireNamespace("gtsummary", quietly = TRUE) || !requireNamespace("broom.helpers", quietly = TRUE)) {
+        stop("style = 'gtsummary' requires packages 'gtsummary' and 'broom.helpers'.", call. = FALSE)
+      }
+      tbls <- lapply(x$fit, function(fit) gtsummary::tbl_regression(fit, exponentiate = TRUE))
+      if (length(tbls) == 1) return(tbls[[1]])
+      gtsummary::tbl_merge(tbls = tbls, tab_spanner = paste0("**", names(tbls), "**"))
+    }
+  )
+}
+
 
 # Analyses ----
+
+
+
+
+
+
+
+
+
+
+
+
+
 # Linear regression analysis for PRS vs clinical outcomes
 #' Linear regression analysis
 #' `r lifecycle::badge('experimental')`
@@ -214,7 +733,7 @@ leo_linear_regression <- function(data, y_var, x_var, covariates = NULL,
 
   # Handle missing values
   if (impute_na) {
-    complete_data <- leo.impute_na(complete_data, method = impute_method, ...)
+    complete_data <- leo_impute_na(complete_data, method = impute_method, ...)
     leo_log("Using {impute_method} imputation for {y_var} ~ {x_var}, sample size: {nrow(complete_data)}")
   } else {
     complete_data <- complete_data %>% stats::na.omit()
@@ -310,7 +829,7 @@ leo_regression_result <- function(regression_result, round_digits = 3,
     Beta = round(x_effect$beta, round_digits),
     SE = round(x_effect$se, round_digits),
     `t-value` = round(x_effect$t_value, round_digits),
-    `P-value` = format_p_value(x_effect$p_value)
+    `P-value` = .format_p_value(x_effect$p_value)
   )
 
   # Add confidence intervals if requested
@@ -536,100 +1055,3 @@ leo_logistic_regression <- function(x, y, cov = NULL, x_col = NULL, y_col = NULL
   leo.basic::leo_log("Completed. Processed {length(x_col)} exposure(s). N range: {n_min}–{n_max}.", level = "success", verbose = verbose)
   return(out)
 }
-
-
-# NA process ----
-#' Basic imputation function for missing values
-#'
-#' This function provides multiple methods for imputing missing values in a dataset,
-#' including mean, median, random forest, KNN, and multiple imputation.
-#'
-#' @param data A data frame containing the data with missing values
-#' @param method Imputation method: "mean", "median", "rf" (random forest),
-#'               "knn" (K-nearest neighbors), or "mice" (multiple imputation)
-#' @param ... Additional arguments passed to the specific imputation function
-#'
-#' @return A data frame with missing values imputed
-#' @export
-#' @importFrom dplyr across mutate where
-#' @importFrom stats median
-#' @importFrom VIM kNN
-#' @importFrom missRanger missRanger
-#' @importFrom mice mice complete
-#'
-#' @examples
-#' # Create sample data with missing values
-#' set.seed(123)
-#' sample_data <- data.frame(
-#'   age = c(25, 30, NA, 40, 45),
-#'   score = c(80, NA, 90, 85, NA),
-#'   group = factor(c("A", "B", "A", NA, "B"))
-#' )
-#'
-#' # Mean imputation
-#' leo.impute_na(sample_data, method = "mean")
-#'
-#' # Random forest imputation
-#' leo.impute_na(sample_data, method = "rf")
-leo.impute_na <- function(data, method = "mean", ...) {
-  if (!method %in% c("mean", "median", "rf", "knn", "mice")) {
-    stop("Invalid method. Choose 'mean', 'median', 'rf', 'knn', or 'mice'")
-  }
-
-  # Calculate missing values per column
-  na_before <- colSums(is.na(data))
-  na_columns <- na_before[na_before > 0]
-
-  if (length(na_columns) > 0) {
-    leo_log("Missing values per column (count/percentage):")
-    for (col_name in names(na_columns)) {
-      na_count <- na_columns[col_name]
-      na_pct <- round(na_count / nrow(data) * 100, 1)
-      leo_log("  {col_name}: {na_count}/{nrow(data)} ({na_pct}%)")
-    }
-  } else {
-    leo_log("No missing values found")
-    return(data)
-  }
-
-  # Apply selected imputation method
-  if (method == "mean") {
-    imputed_data <- data %>%
-      dplyr::mutate(dplyr::across(where(is.numeric), ~ifelse(is.na(.), mean(., na.rm = TRUE), .)))
-  } else if (method == "median") {
-    imputed_data <- data %>%
-      dplyr::mutate(dplyr::across(where(is.numeric), ~ifelse(is.na(.), stats::median(., na.rm = TRUE), .)))
-  } else if (method == "rf") {
-    if (!requireNamespace("missRanger", quietly = TRUE)) {
-      stop("Package 'missRanger' required for random forest imputation")
-    }
-    imputed_data <- missRanger::missRanger(data, ...)
-  } else if (method == "knn") {
-    if (!requireNamespace("VIM", quietly = TRUE)) {
-      stop("Package 'VIM' required for KNN imputation")
-    }
-    imputed_data <- VIM::kNN(data, ...)
-  } else if (method == "mice") {
-    if (!requireNamespace("mice", quietly = TRUE)) {
-      stop("Package 'mice' required for multiple imputation")
-    }
-    imputed <- mice::mice(data, ...)
-    imputed_data <- mice::complete(imputed)
-  }
-
-  # Check remaining missing values
-  na_after <- colSums(is.na(imputed_data))
-  remaining_na <- na_after[na_after > 0]
-
-  if (length(remaining_na) > 0) {
-    leo_log("Remaining missing values after imputation:", level = "warning")
-    for (col_name in names(remaining_na)) {
-      leo_log("  {col_name}: {remaining_na[col_name]}", level = "warning")
-    }
-  } else {
-    leo_log("Imputation completed using {method} method")
-  }
-
-  return(imputed_data)
-}
-

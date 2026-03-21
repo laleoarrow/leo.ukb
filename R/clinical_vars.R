@@ -16,13 +16,14 @@
 #' \itemize{
 #'   \item Basics: age, BMI, gender, ethnicity, ethnicity_finer.
 #'   \item Socioeconomic: tdi, education, household_income, household_income_2, career.
+#'   \item Kidney function: eGFR_v2009, eGFR_v2021.
 #'   \item Inflammation: LGI.
 #'   \item Insulin resistance: hba1c, hba1c_percent, eGDR, TyG.
 #'   \item Lifestyle: smoking_status, drinking_status, diet_us, physical_activity, sleep_score.
 #' }
 #'
 #' @param df A dataframe containing the required columns for calculation.
-#' @param types A vector of indicator types, options are "eGDR", "TyG", "sleep_score", "LGI"...
+#' @param types A vector of indicator types, options are "eGDR", "TyG", "eGFR_v2009", "eGFR_v2021", "sleep_score", "LGI"...
 #' @param type_id Logical; if `FALSE`, the function expects semantic column names (e.g. `"age"`, `"BMI"`).
 #'   If `TRUE` (default), UKB field-id style names (e.g. `"p21003_i0"`) are used.
 #' @param remove_assist Logical, whether to remove the assisting columns (default `TRUE`).
@@ -46,7 +47,7 @@
 #'   glucose = c(5.0, 5.5, 6.0)
 #' )
 #' leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"))
-#' @seealso \code{\link{leo_eGDR}}, \code{\link{leo_TyG}} for Insulin Resistance indicators.
+#' @seealso \code{\link{leo_eGFR_v2009}}, \code{\link{leo_eGFR_v2021}}, \code{\link{leo_eGDR}}, \code{\link{leo_TyG}}.
 leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = TRUE, remove_assist = TRUE, remove_other = TRUE, ...) {
   t0 <- Sys.time()
   # Dictionary to map indicator types to required columns and calculation functions
@@ -83,6 +84,13 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
     "career" = list(required_cols     = c("career"),
                     required_cols_ukb = c("p6142_i0"),   # current employment status (instance 0)
                     calc_function     = leo_career),
+    # Kidney function ----
+    "eGFR_v2009" = list(required_cols     = c("gender", "age", "creatinine"),
+                        required_cols_ukb = c("p31", "p21003_i0", "p30700_i0"),
+                        calc_function     = leo_eGFR_v2009),
+    "eGFR_v2021" = list(required_cols     = c("gender", "age", "creatinine"),
+                        required_cols_ukb = c("p31", "p21003_i0", "p30700_i0"),
+                        calc_function     = leo_eGFR_v2021),
     # Inflammation ----
     "LGI" = list(required_cols      = c("crp", "wbc", "platelet", "neutrophil", "lymphocyte"),
                  required_cols_ukb  = c("p30710_i0", "p30000_i0", "p30080_i0", "p30140_i0", "p30120_i0"),
@@ -544,6 +552,121 @@ leo_hba1c_percent <- function(hba1c, ...) {
   hba1c_ifcc <- leo_hba1c(hba1c)
   hba1c_ngsp <- 0.09148 * hba1c_ifcc + 2.152
   return(hba1c_ngsp)
+}
+
+# Kidney function -----
+#' Calculate eGFR by CKD-EPI 2009 (untested)
+#' `r lifecycle::badge('experimental')`
+#'
+#' Estimate glomerular filtration rate (eGFR, mL/min/1.73m^2) using the 2009 CKD-EPI
+#' creatinine equation with sex-specific coefficients. This implementation follows the
+#' sex-only form commonly used in teaching code and does not apply the historical race coefficient.
+#'
+#' @param gender Numeric/character vector for sex, usually from UKB field `p31` (`0` = Female, `1` = Male).
+#' @param age Numeric/character vector for age in years, usually from UKB field `p21003`.
+#' @param creatinine Numeric/character vector for serum creatinine, usually from UKB field `p30700`.
+#' @param creatinine_unit Unit of `creatinine`, either `"umol/L"` (UKB default) or `"mg/dL"`.
+#' @param ... Reserved for future use.
+#'
+#' @return Numeric vector of eGFR values (mL/min/1.73m^2).
+#' @export
+#'
+#' @note
+#' UK Biobank-friendly inputs are `p31`, `p21003_i0`, and `p30700_i0`.
+#' When `creatinine_unit = "umol/L"` (default), creatinine is converted internally to `mg/dL`
+#' by dividing by `88.4`. Use age and creatinine from the same assessment instance when possible.
+#' This function is currently untested on real UKB export files.
+#'
+#' @references
+#' \url{https://www.niddk.nih.gov/research-funding/research-programs/kidney-clinical-research-epidemiology/laboratory/glomerular-filtration-rate-equations/adults/previous}
+#' \url{https://biobank.ndph.ox.ac.uk/ukb/field.cgi?id=31}
+#' \url{https://biobank.ndph.ox.ac.uk/ukb/field.cgi?id=21003}
+#' \url{https://biobank.ndph.ox.ac.uk/ukb/field.cgi?id=30700}
+#'
+#' @examples
+#' leo_eGFR_v2009(gender = c(1, 0), age = c(45, 62), creatinine = c(78.5, 92.3))
+leo_eGFR_v2009 <- function(gender, age, creatinine, creatinine_unit = c("umol/L", "mg/dL"), ...) {
+  creatinine_unit <- match.arg(creatinine_unit)
+  size <- max(length(gender), length(age), length(creatinine))
+  if (!all(c(length(gender), length(age), length(creatinine)) %in% c(1L, size))) stop("`gender`, `age`, and `creatinine` must have the same length or length 1.")
+
+  sex_chr <- trimws(tolower(as.character(gender)))
+  female <- sex_chr %in% c("0", "female", "f")
+  male <- sex_chr %in% c("1", "male", "m")
+  age_num <- suppressWarnings(as.numeric(age))
+  age_num[age_num <= 0] <- NA_real_
+  scr_num <- suppressWarnings(as.numeric(creatinine))
+  scr_num[scr_num <= 0] <- NA_real_
+  scr_mg_dl <- if (creatinine_unit == "umol/L") scr_num / 88.4 else scr_num
+
+  k <- ifelse(female, 0.7, ifelse(male, 0.9, NA_real_))
+  alpha <- ifelse(female, -0.329, ifelse(male, -0.411, NA_real_))
+  sex_multiplier <- ifelse(female, 1.018, ifelse(male, 1, NA_real_))
+  scr_ratio <- scr_mg_dl / k
+  egfr <- 141 * pmin(scr_ratio, 1)^alpha * pmax(scr_ratio, 1)^(-1.209) * 0.993^age_num * sex_multiplier
+  egfr[!female & !male] <- NA_real_
+  egfr[is.nan(egfr) | is.infinite(egfr)] <- NA_real_
+
+  cli::cli_alert_info("Calculating eGFR using CKD-EPI 2009 ({creatinine_unit} -> mg/dL if needed)")
+  leo.basic::leo_log("eGFR v2009 finished for {sum(!is.na(egfr))} records", level = "success")
+  return(egfr)
+}
+
+#' Calculate eGFR by CKD-EPI 2021 (untested)
+#' `r lifecycle::badge('experimental')`
+#'
+#' Estimate glomerular filtration rate (eGFR, mL/min/1.73m^2) using the 2021 CKD-EPI
+#' creatinine equation. This is the race-free creatinine-only equation currently highlighted
+#' by NIDDK for adult eGFR reporting.
+#'
+#' @param gender Numeric/character vector for sex, usually from UKB field `p31` (`0` = Female, `1` = Male).
+#' @param age Numeric/character vector for age in years, usually from UKB field `p21003`.
+#' @param creatinine Numeric/character vector for serum creatinine, usually from UKB field `p30700`.
+#' @param creatinine_unit Unit of `creatinine`, either `"umol/L"` (UKB default) or `"mg/dL"`.
+#' @param ... Reserved for future use.
+#'
+#' @return Numeric vector of eGFR values (mL/min/1.73m^2).
+#' @export
+#'
+#' @note
+#' UK Biobank-friendly inputs are `p31`, `p21003_i0`, and `p30700_i0`.
+#' When `creatinine_unit = "umol/L"` (default), creatinine is converted internally to `mg/dL`
+#' by dividing by `88.4`. Use age and creatinine from the same assessment instance when possible.
+#' This function is currently untested on real UKB export files.
+#'
+#' @references
+#' \url{https://www.niddk.nih.gov/research-funding/research-programs/kidney-clinical-research-epidemiology/laboratory/glomerular-filtration-rate-equations/adults}
+#' \url{https://biobank.ndph.ox.ac.uk/ukb/field.cgi?id=31}
+#' \url{https://biobank.ndph.ox.ac.uk/ukb/field.cgi?id=21003}
+#' \url{https://biobank.ndph.ox.ac.uk/ukb/field.cgi?id=30700}
+#'
+#' @examples
+#' leo_eGFR_v2021(gender = c(1, 0), age = c(45, 62), creatinine = c(78.5, 92.3))
+leo_eGFR_v2021 <- function(gender, age, creatinine, creatinine_unit = c("umol/L", "mg/dL"), ...) {
+  creatinine_unit <- match.arg(creatinine_unit)
+  size <- max(length(gender), length(age), length(creatinine))
+  if (!all(c(length(gender), length(age), length(creatinine)) %in% c(1L, size))) stop("`gender`, `age`, and `creatinine` must have the same length or length 1.")
+
+  sex_chr <- trimws(tolower(as.character(gender)))
+  female <- sex_chr %in% c("0", "female", "f")
+  male <- sex_chr %in% c("1", "male", "m")
+  age_num <- suppressWarnings(as.numeric(age))
+  age_num[age_num <= 0] <- NA_real_
+  scr_num <- suppressWarnings(as.numeric(creatinine))
+  scr_num[scr_num <= 0] <- NA_real_
+  scr_mg_dl <- if (creatinine_unit == "umol/L") scr_num / 88.4 else scr_num
+
+  k <- ifelse(female, 0.7, ifelse(male, 0.9, NA_real_))
+  alpha <- ifelse(female, -0.241, ifelse(male, -0.302, NA_real_))
+  sex_multiplier <- ifelse(female, 1.012, ifelse(male, 1, NA_real_))
+  scr_ratio <- scr_mg_dl / k
+  egfr <- 142 * pmin(scr_ratio, 1)^alpha * pmax(scr_ratio, 1)^(-1.200) * 0.9938^age_num * sex_multiplier
+  egfr[!female & !male] <- NA_real_
+  egfr[is.nan(egfr) | is.infinite(egfr)] <- NA_real_
+
+  cli::cli_alert_info("Calculating eGFR using CKD-EPI 2021 ({creatinine_unit} -> mg/dL if needed)")
+  leo.basic::leo_log("eGFR v2021 finished for {sum(!is.na(egfr))} records", level = "success")
+  return(egfr)
 }
 
 #' Calculate Estimated Glucose Disposal Rate (eGDR)
