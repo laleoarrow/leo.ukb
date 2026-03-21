@@ -37,11 +37,14 @@ Imports:
 Suggests:
     broom.helpers,
     gtsummary,
+    knitr,
+    rmarkdown,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes: 
     github::laleoarrow/leo.basic
 Depends: 
     R (>= 3.5)
+VignetteBuilder: knitr, rmarkdown
 LazyData: true
 URL: https://laleoarrow.github.io/leo.ukb/

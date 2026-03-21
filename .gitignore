@@ -11,6 +11,8 @@ tests/
 project
 tmp/
 output/
+figure/
+figures/
 Output/
 .worktrees/
 
@@ -68,6 +70,8 @@ vignettes/*.pdf
 
 # pkgdown site
 docs/
+docs-site/
+pkgdown/favicon/
 
 # translation temp files
 po/*~
@@ -82,3 +86,5 @@ tmp/
 ^leo\.ukb\.Rproj$
 ^\.Rproj\.user$
 docs
+/doc/
+/Meta/

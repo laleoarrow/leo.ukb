@@ -27,7 +27,10 @@ column names: \code{c(event, time)}.}
 \item{x_exp}{Character scalar giving the exposure column name.}
 
 \item{x_cov}{\code{NULL}, a character vector of covariate column names, or a list
-of covariate column-name vectors.}
+of covariate column-name vectors. All models are fitted on the same
+complete-case cohort defined by \code{y_out}, \code{x_exp}, and all covariates that
+appear in \code{x_cov}. If \code{x_cov} is a named list, those model names are
+preserved in the output columns.}
 
 \item{event_value}{Value in the event column that indicates incident events.}
 
@@ -49,7 +52,7 @@ trigger a warning because they may represent categorical groups.}
 \value{
 A \code{leo_cox_regression} object containing the default wide table in
 \verb{$result}, the underlying tidy rows in \verb{$result_tidy}, model metadata, and
-optional fitted \code{coxph} objects.
+fitted \code{coxph} objects.
 }
 \description{
 \code{leo_cox_regression()} fits one or more Cox proportional hazards models for a
@@ -78,26 +81,36 @@ lung_df <- stats::na.omit(
     outcome_censor = time,
     age = age,
     sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
-    ph.ecog = factor(ph.ecog)
+    ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
   )
 ); head(lung_df)
 
-model <- list(
-  crude = NULL,
-  model_a = c("sex"),
-  model_b = c("sex", "ph.ecog")
+model_cont <- list(
+  "Crude" = NULL,
+  "Model A" = c("sex"),
+  "Model B" = c("sex", "ecog_group")
 )
 
-res <- leo_cox_regression(
-  df = lung_df,
-  y_out = c("outcome", "outcome_censor"),
-  x_exp = "age",
-  x_cov = model
+res_age <- leo_cox_regression(
+  df = lung_df, y_out = c("outcome", "outcome_censor"),
+  x_exp = "age", x_cov = model_cont, verbose = FALSE
+)
+res_age$result
+leo_cox_regression_format(res_age, style = "tidy")
+
+model_cat <- list(
+  "Crude" = NULL,
+  "Model A" = c("sex")
 )
 
-leo_cox_regression_format(res, style = "wide")
-leo_cox_regression_format(res, style = "tidy")
+res_ecog <- leo_cox_regression(
+  df = lung_df, y_out = c("outcome", "outcome_censor"),
+  x_exp = "ecog_group", x_cov = model_cat,
+  x_exp_type = "categorical", verbose = FALSE
+)
+res_ecog$result
+
 if (requireNamespace("gtsummary", quietly = TRUE) && requireNamespace("broom.helpers", quietly = TRUE)) {
-  leo_cox_regression_format(res, style = "gtsummary")
+  leo_cox_regression_format(res_age, style = "gtsummary")
 }
 }

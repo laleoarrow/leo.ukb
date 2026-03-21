@@ -1,0 +1,104 @@
+url: https://laleoarrow.github.io/leo.ukb/
+destination: docs-site
+
+template:
+  bootstrap: 5
+
+articles:
+  - title: Tutorials
+    navbar: Tutorials
+    contents:
+      - clinical-regression
+
+reference:
+  - title: Regression Analyses
+    desc: Unified regression wrappers and formatters for Cox, logistic, and linear models.
+    contents:
+      - leo_cox_regression
+      - leo_cox_regression_format
+      - leo_logistic_regression
+      - leo_logistic_regression_format
+      - leo_linear_regression
+      - leo_linear_regression_format
+
+  - title: Analysis Tools
+    contents:
+      - leo_impute_na
+      - leo_quantile
+      - leo_heterogeneity_p
+
+  - title: Clinical Variables
+    contents:
+      - combine_two_eye
+      - convert_iop
+      - convert_to_logMAR
+      - get_max_date
+      - leo_age
+      - leo_gender
+      - leo_ethnicity
+      - leo_ethnicity_finer
+      - leo_BMI
+      - leo_tdi
+      - leo_education
+      - leo_smoking_status
+      - leo_drinking_status
+      - leo_drinking_consumption
+      - leo_diet_us
+      - leo_sleep_score
+      - leo_physical_activity
+      - leo_household_income
+      - leo_household_income_2
+      - leo_career
+      - leo_hba1c
+      - leo_hba1c_percent
+      - leo_eGFR_v2009
+      - leo_eGFR_v2021
+      - leo_eGDR
+      - leo_LGI
+      - leo_TyG
+      - leo_new_clinical_indicators
+
+  - title: Diagnosis and RAP
+    contents:
+      - dx_login
+      - dx_extract
+      - dx_status
+      - dx_run
+      - diagnosis_process_fo
+      - diagnosis_process_icd
+      - diagnosis_process_icd_multi
+
+  - title: HLA Typing
+    contents:
+      - ukb_hla_clean
+      - ukb_hla_header
+      - ukb_hla_specify
+      - ukb_hla_typing
+
+  - title: DAG Tools
+    contents:
+      - leo_dag
+      - leo_dag_write
+      - leo_dag_write.leo_dag
+
+  - title: Table 1
+    contents:
+      - leo.table1.help
+      - leo.table1.step1
+      - leo.table1.step2
+      - leo.table1.save
+
+navbar:
+  structure:
+    left:
+      - intro
+      - tutorials
+      - reference
+    right:
+      - search
+      - github
+  components:
+    github:
+      icon: fa-github
+      aria-label: GitHub repository
+      href: https://github.com/laleoarrow/leo.ukb

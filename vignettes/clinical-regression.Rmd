@@ -1,0 +1,186 @@
+---
+title: "Clinical Regression Workflows"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Clinical Regression Workflows}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5
+)
+```
+
+This tutorial shows the unified regression interface in `leo.ukb`:
+
+- `leo_cox_regression()` for time-to-event outcomes
+- `leo_logistic_regression()` for binary outcomes
+- `leo_linear_regression()` for continuous outcomes
+
+Across all three functions, the design is intentionally consistent:
+
+- one input data frame
+- one exposure at a time
+- one outcome at a time
+- one named model list reused across crude and adjusted analyses
+- default paper-style wide output in `$result`
+- optional tidy output through the paired formatter function
+
+```{r setup}
+library(leo.ukb)
+```
+
+## Shared model specification
+
+All three regression helpers accept `x_cov` as a named list. Those names are
+preserved in the formatted result table, which makes the final columns more
+readable for manuscript work.
+
+```{r}
+model_list <- list(
+  "Crude" = NULL,
+  "Model A" = c("sex"),
+  "Model B" = c("sex", "bmi_group")
+)
+
+model_list
+```
+
+## Cox regression
+
+For Cox regression, `y_out` is a length-2 character vector:
+
+- the first element is the event column
+- the second element is the follow-up time column
+
+```{r}
+lung_df <- dplyr::transmute(
+  survival::lung,
+  outcome = as.integer(status == 2),
+  outcome_censor = time,
+  age = age,
+  sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+  bmi_group = factor(
+    ph.ecog,
+    levels = 0:3,
+    labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3")
+  )
+)
+
+cox_model <- list(
+  "Crude" = NULL,
+  "Model A" = c("sex"),
+  "Model B" = c("sex", "bmi_group")
+)
+
+res_cox <- leo_cox_regression(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_cov = cox_model,
+  verbose = FALSE
+)
+
+res_cox$result
+```
+
+The default `$result` is the manuscript-style wide table. If you want a long
+table for plotting or batch binding, use the paired formatter:
+
+```{r}
+leo_cox_regression_format(res_cox, style = "tidy")
+```
+
+Categorical exposures can be handled in the same framework by setting
+`x_exp_type = "categorical"` when needed:
+
+```{r}
+res_cox_cat <- leo_cox_regression(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "bmi_group",
+  x_cov = list("Crude" = NULL, "Model A" = c("sex")),
+  x_exp_type = "categorical",
+  verbose = FALSE
+)
+
+res_cox_cat$result
+```
+
+## Logistic regression
+
+For logistic regression, `y_out` is a single binary outcome column name and
+`case_value` defines which value should be treated as the case group.
+
+```{r}
+set.seed(123)
+n <- 240
+
+logi_df <- data.frame(
+  outcome = rbinom(n, 1, 0.35),
+  prs = rnorm(n),
+  sex = factor(sample(c("Male", "Female"), n, replace = TRUE)),
+  bmi_group = factor(
+    sample(c("Low", "Mid", "High"), n, replace = TRUE),
+    levels = c("Low", "Mid", "High")
+  )
+)
+
+res_logi <- leo_logistic_regression(
+  df = logi_df,
+  y_out = "outcome",
+  x_exp = "prs",
+  x_cov = model_list,
+  case_value = 1,
+  verbose = FALSE
+)
+
+res_logi$result
+```
+
+```{r}
+leo_logistic_regression_format(res_logi, style = "tidy")
+```
+
+## Linear regression
+
+For linear regression, `y_out` is a continuous outcome column name and the rest
+of the interface stays the same.
+
+```{r}
+linear_df <- dplyr::transmute(
+  mtcars,
+  outcome = mpg,
+  wt = wt,
+  sex = factor(am, levels = c(0, 1), labels = c("Auto", "Manual")),
+  bmi_group = factor(cyl, levels = c(4, 6, 8), labels = c("Cyl4", "Cyl6", "Cyl8"))
+)
+
+res_linear <- leo_linear_regression(
+  df = linear_df,
+  y_out = "outcome",
+  x_exp = "wt",
+  x_cov = model_list,
+  verbose = FALSE
+)
+
+res_linear$result
+```
+
+```{r}
+leo_linear_regression_format(res_linear, style = "tidy")
+```
+
+## Notes for clinical workflows
+
+- All models are fitted on the same complete-case cohort within each analysis
+  call, so crude and adjusted results remain directly comparable.
+- If rows are removed because of missing values, the functions print a warning
+  and suggest `leo_impute_na()` as a follow-up option.
+- `style = "gtsummary"` is supported for all three regression families when
+  both `gtsummary` and `broom.helpers` are available.

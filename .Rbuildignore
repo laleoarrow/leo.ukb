@@ -11,7 +11,10 @@
 ^README\.md$
 ^_pkgdown\.yml$
 ^docs$
+^docs-site$
 ^pkgdown$
 ^\.github$
 ^\.create_logo\.R$
 ^man/figures/icon_processed\.png$
+^doc$
+^Meta$

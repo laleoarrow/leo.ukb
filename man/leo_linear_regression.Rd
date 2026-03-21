@@ -2,48 +2,91 @@
 % Please edit documentation in R/analyze.R
 \name{leo_linear_regression}
 \alias{leo_linear_regression}
-\title{Linear regression analysis
-\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}}
+\alias{leo_linear_regression_format}
+\title{Linear regression fitting and formatting helpers}
 \usage{
 leo_linear_regression(
-  data,
-  y_var,
-  x_var,
-  covariates = NULL,
-  impute_na = FALSE,
-  impute_method = "mean",
-  ...
+  df,
+  y_out,
+  x_exp,
+  x_cov = NULL,
+  x_exp_type = "auto",
+  verbose = TRUE
 )
+
+leo_linear_regression_format(x, style = "wide")
 }
 \arguments{
-\item{data}{A data frame containing the analysis data}
+\item{df}{Data frame containing the continuous outcome, exposure, and covariates.}
 
-\item{y_var}{The name of the outcome variable (response)}
+\item{y_out}{Character scalar giving the continuous outcome column name.}
 
-\item{x_var}{The name of the predictor variable (PRS)}
+\item{x_exp}{Character scalar giving the exposure column name.}
 
-\item{covariates}{Optional vector of covariate names to adjust for}
+\item{x_cov}{\code{NULL}, a character vector of covariate column names, or a list
+of covariate column-name vectors. All models are fitted on the same
+complete-case cohort defined by \code{y_out}, \code{x_exp}, and all covariates that
+appear in \code{x_cov}. If \code{x_cov} is a named list, those model names are
+preserved in the output columns.}
 
-\item{impute_na}{Logical indicating whether to impute missing values (default: FALSE)}
+\item{x_exp_type}{Exposure type handling for \code{x_exp}. Use \code{"auto"} to infer
+from the input type, \code{"continuous"} to force a numeric linear term, or
+\code{"categorical"} to force factor coding.}
 
-\item{impute_method}{Imputation method to use if impute_na = TRUE}
+\item{verbose}{Logical; print progress messages.}
 
-\item{...}{Additional arguments passed to the imputation function}
+\item{x}{Result returned by \code{leo_linear_regression()}.}
+
+\item{style}{One of \code{"wide"}, \code{"tidy"}, or \code{"gtsummary"}.}
 }
 \value{
-A list containing regression results including model, coefficients, and fit statistics
+A \code{leo_linear_regression} object containing the default wide table in
+\verb{$result}, the underlying tidy rows in \verb{$result_tidy}, model metadata, and
+fitted \code{lm} objects.
 }
 \description{
-This function performs linear regression analysis between PRS and clinical outcomes
-with options for handling missing values through complete-case analysis or imputation.
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
+}
+\details{
+\code{leo_linear_regression()} fits one or more linear regression models for a
+single exposure and continuous outcome. \code{leo_linear_regression_format()}
+converts the returned object into a wide summary table, tidy result table, or
+\code{gtsummary} output.
 }
 \examples{
-# Complete case analysis
-result_cc <- leo_linear_regression(prs_zh8, "va1y", "PRS",
-                                     covariates = c("age_onset", "gender"))
+linear_df <- dplyr::transmute(
+  mtcars,
+  outcome = mpg,
+  wt = wt,
+  am = factor(am, levels = c(0, 1), labels = c("Auto", "Manual")),
+  cyl_group = factor(cyl, levels = c(4, 6, 8), labels = c("Cyl4", "Cyl6", "Cyl8"))
+)
 
-# With mean imputation
-result_imputed <- leo_linear_regression(prs_zh8, "va1y", "PRS",
-                                         covariates = c("age_onset", "gender"),
-                                         impute_na = TRUE, impute_method = "mean")
+model_cont <- list(
+  "Crude" = NULL,
+  "Model A" = c("am"),
+  "Model B" = c("am", "cyl_group")
+)
+
+res_wt <- leo_linear_regression(
+  df = linear_df, y_out = "outcome", x_exp = "wt",
+  x_cov = model_cont, verbose = FALSE
+)
+res_wt$result
+leo_linear_regression_format(res_wt, style = "tidy")
+
+model_cat <- list(
+  "Crude" = NULL,
+  "Model A" = c("am")
+)
+
+res_cyl <- leo_linear_regression(
+  df = linear_df, y_out = "outcome", x_exp = "cyl_group",
+  x_cov = model_cat, x_exp_type = "categorical", verbose = FALSE
+)
+res_cyl$result
+
+if (requireNamespace("gtsummary", quietly = TRUE) && requireNamespace("broom.helpers", quietly = TRUE)) {
+  leo_linear_regression_format(res_wt, style = "gtsummary")
+}
 }

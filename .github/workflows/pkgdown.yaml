@@ -41,14 +41,14 @@ jobs:
           dependencies: '"hard"'
 
       - name: Build site
-        run: pkgdown::build_site_github_pages(new_process = FALSE, install = FALSE)
+        run: pkgdown::build_site_github_pages(dest_dir = "docs-site", new_process = FALSE, install = TRUE)
         shell: Rscript {0}
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
         uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: docs-site
 
   deploy:
     if: github.event_name != 'pull_request'
