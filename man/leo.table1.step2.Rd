@@ -14,6 +14,7 @@ leo.table1.step2(
   compare_test = F,
   includeNA = F,
   showAllLevels = F,
+  labelNA = NULL,
   verbose = T
 )
 }
@@ -35,6 +36,9 @@ leo.table1.step2(
 \item{includeNA}{Logical, if TRUE, includes NAs as a level in categorical variables.}
 
 \item{showAllLevels}{Logical, if TRUE, all levels of factor variables are shown.}
+
+\item{labelNA}{Character or NULL. If not NULL, replaces NA in categorical variables with this label
+(e.g., "Miss Value") and ensures it appears as the \strong{last} level.}
 
 \item{verbose}{Logical, if TRUE, prints the table.}
 }

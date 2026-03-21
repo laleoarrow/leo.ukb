@@ -27,6 +27,11 @@
 remotes::install_github("laleoarrow/leo.ukb")
 ```
 
+## Documentation
+
+- Clinical regression tutorial: [Clinical Regression Workflows](https://laleoarrow.github.io/leo.ukb/articles/clinical-regression.html)
+- Function reference: [Reference index](https://laleoarrow.github.io/leo.ukb/reference/index.html)
+
 ## License
 
 This software is proprietary. All rights reserved. See [LICENSE](LICENSE) for details.

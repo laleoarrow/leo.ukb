@@ -16,7 +16,7 @@ leo_new_clinical_indicators(
 \arguments{
 \item{df}{A dataframe containing the required columns for calculation.}
 
-\item{types}{A vector of indicator types, options are "eGDR", "TyG", "sleep_score", "LGI"...}
+\item{types}{A vector of indicator types, options are "eGDR", "TyG", "eGFR_v2009", "eGFR_v2021", "sleep_score", "LGI"...}
 
 \item{type_id}{Logical; if \code{FALSE}, the function expects semantic column names (e.g. \code{"age"}, \code{"BMI"}).
 If \code{TRUE} (default), UKB field-id style names (e.g. \code{"p21003_i0"}) are used.}
@@ -41,6 +41,7 @@ Supported indicators (use values in \code{types}):
 \itemize{
 \item Basics: age, BMI, gender, ethnicity, ethnicity_finer.
 \item Socioeconomic: tdi, education, household_income, household_income_2, career.
+\item Kidney function: eGFR_v2009, eGFR_v2021.
 \item Inflammation: LGI.
 \item Insulin resistance: hba1c, hba1c_percent, eGDR, TyG.
 \item Lifestyle: smoking_status, drinking_status, diet_us, physical_activity, sleep_score.
@@ -57,5 +58,5 @@ df <- data.frame(
 leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"))
 }
 \seealso{
-\code{\link{leo_eGDR}}, \code{\link{leo_TyG}} for Insulin Resistance indicators.
+\code{\link{leo_eGFR_v2009}}, \code{\link{leo_eGFR_v2021}}, \code{\link{leo_eGDR}}, \code{\link{leo_TyG}}.
 }

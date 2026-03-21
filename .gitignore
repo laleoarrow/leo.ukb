@@ -4,11 +4,17 @@
 data/
 plot/
 log/
+tests/
 *.Rproj
 .DS_Store
 .claude/
 project
 tmp/
+output/
+figure/
+figures/
+Output/
+.worktrees/
 
 # History files
 .Rhistory
@@ -64,6 +70,8 @@ vignettes/*.pdf
 
 # pkgdown site
 docs/
+docs-site/
+pkgdown/favicon/
 
 # translation temp files
 po/*~
@@ -78,3 +86,5 @@ tmp/
 ^leo\.ukb\.Rproj$
 ^\.Rproj\.user$
 docs
+/doc/
+/Meta/

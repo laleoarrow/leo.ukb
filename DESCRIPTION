@@ -13,25 +13,38 @@ Imports:
     broom,
     cli,
     data.table,
+    dagitty,
     dplyr,
     flextable,
     glue,
+    ggdag,
+    ggplot2,
     leo.basic (>= 0.0.1),
     lifecycle,
     mice,
     missRanger,
     nortest,
+    readr,
     rlang,
     stringr,
+    survival,
     tableone,
     tibble,
     tidyr,
     tools,
     VIM,
     xtable
+Suggests:
+    broom.helpers,
+    gtsummary,
+    knitr,
+    rmarkdown,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
 Remotes: 
     github::laleoarrow/leo.basic
 Depends: 
     R (>= 3.5)
+VignetteBuilder: knitr, rmarkdown
 LazyData: true
 URL: https://laleoarrow.github.io/leo.ukb/

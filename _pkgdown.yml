@@ -1,119 +1,104 @@
 url: https://laleoarrow.github.io/leo.ukb/
+destination: docs-site
 
 template:
   bootstrap: 5
-  bootswatch: flatly
-  light-switch: true
-  theme: breeze-light
-  theme-dark: breeze-dark
-  bslib:
-    primary: "#1b4965"
-    secondary: "#4f6d7a"
-    success: "#2a9d8f"
-    info: "#3a86c8"
-    warning: "#f4a261"
-    danger: "#d62828"
-    light: "#f4f8fb"
-    dark: "#0b1d2a"
-    navbar-light-bg: "#1b4965"
-    navbar-dark-bg: "#0b1d2a"
-    base_font:
-      google: "Source Sans 3"
-    heading_font:
-      google: "Inter"
-    code_font:
-      google: "JetBrains Mono"
 
-home:
-  strip_header: false
-  title: leo.ukb
-  description: >
-    A focused internal toolkit for reproducible UK Biobank data processing
-    and analysis.
-  links:
-    - text: UK Biobank
-      href: https://www.ukbiobank.ac.uk/
-    - text: UKB Showcase
-      href: https://biobank.ndph.ox.ac.uk/showcase/
-    - text: GitHub
-      href: https://github.com/laleoarrow/leo.ukb
-
-navbar:
-  structure:
-    left: [home, reference]
-    right: [search, lightswitch, github]
-  components:
-    home:
-      icon: fa-home
-      text: Home
-      href: index.html
-    reference:
-      text: Reference
-      href: reference/index.html
-    github:
-      icon: fab fa-github
-      href: https://github.com/laleoarrow/leo.ukb
-      aria-label: GitHub repository
-
-footer:
-  structure:
-    left: [developed_by]
-    right: [built_with]
+articles:
+  - title: Tutorials
+    navbar: Tutorials
+    contents:
+      - clinical-regression
 
 reference:
-  - title: DNAnexus Interaction
-    desc: Functions for interacting with UK Biobank data via DNAnexus platform
-    contents: starts_with("dx_")
-  - title: Diagnosis & ICD Processing
-    desc: Functions for processing ICD codes and first occurrence data
+  - title: Regression Analyses
+    desc: Unified regression wrappers and formatters for Cox, logistic, and linear models.
     contents:
-      - starts_with("diagnosis_")
-      - get_max_date
-  - title: Statistical Analysis
-    desc: Regression, heterogeneity, and data analysis utilities
+      - leo_cox_regression
+      - leo_cox_regression_format
+      - leo_logistic_regression
+      - leo_logistic_regression_format
+      - leo_linear_regression
+      - leo_linear_regression_format
+
+  - title: Analysis Tools
     contents:
+      - leo_impute_na
       - leo_quantile
       - leo_heterogeneity_p
-      - leo_linear_regression
-      - leo_regression_result
-      - leo_linear_regression_loop
-      - leo_logistic_regression
-      - leo.impute_na
-      - format_p_value
-  - title: Clinical Variables & Lifestyle
-    desc: Functions for processing clinical indicators and lifestyle factors
+
+  - title: Clinical Variables
     contents:
-      - leo_new_clinical_indicators
+      - combine_two_eye
+      - convert_iop
+      - convert_to_logMAR
+      - get_max_date
       - leo_age
-      - leo_BMI
       - leo_gender
       - leo_ethnicity
       - leo_ethnicity_finer
+      - leo_BMI
       - leo_tdi
       - leo_education
-      - leo_career
-      - leo_household_income
-      - leo_household_income_2
-      - leo_LGI
-      - leo_hba1c
-      - leo_hba1c_percent
-      - leo_eGDR
-      - leo_TyG
       - leo_smoking_status
       - leo_drinking_status
       - leo_drinking_consumption
       - leo_diet_us
-      - leo_physical_activity
       - leo_sleep_score
-  - title: Ophthalmology Variables
-    desc: Functions for processing ophthalmology-specific measurements
+      - leo_physical_activity
+      - leo_household_income
+      - leo_household_income_2
+      - leo_career
+      - leo_hba1c
+      - leo_hba1c_percent
+      - leo_eGFR_v2009
+      - leo_eGFR_v2021
+      - leo_eGDR
+      - leo_LGI
+      - leo_TyG
+      - leo_new_clinical_indicators
+
+  - title: Diagnosis and RAP
     contents:
-      - convert_to_logMAR
-      - convert_iop
-      - combine_two_eye
-  - title: Genotype & HLA Typing
-    desc: Functions for processing HLA typing data
-    contents: starts_with("ukb_hla_")
-  - title: Table 1 Generation
-    desc: Functions for creating baseline characteristics tables
-    contents: starts_with("leo.table1")
+      - dx_login
+      - dx_extract
+      - dx_status
+      - dx_run
+      - diagnosis_process_fo
+      - diagnosis_process_icd
+      - diagnosis_process_icd_multi
+
+  - title: HLA Typing
+    contents:
+      - ukb_hla_clean
+      - ukb_hla_header
+      - ukb_hla_specify
+      - ukb_hla_typing
+
+  - title: DAG Tools
+    contents:
+      - leo_dag
+      - leo_dag_write
+      - leo_dag_write.leo_dag
+
+  - title: Table 1
+    contents:
+      - leo.table1.help
+      - leo.table1.step1
+      - leo.table1.step2
+      - leo.table1.save
+
+navbar:
+  structure:
+    left:
+      - intro
+      - tutorials
+      - reference
+    right:
+      - search
+      - github
+  components:
+    github:
+      icon: fa-github
+      aria-label: GitHub repository
+      href: https://github.com/laleoarrow/leo.ukb

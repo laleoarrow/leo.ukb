@@ -2,87 +2,95 @@
 % Please edit documentation in R/analyze.R
 \name{leo_logistic_regression}
 \alias{leo_logistic_regression}
-\title{General looped logistic regression: y (binary) ~ x (+ covariates)}
+\alias{leo_logistic_regression_format}
+\title{Logistic regression fitting and formatting helpers}
 \usage{
 leo_logistic_regression(
-  x,
-  y,
-  cov = NULL,
-  x_col = NULL,
-  y_col = NULL,
-  id_col = "id",
-  y_level = c("0", "1"),
-  y_label = c("0", "1"),
-  scale_x = F,
-  na_action = "na.omit",
+  df,
+  y_out,
+  x_exp,
+  x_cov = NULL,
+  case_value = 1,
+  x_exp_type = "auto",
   verbose = TRUE
 )
+
+leo_logistic_regression_format(x, style = "wide")
 }
 \arguments{
-\item{x}{Data frame (first col = ID) of exposures; remaining columns are candidate predictors (numeric or factor).}
+\item{df}{Data frame containing the binary outcome, exposure, and covariates.}
 
-\item{y}{Data frame (first col = ID) of binary outcome; one column is used (see y_col).
-If numeric, it can be 0/1 or any two distinct numeric codes; if factor/character, must have exactly two levels.}
+\item{y_out}{Character scalar giving the binary outcome column name.}
 
-\item{cov}{Optional data frame (first col = ID) of covariates; remaining columns are covariates.}
+\item{x_exp}{Character scalar giving the exposure column name.}
 
-\item{x_col}{Character vector of exposure column names in x; default: all columns from the 2nd.}
+\item{x_cov}{\code{NULL}, a character vector of covariate column names, or a list
+of covariate column-name vectors. All models are fitted on the same
+complete-case cohort defined by \code{y_out}, \code{x_exp}, and all covariates that
+appear in \code{x_cov}. If \code{x_cov} is a named list, those model names are
+preserved in the output columns.}
 
-\item{y_col}{Outcome column name in y; default: the 2nd column of y.}
+\item{case_value}{Value in \code{y_out} that indicates case status.}
 
-\item{id_col}{Shared ID column name in x/y/cov; default "id".}
+\item{x_exp_type}{Exposure type handling for \code{x_exp}. Use \code{"auto"} to infer
+from the input type, \code{"continuous"} to force a numeric logistic term, or
+\code{"categorical"} to force factor coding.}
 
-\item{y_level}{Two labels found in y that define reference/contrast order (first = reference); default c("0","1").}
+\item{verbose}{Logical; print progress messages.}
 
-\item{y_label}{Descriptive names to print in logs parallel to y_level; default c("0","1").}
+\item{x}{Result returned by \code{leo_logistic_regression()}.}
 
-\item{scale_x}{Logical; if TRUE, scale() numeric exposures; default FALSE.}
-
-\item{na_action}{One of "na.omit" or "na.exclude"; default "na.omit".}
-
-\item{verbose}{Logical; if FALSE, suppress logs; default TRUE.}
+\item{style}{One of \code{"wide"}, \code{"tidy"}, or \code{"gtsummary"}.}
 }
 \value{
-A tibble; each exposure may produce multiple rows when categorical:
-\itemize{
-\item \code{x_name}: exposure variable name
-\item \code{x_type}: "numeric" or "factor"
-\item \code{x_level}: "(continuous)" for numeric; for factor: level name（参考水平标注为 "(ref)"）
-\item \code{ref_level}: reference level（factor 才有；numeric 为 NA）
-\item \code{y_name}: outcome variable name
-\item \code{n}: number of non-missing samples used
-\item \code{r2_mcfadden}: McFadden's pseudo-R² = 1 - (model deviance / null deviance)
-\item \code{beta}, \code{se}, \code{z}, \code{p}: coefficient on logit scale (per 1SD if \code{scale_x=TRUE})
-\item \code{ci_l}, \code{ci_u}: 95\\% CI of \code{beta} (logit scale)
-\item \code{OR}, \code{OR_CI_l}, \code{OR_CI_u}: odds ratio and 95\\% CI（参考水平 OR=1）
-\item \code{p_adj}: BH-adjusted p-value across all rows in this run
-}
+A \code{leo_logistic_regression} object containing the default wide table
+in \verb{$result}, the underlying tidy rows in \verb{$result_tidy}, model metadata,
+and fitted \code{glm} objects.
 }
 \description{
-Loop over multiple exposures (x) to fit logistic regressions against a single binary outcome (y).
-Input data frames must have the first column as individual ID. Covariates are optional.
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
+}
+\details{
+\code{leo_logistic_regression()} fits one or more logistic regression models for a
+single exposure and binary outcome. \code{leo_logistic_regression_format()}
+converts the returned object into a wide summary table, tidy result table, or
+\code{gtsummary} output.
 }
 \examples{
-# --- Example 1: numeric outcome 0/1, numeric exposure (scaled), no covariates ---
-set.seed(10)
-x <- tibble::tibble(id = 1:300, PRS = rnorm(300))
-linpred <- 0.8 * scale(x$PRS)[,1]
-y <- tibble::tibble(id = 1:300, outcome = rbinom(300, 1, prob = stats::plogis(linpred)))
-res1 <- leo_logistic_regression(x = x, y = y, x_col = "PRS", y_col = "outcome",
-                                id_col = "id", scale_x = T,
-                                y_level = c("0","1"), y_label = c("control","case"))
-head(res1)
+set.seed(123)
+n <- 300
+logi_df <- data.frame(
+  outcome = rbinom(n, 1, 0.35),
+  prs = rnorm(n),
+  sex = factor(sample(c("Male", "Female"), n, TRUE)),
+  bmi_group = factor(sample(c("Low", "Mid", "High"), n, TRUE), levels = c("Low", "Mid", "High"))
+)
 
-# --- Example 2: factor exposure with explicit reference level, plus covariates ---
-set.seed(11)
-x2 <- tibble::tibble(id = 1:400,
-                     group = factor(sample(c("A","B","C"), 400, T), levels = c("A","B","C")))  # A is ref
-cov2 <- tibble::tibble(id = 1:400, age = rnorm(400, 50, 10))
-y2  <- tibble::tibble(id = 1:400, outcome = rbinom(400, 1, 0.4))
-res2 <- leo_logistic_regression(x = x2, y = y2, cov = cov2,
-                                x_col = "group", y_col = "outcome",
-                                id_col = "id", scale_x = F,
-                                y_level = c("0","1"), y_label = c("control","case"))
-res2
+model_cont <- list(
+  "Crude" = NULL,
+  "Model A" = c("sex"),
+  "Model B" = c("sex", "bmi_group")
+)
 
+res_prs <- leo_logistic_regression(
+  df = logi_df, y_out = "outcome", x_exp = "prs",
+  x_cov = model_cont, verbose = FALSE
+)
+res_prs$result
+leo_logistic_regression_format(res_prs, style = "tidy")
+
+model_cat <- list(
+  "Crude" = NULL,
+  "Model A" = c("sex")
+)
+
+res_bmi <- leo_logistic_regression(
+  df = logi_df, y_out = "outcome", x_exp = "bmi_group",
+  x_cov = model_cat, x_exp_type = "categorical", verbose = FALSE
+)
+res_bmi$result
+
+if (requireNamespace("gtsummary", quietly = TRUE) && requireNamespace("broom.helpers", quietly = TRUE)) {
+  leo_logistic_regression_format(res_prs, style = "gtsummary")
+}
 }
