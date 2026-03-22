@@ -19,9 +19,18 @@ knitr::opts_chunk$set(
 suppressPackageStartupMessages(library(leo.ukb))
 ```
 
-This tutorial introduces the unified regression interface in `leo.ukb`. The
-goal is simple: once an analysis-ready data frame is prepared, the same grammar
-should work for survival, binary, and continuous outcomes.
+This tutorial walks through the regression toolkit in `leo.ukb` from the point
+of view of a real analysis workflow. The idea is not only to run a model, but
+to organise clinical regression in a way that stays readable, reproducible, and
+easy to extend.
+
+By the end of the tutorial, you will see how to:
+
+- prepare an analysis-ready data frame for each regression family
+- define a clean model hierarchy once and reuse it across analyses
+- obtain paper-style default tables directly from the main functions
+- switch to tidy outputs when the next step is plotting or downstream merging
+- move from a main Cox model to interaction, subgroup, and mediation analyses
 
 The current interface covers:
 
@@ -44,11 +53,14 @@ Across these functions, the design stays deliberately consistent:
 - one shared complete-case cohort within each analysis call
 - one default manuscript-style table in `$result`
 
+In other words, once the data frame is ready, the workflow should feel the
+same even when the outcome type changes.
+
 ## Start with a clear model list
 
 All regression helpers accept `x_cov` as a named list. Those names are carried
 forward into the final table headers, so it is worth defining the model
-hierarchy carefully at the start.
+hierarchy carefully at the start rather than renaming columns later.
 
 ```{r}
 model_list <- list(
@@ -68,7 +80,9 @@ In practice, this means the final output will read naturally as `Crude HR`,
 For Cox models, `y_out` must be `c(event, time)`, where the first column is the
 incident event indicator and the second column is the follow-up time.
 
-We start by building a compact, analysis-ready example data frame:
+We start by building a compact, analysis-ready example data frame. Before
+fitting anything, it is worth looking at the actual table so the required input
+shape is concrete rather than abstract:
 
 ```{r}
 lung_df <- dplyr::transmute(
@@ -112,10 +126,11 @@ res_cox$result
 
 The default output is intentionally paper-oriented: one row for the exposure,
 one block of columns per model, and directly readable `HR`, `95% CI`, and
-`P value`.
+`P value`. In many routine cohort analyses, this is already close to the table
+you would place in the Results section.
 
 When the next step is plotting, row binding, or further programmatic work, the
-paired formatter can return a tidy table:
+paired formatter can return a tidy table instead:
 
 ```{r}
 dplyr::select(
@@ -143,7 +158,8 @@ res_cox_cat$result
 ```
 
 Notice that the output now contains a reference row and one row for each
-exposure level. This is usually the layout needed for manuscript tables.
+exposure level. This is usually the layout needed for manuscript tables and is
+often the most convenient starting point for subgroup-style displays as well.
 
 ## Cox interaction
 
@@ -172,7 +188,7 @@ tables rather than as a standalone endpoint.
 
 ## Cox subgroup
 
-`leo_cox_subgroup()` combines two pieces of information:
+`leo_cox_subgroup()` combines two pieces of information in one workflow:
 
 - subgroup-specific HRs
 - the matching `P for interaction`
@@ -252,7 +268,9 @@ regression tables.
 ## Logistic regression
 
 For logistic regression, `y_out` is a single binary outcome column and
-`case_value` identifies the case group.
+`case_value` identifies the case group. The workflow below mirrors the Cox
+section on purpose, so the switch from HR to OR feels mechanical rather than
+conceptually disruptive.
 
 ```{r}
 set.seed(123)
@@ -294,7 +312,8 @@ same model list logic, same default wide table, different effect measure.
 ## Linear regression
 
 For linear regression, `y_out` is continuous while the rest of the interface
-stays aligned with Cox and logistic workflows.
+stays aligned with Cox and logistic workflows. Once again, the main difference
+is the effect measure rather than the user-facing grammar.
 
 ```{r}
 linear_df <- dplyr::transmute(
@@ -336,3 +355,10 @@ dplyr::select(
   but requires both `gtsummary` and `broom.helpers`.
 - For subgroup analyses, interpret `P for interaction` before
   `P for heterogeneity`.
+
+If you are building a larger project, the easiest pattern is usually:
+
+1. start with `leo_cox()`, `leo_logistic()`, or `leo_linear()`
+2. inspect `$result` for the manuscript-style summary
+3. switch to `*_format(..., style = "tidy")` when you need downstream joins
+4. extend to subgroup, interaction, or mediation only after the main model is stable

@@ -139,7 +139,6 @@ leo_quantile <- function(x, bins = 4, labels = NULL, right = TRUE, include_lowes
 }
 
 #' @title Calculate P-value for Heterogeneity from Subgroup Summary Statistics
-#' `r lifecycle::badge('stable')`
 #' @description This function performs a test for heterogeneity (interaction)
 #'              based on summary statistics (Hazard Ratios and P-values) from
 #'              a subgroup analysis of a Cox model. It uses Cochran's Q test.

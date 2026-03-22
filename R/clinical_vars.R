@@ -969,7 +969,6 @@ leo_diet_us <- function(fresh_fruit, dried_fruit, cooked_veg, salad_veg,
 }
 
 #' Calculate Physical Activity Indicator
-#' `r lifecycle::badge('stable')`
 #'
 #' Here, using IPAQ minutes/week as input, classify regular activity according
 #' to AHA (150/75/equivalent combination) rules:

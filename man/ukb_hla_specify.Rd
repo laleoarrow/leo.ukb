@@ -2,8 +2,7 @@
 % Please edit documentation in R/genotype.R
 \name{ukb_hla_specify}
 \alias{ukb_hla_specify}
-\title{Specify carrier status for given HLA allele(s) in UK Biobank
-\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#stable}{\figure{lifecycle-stable.svg}{options: alt='[Stable]'}}}{\strong{[Stable]}}}
+\title{Specify carrier status for given HLA allele(s) in UK Biobank}
 \usage{
 ukb_hla_specify(res, specify_alleles = "B27")
 }

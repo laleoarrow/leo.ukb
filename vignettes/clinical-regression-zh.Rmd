@@ -21,6 +21,14 @@ suppressPackageStartupMessages(library(leo.ukb))
 
 这篇教程想解决的不是“怎么临时跑一个模型”，而是“怎么把临床回归分析整理成一套稳定、优雅、可复用的工作流”。
 
+你可以把它理解成一篇真正的上手教程，而不是函数清单。  
+读完以后，你应该能自然地把一份 analysis-ready 数据框接到：
+
+- `leo_cox()` 做 Cox 主分析
+- `leo_logistic()` 做二分类结局分析
+- `leo_linear()` 做连续结局分析
+- 再进一步扩展到 interaction、subgroup、mediation
+
 在 `leo.ukb` 里，这套统一接口目前覆盖：
 
 - `leo_cox()`：时间结局 / 生存结局
@@ -42,6 +50,8 @@ suppressPackageStartupMessages(library(leo.ukb))
 - 同一次分析内部共享同一个 complete-case cohort
 - 默认直接返回论文表格风格的 `$result`
 
+也就是说，只要你的数据已经整理成“可以分析”的样子，后面无论是 HR、OR 还是 Beta，使用体验都尽量保持一致。
+
 ## 先把模型层次想清楚
 
 三类回归都接受同样的 `x_cov` 输入形式。  
@@ -57,14 +67,15 @@ model_list <- list(
 model_list
 ```
 
-这一步很值得认真做，因为它决定了你最后表格的可读性。
+这一步很值得认真做，因为它决定了你最后表格的可读性，也决定了你后面是不是还要手工清理表头。
 
 ## Cox 主分析
 
 对 Cox 来说，`y_out` 必须写成 `c(event, time)`：  
 前者是事件列，后者是随访时间列。
 
-先准备一个真正“能拿去分析”的数据框：
+先准备一个真正“能拿去分析”的数据框。  
+这里先看一下数据长什么样，后面读函数接口时就不会觉得抽象：
 
 ```{r}
 lung_df <- dplyr::transmute(
@@ -112,7 +123,9 @@ res_cox$result
 - 一组模型一组列
 - 直接给 `HR`、`95% CI`、`P value`
 
-如果你下一步还要继续拼图、拼表、批量合并结果，那么 tidy 风格更方便：
+很多 cohort study 的主结果，到这一步其实已经接近可以直接写进结果表了。
+
+如果你下一步还要继续拼图、拼表、批量合并结果，那么 tidy 风格会更方便：
 
 ```{r}
 dplyr::select(
@@ -240,7 +253,8 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
 
 ## Logistic 回归
 
-对 logistic 来说，`y_out` 是单个二分类结局列，`case_value` 指定哪个值代表病例。
+对 logistic 来说，`y_out` 是单个二分类结局列，`case_value` 指定哪个值代表病例。  
+这一段故意和 Cox 的结构保持平行，这样你会更容易感受到这套接口的一致性。
 
 ```{r}
 set.seed(123)
@@ -285,7 +299,8 @@ dplyr::select(
 
 ## Linear 回归
 
-对 linear 来说，`y_out` 是连续结局列，其余接口仍然保持一致。
+对 linear 来说，`y_out` 是连续结局列，其余接口仍然保持一致。  
+也就是说，真正变化的主要是 effect measure，而不是工作流本身。
 
 ```{r}
 linear_df <- dplyr::transmute(
@@ -326,3 +341,10 @@ dplyr::select(
 - 如果缺失值导致删行，函数会明确提示删掉了多少行，并给出 `leo_impute_na()` 的建议写法。
 - `style = "gtsummary"` 目前对 Cox、logistic、linear 都可用，但要求同时安装 `gtsummary` 和 `broom.helpers`。
 - 对 subgroup 结果，优先解读 `P for interaction`，再看 `P for heterogeneity`。
+
+如果你是第一次把这套接口接进自己的项目，最稳的顺序通常是：
+
+1. 先把主分析 `leo_cox()` / `leo_logistic()` / `leo_linear()` 跑通
+2. 先看默认 `$result`，确认表头和 effect measure 是否符合预期
+3. 需要继续程序化处理时，再切到 `*_format(..., style = "tidy")`
+4. 只有当主分析稳定之后，再进入 subgroup、interaction、mediation

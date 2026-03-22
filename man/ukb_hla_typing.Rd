@@ -2,8 +2,7 @@
 % Please edit documentation in R/genotype.R
 \name{ukb_hla_typing}
 \alias{ukb_hla_typing}
-\title{HLA Genotyping in UKB
-\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#stable}{\figure{lifecycle-stable.svg}{options: alt='[Stable]'}}}{\strong{[Stable]}}}
+\title{HLA Genotyping in UKB}
 \usage{
 ukb_hla_typing(df, header, col = "p22182", q_threshold = 0.7)
 }

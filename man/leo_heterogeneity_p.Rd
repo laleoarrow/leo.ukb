@@ -2,8 +2,7 @@
 % Please edit documentation in R/analyze.R
 \name{leo_heterogeneity_p}
 \alias{leo_heterogeneity_p}
-\title{Calculate P-value for Heterogeneity from Subgroup Summary Statistics
-\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#stable}{\figure{lifecycle-stable.svg}{options: alt='[Stable]'}}}{\strong{[Stable]}}}
+\title{Calculate P-value for Heterogeneity from Subgroup Summary Statistics}
 \usage{
 leo_heterogeneity_p(hrs, p_values, subgroup_names = NULL)
 }

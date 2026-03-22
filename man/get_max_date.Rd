@@ -2,8 +2,7 @@
 % Please edit documentation in R/diagnosis_icd_fo.R
 \name{get_max_date}
 \alias{get_max_date}
-\title{Find the max date in given date columns
-\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#stable}{\figure{lifecycle-stable.svg}{options: alt='[Stable]'}}}{\strong{[Stable]}}}
+\title{Find the max date in given date columns}
 \usage{
 get_max_date(df, date_columns)
 }
