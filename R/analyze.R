@@ -611,7 +611,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
         level = NA_character_,
         case_n = total_case,
         control_n = total_control,
-        person_years = total_years,
+        person_time = total_years,
         hr = exposure_row$estimate[1],
         hr_ci_l = exposure_row$conf.low[1],
         hr_ci_u = exposure_row$conf.high[1],
@@ -631,7 +631,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
         level = level,
         Case_N = sum(level_df$event == 1, na.rm = TRUE),
         Control_N = sum(level_df$event == 0, na.rm = TRUE),
-        Person_years = sum(level_df$time, na.rm = TRUE)
+        Person_time = sum(level_df$time, na.rm = TRUE)
       )
     }))
     result_df <- data.frame(
@@ -642,7 +642,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
       level = levels_x,
       case_n = level_counts$Case_N[match(levels_x, level_counts$level)],
       control_n = level_counts$Control_N[match(levels_x, level_counts$level)],
-      person_years = level_counts$Person_years[match(levels_x, level_counts$level)],
+      person_time = level_counts$Person_time[match(levels_x, level_counts$level)],
       hr = c(1, rep(NA_real_, length(levels_x) - 1)),
       hr_ci_l = c(1, rep(NA_real_, length(levels_x) - 1)),
       hr_ci_u = c(1, rep(NA_real_, length(levels_x) - 1)),
@@ -709,8 +709,8 @@ leo_cox_format <- function(x, style = "wide") {
       if (!is.null(x$result)) return(x$result)
       result_tidy <- x$result_tidy
       model_ids <- unique(result_tidy$model)
-      result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_id", "exposure", "outcome", "case_n", "control_n", "person_years", "exposure_class"), drop = FALSE]
-      names(result_wide) <- c("row_id", "Exposure", "Outcome", "Case N", "Control N", "Person-years", "Class")
+      result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_id", "exposure", "outcome", "case_n", "control_n", "person_time", "exposure_class"), drop = FALSE]
+      names(result_wide) <- c("row_id", "Exposure", "Outcome", "Case N", "Control N", "Person-time", "Class")
       for (model_id in model_ids) {
         model_df <- result_tidy[result_tidy$model == model_id, c("row_id", "hr", "hr_ci_l", "hr_ci_u", "p_value"), drop = FALSE]
         model_df$hr <- round(model_df$hr, 3)
@@ -727,13 +727,13 @@ leo_cox_format <- function(x, style = "wide") {
     },
     tidy = {
       result_tidy <- x$result_tidy
-      result_out <- result_tidy[, c("model", "exposure", "outcome", "level", "case_n", "control_n", "person_years"), drop = FALSE]
+      result_out <- result_tidy[, c("model", "exposure", "outcome", "level", "case_n", "control_n", "person_time"), drop = FALSE]
       result_out$HR <- round(result_tidy$hr, 3)
       result_out$`95% CI` <- ifelse(is.na(result_tidy$hr_ci_l) | is.na(result_tidy$hr_ci_u), "NA", paste0(sprintf("%.3f", round(result_tidy$hr_ci_l, 3)), ", ", sprintf("%.3f", round(result_tidy$hr_ci_u, 3))))
       result_out$`P value` <- vapply(result_tidy$p_value, .format_p_value, character(1))
       result_out$Class <- result_tidy$exposure_class
       result_out$Formula <- result_tidy$formula
-      names(result_out)[1:7] <- c("Model", "Exposure", "Outcome", "Level", "Case N", "Control N", "Person-years")
+      names(result_out)[1:7] <- c("Model", "Exposure", "Outcome", "Level", "Case N", "Control N", "Person-time")
       rownames(result_out) <- NULL
       result_out
     },
@@ -858,7 +858,7 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_v
       n = nrow(model_df),
       case_n = sum(model_df$event == 1, na.rm = TRUE),
       control_n = sum(model_df$event == 0, na.rm = TRUE),
-      person_years = sum(model_df$time, na.rm = TRUE),
+      person_time = sum(model_df$time, na.rm = TRUE),
       interaction_df = unname(anova_res[2, "Df"]),
       p_interaction = p_interaction,
       exposure_class = if (is.factor(model_df$exposure)) if (nlevels(model_df$exposure) == 2) "Binary" else paste0("Categorical (", nlevels(model_df$exposure), " levels)") else "Continuous",
@@ -870,8 +870,8 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_v
   }
   result_tidy <- do.call(rbind, result_rows)
   rownames(result_tidy) <- NULL
-  result <- result_tidy[, c("model", "exposure", "interaction", "n", "case_n", "control_n", "person_years", "interaction_df", "p_interaction", "exposure_class", "interaction_class"), drop = FALSE]
-  names(result) <- c("Model", "Exposure", "Interaction", "N", "Case N", "Control N", "Person-years", "Interaction DF", "P for interaction", "Exposure class", "Interaction class")
+  result <- result_tidy[, c("model", "exposure", "interaction", "n", "case_n", "control_n", "person_time", "interaction_df", "p_interaction", "exposure_class", "interaction_class"), drop = FALSE]
+  names(result) <- c("Model", "Exposure", "Interaction", "N", "Case N", "Control N", "Person-time", "Interaction DF", "P for interaction", "Exposure class", "Interaction class")
   result$`P for interaction` <- vapply(result$`P for interaction`, .format_p_value, character(1))
   out <- structure(list(result = result, result_tidy = result_tidy, fit_main = fit_main, fit_inter = fit_inter), class = "leo_cox_interaction")
   leo.basic::leo_log("Cox interaction analysis completed for {x_exp} x {x_inter} with {length(model_list)} model(s).", level = "success", verbose = verbose)
@@ -1062,8 +1062,8 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
       if (!is.null(x$result)) return(x$result)
       result_tidy <- x$result_tidy
       model_ids <- unique(result_tidy$model)
-      result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_key", "subgroup", "subgroup_level", "subgroup_n", "exposure", "outcome", "case_n", "control_n", "person_years", "exposure_class"), drop = FALSE]
-      names(result_wide) <- c("row_key", "Subgroup", "Level", "N", "Exposure", "Outcome", "Case N", "Control N", "Person-years", "Class")
+      result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_key", "subgroup", "subgroup_level", "subgroup_n", "exposure", "outcome", "case_n", "control_n", "person_time", "exposure_class"), drop = FALSE]
+      names(result_wide) <- c("row_key", "Subgroup", "Level", "N", "Exposure", "Outcome", "Case N", "Control N", "Person-time", "Class")
       for (model_id in model_ids) {
         model_df <- result_tidy[result_tidy$model == model_id, c("row_key", "hr", "hr_ci_l", "hr_ci_u", "p_value", "p_interaction", "p_heterogeneity"), drop = FALSE]
         model_df$hr <- round(model_df$hr, 3)
@@ -1082,7 +1082,7 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
     },
     tidy = {
       result_tidy <- x$result_tidy
-      result_out <- result_tidy[, c("subgroup", "subgroup_level", "subgroup_n", "model", "exposure", "outcome", "level", "case_n", "control_n", "person_years"), drop = FALSE]
+      result_out <- result_tidy[, c("subgroup", "subgroup_level", "subgroup_n", "model", "exposure", "outcome", "level", "case_n", "control_n", "person_time"), drop = FALSE]
       result_out$HR <- round(result_tidy$hr, 3)
       result_out$`95% CI` <- ifelse(is.na(result_tidy$hr_ci_l) | is.na(result_tidy$hr_ci_u), "NA", paste0(sprintf("%.3f", round(result_tidy$hr_ci_l, 3)), ", ", sprintf("%.3f", round(result_tidy$hr_ci_u, 3))))
       result_out$`P value` <- vapply(result_tidy$p_value, .format_p_value, character(1))
@@ -1090,7 +1090,7 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
       result_out$`P for heterogeneity` <- vapply(result_tidy$p_heterogeneity, .format_p_value, character(1))
       result_out$Class <- result_tidy$exposure_class
       result_out$Formula <- result_tidy$formula
-      names(result_out)[1:10] <- c("Subgroup", "Level", "N", "Model", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
+      names(result_out)[1:10] <- c("Subgroup", "Level", "N", "Model", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-time")
       rownames(result_out) <- NULL
       result_out
     }
@@ -1263,7 +1263,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     med_coef$n <- nrow(model_df)
     med_coef$case_n <- sum(model_df$event == 1, na.rm = TRUE)
     med_coef$control_n <- sum(model_df$event == 0, na.rm = TRUE)
-    med_coef$person_years <- sum(model_df$time, na.rm = TRUE)
+    med_coef$person_time <- sum(model_df$time, na.rm = TRUE)
     med_coef$mediator_model <- mediator_mode_use
     med_coef$a0 <- a0_use
     med_coef$a1 <- a1_use
@@ -1273,7 +1273,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
 
   result_tidy <- do.call(rbind, result_rows)
   rownames(result_tidy) <- NULL
-  result <- result_tidy[, c("model", "effect", "exposure", "mediator", "outcome", "n", "case_n", "control_n", "person_years", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mediator_model"), drop = FALSE]
+  result <- result_tidy[, c("model", "effect", "exposure", "mediator", "outcome", "n", "case_n", "control_n", "person_time", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mediator_model"), drop = FALSE]
   result$Estimate <- ifelse(result$effect == "pm", round(result$est, 3), round(result$exp.est, 3))
   result$`95% CI` <- ifelse(
     result$effect == "pm",
@@ -1281,8 +1281,8 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     paste0(sprintf("%.3f", round(result$exp.lower, 3)), ", ", sprintf("%.3f", round(result$exp.upper, 3)))
   )
   result$`P value` <- vapply(result$p, .format_p_value, character(1))
-  result <- result[, c("model", "effect", "exposure", "mediator", "outcome", "n", "case_n", "control_n", "person_years", "Estimate", "95% CI", "P value", "mediator_model"), drop = FALSE]
-  names(result)[1:9] <- c("Model", "Effect", "Exposure", "Mediator", "Outcome", "N", "Case N", "Control N", "Person-years")
+  result <- result[, c("model", "effect", "exposure", "mediator", "outcome", "n", "case_n", "control_n", "person_time", "Estimate", "95% CI", "P value", "mediator_model"), drop = FALSE]
+  names(result)[1:9] <- c("Model", "Effect", "Exposure", "Mediator", "Outcome", "N", "Case N", "Control N", "Person-time")
   names(result)[13] <- "Mediator model"
   out <- structure(list(result = result, result_tidy = result_tidy, fit = fit_results), class = "leo_cox_mediation")
   leo.basic::leo_log("Cox mediation analysis completed for {x_exp} -> {x_med} -> {y_out[1]} with {length(model_list)} model(s).", level = "success", verbose = verbose)

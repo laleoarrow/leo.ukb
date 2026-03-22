@@ -159,6 +159,10 @@ In routine cohort analyses, this is often close to the table that ultimately
 appears in the main results section. It can therefore serve both as a quick
 analytic check and as the starting point for presentation.
 
+The cumulative follow-up column is reported as `Person-time`, meaning the total
+participant time in the original unit of the input time variable. In this
+teaching example, `survival::lung` records time in days rather than years.
+
 # Use tidy output when you need programmable rows
 
 The wide table is convenient for reading. The tidy table is better when the

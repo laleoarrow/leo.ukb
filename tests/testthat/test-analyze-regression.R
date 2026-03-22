@@ -50,6 +50,8 @@ test_that("leo_cox keeps named model columns and tidy models aligned", {
   expect_s3_class(res, "leo_cox")
   expect_equal(unique(res$result_tidy$model), names(model))
   expect_true(all(c("Crude HR", "Model A HR", "Model B HR") %in% names(res$result)))
+  expect_true("Person-time" %in% names(res$result))
+  expect_false("Person-years" %in% names(res$result))
   expect_equal(res$data_info$n_after_followup, res$data_info$n_after_complete_case)
 })
 
@@ -70,6 +72,7 @@ test_that("leo_cox_interaction returns one row per model with finite interaction
   expect_equal(res$result$Model, names(model))
   expect_equal(length(res$fit_main), length(model))
   expect_equal(length(res$fit_inter), length(model))
+  expect_true("Person-time" %in% names(res$result))
   expect_true(all(is.finite(res$result_tidy$p_interaction)))
   expect_equal(length(unique(res$result_tidy$n)), 1L)
 })
@@ -91,6 +94,7 @@ test_that("leo_cox_subgroup propagates custom event_value into nested subgroup f
 
   expect_s3_class(res, "leo_cox_subgroup")
   expect_true(all(res$result_tidy$case_n > 0))
+  expect_true("Person-time" %in% names(res$result))
   expect_true(all(c("Crude P for interaction", "Crude P for heterogeneity") %in% names(res$result)))
 })
 
@@ -130,6 +134,7 @@ test_that("leo_cox_mediation fits binary mediator models across multiple covaria
   expect_s3_class(res, "leo_cox_mediation")
   expect_equal(sort(unique(res$result$Model)), sort(names(model)))
   expect_equal(nrow(res$result), 14L)
+  expect_true("Person-time" %in% names(res$result))
   expect_true(all(res$result$`Mediator model` == "logistic"))
   expect_true(all(c("cde", "pnde", "tnie", "tnde", "pnie", "te", "pm") %in% res$result$Effect))
 })
