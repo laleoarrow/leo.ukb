@@ -41,7 +41,7 @@ jobs:
           dependencies: '"hard"'
 
       - name: Build site
-        run: pkgdown::build_site_github_pages(dest_dir = "docs-site", new_process = FALSE, install = TRUE)
+        run: source("scripts/build_pkgdown_site.R")
         shell: Rscript {0}
 
       - name: Upload Pages artifact

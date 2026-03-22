@@ -66,7 +66,11 @@ dag_node_roles <- function(dag_obj, exposure_name, outcome_name) {
 # x <- leo_dag(dag_t2d_total, exposure_name, outcome_name, dag_name = "t2d_total")
 # print(x)
 # plot(x)
-# leo_dag_write(x, figure_dir = "figure", output_dir = "output")
+# leo_dag_write(
+#   x,
+#   figure_dir = file.path(tempdir(), "figure"),
+#   output_dir = file.path(tempdir(), "output")
+# )
 leo_dag <- function(dag_obj, exposure_name, outcome_name, dag_name = NULL, node_roles_list = NULL,
                     labels = NULL, layout = "kk", use_existing_coords = F, seed = 2026) {
   required_pkgs <- c("dagitty", "ggdag", "ggplot2", "dplyr", "tibble")
@@ -195,14 +199,20 @@ leo_dag_write <- function(x, ...) {
 #' Write a `leo_dag` object to disk
 #'
 #' @inheritParams leo_dag_write
-#' @param figure_dir Figure output directory.
-#' @param output_dir Table output directory.
+#' @param figure_dir Figure output directory. Must be provided explicitly.
+#' @param output_dir Table output directory. Must be provided explicitly.
 #' @param width Figure width.
 #' @param height Figure height.
 #' @return Invisibly returns output file paths.
 #' @export
-leo_dag_write.leo_dag <- function(x, figure_dir = "figure/dag", output_dir = "output/dag", width = 8, height = 6, ...) {
+leo_dag_write.leo_dag <- function(x, figure_dir, output_dir, width = 8, height = 6, ...) {
   if (!requireNamespace("readr", quietly = T)) stop("Missing package(s): readr", call. = F)
+  if (missing(figure_dir) || is.null(figure_dir) || !nzchar(figure_dir)) {
+    stop("`figure_dir` must be provided explicitly, e.g. `leo_dag_write(x, figure_dir = file.path(tempdir(), \"figure\"), output_dir = ...)`.", call. = F)
+  }
+  if (missing(output_dir) || is.null(output_dir) || !nzchar(output_dir)) {
+    stop("`output_dir` must be provided explicitly, e.g. `leo_dag_write(x, figure_dir = ..., output_dir = file.path(tempdir(), \"output\"))`.", call. = F)
+  }
   dir.create(figure_dir, recursive = T, showWarnings = F)
   dir.create(output_dir, recursive = T, showWarnings = F)
 

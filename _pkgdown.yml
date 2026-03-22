@@ -3,23 +3,30 @@ destination: docs-site
 
 template:
   bootstrap: 5
+  light-switch: true
+  theme: a11y-light
+  theme-dark: a11y-dark
 
 articles:
   - title: Tutorials
-    navbar: Tutorials
     contents:
       - clinical-regression
+      - clinical-regression-zh
 
 reference:
   - title: Regression Analyses
     desc: Unified regression wrappers and formatters for Cox, logistic, and linear models.
     contents:
-      - leo_cox_regression
-      - leo_cox_regression_format
-      - leo_logistic_regression
-      - leo_logistic_regression_format
-      - leo_linear_regression
-      - leo_linear_regression_format
+      - leo_cox
+      - leo_cox_format
+      - leo_cox_interaction
+      - leo_cox_subgroup
+      - leo_cox_subgroup_format
+      - leo_cox_mediation
+      - leo_logistic
+      - leo_logistic_format
+      - leo_linear
+      - leo_linear_format
 
   - title: Analysis Tools
     contents:
@@ -92,12 +99,20 @@ navbar:
   structure:
     left:
       - intro
-      - articles
+      - tutorial_en
+      - tutorial_zh
       - reference
     right:
       - search
       - github
+      - lightswitch
   components:
+    tutorial_en:
+      text: Tutorial
+      href: articles/clinical-regression.html
+    tutorial_zh:
+      text: 中文教程
+      href: articles/clinical-regression-zh.html
     github:
       icon: fa-github
       aria-label: GitHub repository

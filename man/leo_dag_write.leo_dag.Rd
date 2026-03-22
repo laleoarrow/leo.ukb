@@ -4,21 +4,14 @@
 \alias{leo_dag_write.leo_dag}
 \title{Write a \code{leo_dag} object to disk}
 \usage{
-\method{leo_dag_write}{leo_dag}(
-  x,
-  figure_dir = "figure/dag",
-  output_dir = "output/dag",
-  width = 8,
-  height = 6,
-  ...
-)
+\method{leo_dag_write}{leo_dag}(x, figure_dir, output_dir, width = 8, height = 6, ...)
 }
 \arguments{
 \item{x}{A \code{leo_dag} object.}
 
-\item{figure_dir}{Figure output directory.}
+\item{figure_dir}{Figure output directory. Must be provided explicitly.}
 
-\item{output_dir}{Table output directory.}
+\item{output_dir}{Table output directory. Must be provided explicitly.}
 
 \item{width}{Figure width.}
 

@@ -9,11 +9,13 @@
 ^\.worktrees$
 ^\.gitignore$
 ^project$
+^AGENTS\.md$
 ^README\.md$
 ^_pkgdown\.yml$
 ^docs$
 ^docs-site$
 ^pkgdown$
+^scripts$
 ^\.github$
 ^\.create_logo\.R$
 ^man/figures/icon_processed\.png$
