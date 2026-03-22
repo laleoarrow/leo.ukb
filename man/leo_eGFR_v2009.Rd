@@ -2,8 +2,7 @@
 % Please edit documentation in R/clinical_vars.R
 \name{leo_eGFR_v2009}
 \alias{leo_eGFR_v2009}
-\title{Calculate eGFR by CKD-EPI 2009 (untested)
-\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}}
+\title{Calculate eGFR by CKD-EPI 2009 (untested)}
 \usage{
 leo_eGFR_v2009(
   gender,
