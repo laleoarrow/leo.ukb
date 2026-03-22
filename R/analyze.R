@@ -1209,6 +1209,9 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
       )
       if (is.null(fit_sub)) next
       sub_rows <- fit_sub$result_tidy
+      sub_rows$exposure <- x_exp
+      sub_rows$outcome <- y_out[1]
+      sub_rows$level[is.na(sub_rows$level) & sub_rows$exposure_class == "Continuous"] <- "Per unit increase"
       sub_rows$subgroup <- subgroup_var
       sub_rows$subgroup_level <- as.character(subgroup_level)
       sub_rows$subgroup_n <- nrow(sub_df)

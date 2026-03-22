@@ -236,6 +236,24 @@ test_that("leo_cox_subgroup can optionally append heterogeneity p values", {
   expect_true("P for heterogeneity" %in% names(res$result))
 })
 
+test_that("leo_cox_subgroup preserves original labels for continuous exposures", {
+  lung_df <- make_lung_cox_df()
+  model <- list("Crude" = NULL, "Model A" = c("ecog_group"))
+
+  res <- leo_cox_subgroup(
+    df = lung_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "age",
+    x_subgroup = "sex",
+    x_cov = model,
+    verbose = FALSE
+  )
+
+  expect_true(all(res$result$Exposure == "age"))
+  expect_true(all(res$result$Outcome == "outcome"))
+  expect_true(all(res$result$`Exposure level` == "Per unit increase"))
+})
+
 test_that("leo_cox_mediation fits binary mediator models across multiple covariate models", {
   skip_if_not_installed("regmedint")
   med_df <- make_mediation_df()
