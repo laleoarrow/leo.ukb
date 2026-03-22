@@ -36,9 +36,22 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: https://cran.r-project.org/src/contrib/Archive/pkgdown/pkgdown_2.1.3.tar.gz, any::devtools, local::.
+          extra-packages: any::devtools, any::remotes, local::.
           needs: website
           dependencies: '"hard"'
+
+      - name: Pin pkgdown version
+        run: |
+          remotes::install_version(
+            package = "pkgdown",
+            version = "2.1.3",
+            repos = "https://cloud.r-project.org",
+            upgrade = "never",
+            dependencies = FALSE,
+            quiet = TRUE
+          )
+          cat(as.character(packageVersion("pkgdown")), "\n")
+        shell: Rscript {0}
 
       - name: Build site
         run: source("scripts/build_pkgdown_site.R")
