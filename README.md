@@ -1,11 +1,11 @@
 # LEO·UKB <img src="man/figures/logo.png?v=5" align="right" height="120" alt="leo.ukb logo" />
 
 <!-- badges: start -->
-[![Dev status](https://img.shields.io/badge/dev%20status-experimental-orange.svg)](https://github.com/laleoarrow/leo.ukb)
-[![Version](https://img.shields.io/badge/version-0.5.1-blue.svg)](https://github.com/laleoarrow/leo.ukb/releases)
-[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
-[![License: Proprietary](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
-[![R](https://img.shields.io/badge/R-%3E%3D%203.5-blue.svg)](https://cran.r-project.org/)
+[![build](https://img.shields.io/github/actions/workflow/status/laleoarrow/leo.ukb/pkgdown.yaml?branch=main&style=flat&label=build&labelColor=111827&logo=githubactions&logoColor=white)](https://github.com/laleoarrow/leo.ukb/actions/workflows/pkgdown.yaml)
+[![version 0.5.1](https://img.shields.io/badge/version-0.5.1-0ea5e9?style=flat&labelColor=111827)](https://github.com/laleoarrow/leo.ukb/releases)
+[![dev experimental](https://img.shields.io/badge/dev-experimental-f59e0b?style=flat&labelColor=111827)](https://github.com/laleoarrow/leo.ukb)
+[![license Proprietary](https://img.shields.io/badge/license-Proprietary-64748b?style=flat&labelColor=111827)](LICENSE)
+[![R >= 3.5](https://img.shields.io/badge/R-%3E%3D%203.5-6366f1?style=flat&labelColor=111827)](https://cran.r-project.org/)
 <!-- badges: end -->
 
 `leo.ukb` is an internal toolkit for working with UK Biobank (UKB) data. It provides a small set of helper functions that streamline common workflows—field parsing/decoding, format conversion, batch processing, and preparing analysis-ready datasets—for large-scale biomedical studies.
