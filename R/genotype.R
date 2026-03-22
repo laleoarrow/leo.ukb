@@ -1,5 +1,4 @@
 #' Read UK Biobank HLA v2 header (ukb_hla_v2.txt)
-#' `r lifecycle::badge('stable')`
 #'
 #' Downloads and parses the HLA v2 header file used to decode UK Biobank
 #' Field 22182 (HLA imputation v2; best-guess probabilities).
@@ -35,7 +34,6 @@ ukb_hla_header <- function() {
 }
 
 #' HLA Genotyping in UKB
-#' `r lifecycle::badge('stable')`
 #'
 #' Parse UK Biobank HLA v2 compound field (22182) and derive per-locus genotypes
 #'
@@ -114,7 +112,6 @@ ukb_hla_typing <- function(df, header, col = "p22182", q_threshold = 0.7) {
 }
 
 #' Specify carrier status for given HLA allele(s) in UK Biobank
-#' `r lifecycle::badge('stable')`
 #'
 #' Extract per-individual carrier status (0/1/2 copies) for user-specified HLA allele queries
 #' from the output of [ukb_hla_typing()].

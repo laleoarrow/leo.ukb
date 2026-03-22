@@ -2,8 +2,7 @@
 % Please edit documentation in R/clinical_vars.R
 \name{leo_physical_activity}
 \alias{leo_physical_activity}
-\title{Calculate Physical Activity Indicator
-\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#stable}{\figure{lifecycle-stable.svg}{options: alt='[Stable]'}}}{\strong{[Stable]}}}
+\title{Calculate Physical Activity Indicator}
 \usage{
 leo_physical_activity(p884_i0, p894_i0, p904_i0, p914_i0, ...)
 }

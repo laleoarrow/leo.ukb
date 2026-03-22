@@ -308,7 +308,6 @@ diagnosis_process_icd_multi <- function(data, icd_map, icd = 10, censored = "202
 }
 
 #' Find the max date in given date columns
-#' `r lifecycle::badge('stable')`
 #'
 #' Generate {icd_code}_status and {icd_code}_time from UKB ICD records.
 #'

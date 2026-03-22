@@ -19,30 +19,43 @@ knitr::opts_chunk$set(
 suppressPackageStartupMessages(library(leo.ukb))
 ```
 
-这篇教程展示 `leo.ukb` 目前已经统一好的临床回归接口。现在同一套设计可以完成：
+这篇教程想解决的不是“怎么临时跑一个模型”，而是“怎么把临床回归分析整理成一套稳定、优雅、可复用的工作流”。
+
+你可以把它理解成一篇真正的上手教程，而不是函数清单。  
+读完以后，你应该能自然地把一份 analysis-ready 数据框接到：
+
+- `leo_cox()` 做 Cox 主分析
+- `leo_logistic()` 做二分类结局分析
+- `leo_linear()` 做连续结局分析
+- 再进一步扩展到 interaction、subgroup、mediation
+
+在 `leo.ukb` 里，这套统一接口目前覆盖：
 
 - `leo_cox()`：时间结局 / 生存结局
 - `leo_logistic()`：二分类结局
 - `leo_linear()`：连续性结局
 
-其中 Cox 这部分还进一步扩展到了：
+其中 Cox 这部分又额外扩展到了：
 
 - `leo_cox_interaction()`：交互作用检验
 - `leo_cox_subgroup()`：分层结果表
 - `leo_cox_mediation()`：生存结局中介分析
 
-这套接口的核心思想是统一而克制：
+这套设计的核心不是“功能尽量多”，而是“规则尽量统一”：
 
-- 一个 `df`
+- 一个分析准备好的 `df`
 - 一次只分析一个 exposure
 - 一次只分析一个 outcome
-- `x_cov` 用命名的 model list
-- 默认返回文章表格风格的 `$result`
-- 需要长表时再用配套 formatter
+- 用一个命名清楚的 model list 管理协变量层次
+- 同一次分析内部共享同一个 complete-case cohort
+- 默认直接返回论文表格风格的 `$result`
 
-## 先定义模型层次
+也就是说，只要你的数据已经整理成“可以分析”的样子，后面无论是 HR、OR 还是 Beta，使用体验都尽量保持一致。
 
-三类回归都接受同样的 `x_cov` 形式。只要你给 model 起了名字，这些名字就会原样保留在输出表头里。
+## 先把模型层次想清楚
+
+三类回归都接受同样的 `x_cov` 输入形式。  
+如果你一开始就把模型起名起清楚，后面的结果表头会自然变成 `Crude HR`、`Model A OR`、`Model B Beta`，不用事后再手工改。
 
 ```{r}
 model_list <- list(
@@ -54,9 +67,15 @@ model_list <- list(
 model_list
 ```
 
+这一步很值得认真做，因为它决定了你最后表格的可读性，也决定了你后面是不是还要手工清理表头。
+
 ## Cox 主分析
 
-对 Cox 来说，`y_out = c(event, time)`，前者是结局事件列，后者是随访时间列。
+对 Cox 来说，`y_out` 必须写成 `c(event, time)`：  
+前者是事件列，后者是随访时间列。
+
+先准备一个真正“能拿去分析”的数据框。  
+这里先看一下数据长什么样，后面读函数接口时就不会觉得抽象：
 
 ```{r}
 lung_df <- dplyr::transmute(
@@ -68,6 +87,19 @@ lung_df <- dplyr::transmute(
   ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
 )
 
+knitr::kable(utils::head(lung_df, 6))
+```
+
+从这个小表就能看出 `leo_cox()` 期待的数据组织方式：
+
+- `outcome`：是否发生事件
+- `outcome_censor`：随访时间
+- `age`：这次示例里的 exposure
+- `sex`、`ecog_group`：协变量，或者后面做 subgroup/intercation 时的分层变量
+
+接着定义模型层次并拟合主分析：
+
+```{r}
 cox_model <- list(
   "Crude" = NULL,
   "Model A" = c("sex"),
@@ -85,7 +117,15 @@ res_cox <- leo_cox(
 res_cox$result
 ```
 
-如果你后面还要接图、拼表或者批量合并结果，用 tidy 风格会更方便：
+默认输出是宽表，而且是明显朝论文主表去设计的：
+
+- 一行一个 exposure 结果
+- 一组模型一组列
+- 直接给 `HR`、`95% CI`、`P value`
+
+很多 cohort study 的主结果，到这一步其实已经接近可以直接写进结果表了。
+
+如果你下一步还要继续拼图、拼表、批量合并结果，那么 tidy 风格会更方便：
 
 ```{r}
 dplyr::select(
@@ -94,7 +134,10 @@ dplyr::select(
 )
 ```
 
-分类 exposure 也用同一个接口，只是显式说明 `x_exp_type = "categorical"`：
+### 分类 exposure 也走同一套接口
+
+如果 exposure 是分类变量，接口并不会变，只要显式说明
+`x_exp_type = "categorical"` 即可。
 
 ```{r}
 res_cox_cat <- leo_cox(
@@ -109,9 +152,15 @@ res_cox_cat <- leo_cox(
 res_cox_cat$result
 ```
 
+这时输出里会自动有参考组和各 level 的结果行，更接近文章里的呈现方式。
+
 ## 交互作用分析
 
-`leo_cox_interaction()` 做的是标准的 multiplicative interaction。它比较“主效应模型”和“交互模型”，最后给出 `P for interaction`。
+`leo_cox_interaction()` 回答的问题不是“某个 subgroup 里显不显著”，而是：
+
+“这个 exposure 的效应，是否真的会随着另一个变量而变化？”
+
+所以 `P for interaction` 必须来自单独的交互模型，而不是看两个 subgroup 的 P 值“猜出来”。
 
 ```{r}
 res_inter <- leo_cox_interaction(
@@ -126,13 +175,16 @@ res_inter <- leo_cox_interaction(
 res_inter$result
 ```
 
-这里要注意：  
-`P for interaction` 不是从各 subgroup 的 P 值里“看出来”的，而是单独用全样本交互模型算出来的。
+在真正写结果时，这张表通常不是孤立解读，而是和 subgroup table 放在一起看。
 
 ## 分层分析
 
-`leo_cox_subgroup()` 会把每个 subgroup level 的 HR 表和 `P for interaction` 拼在一起。  
-如果你保留默认设置，还会额外给一个 summary-statistic based 的 `P for heterogeneity` 作为补充信息。
+`leo_cox_subgroup()` 会把两类信息合并起来：
+
+- 每个 subgroup level 内部的 HR
+- 对应的 `P for interaction`
+
+默认还可以附加一个 `P for heterogeneity`，作为 summary-statistic based 的补充指标。
 
 ```{r}
 res_sub <- leo_cox_subgroup(
@@ -147,7 +199,8 @@ res_sub <- leo_cox_subgroup(
 utils::head(res_sub$result, 8)
 ```
 
-实务上更推荐优先解读 `P for interaction`，而不是把 heterogeneity P 当主结果。
+实务上更推荐优先解读 `P for interaction`，  
+`P for heterogeneity` 更适合作为补充，而不是主结果。
 
 ## 中介分析
 
@@ -156,7 +209,9 @@ utils::head(res_sub$result, 8)
 
 - 二分类 exposure
 - 连续 mediator 或二分类 mediator
-- 协变量尽量是数值型
+- 协变量尽量以数值型为主
+
+和前面一样，先看一下分析数据长什么样：
 
 ```{r}
 if (requireNamespace("regmedint", quietly = TRUE)) {
@@ -172,6 +227,12 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
     bmi = rnorm(n, 26, 4)
   )
 
+  knitr::kable(utils::head(med_df, 6))
+}
+```
+
+```{r}
+if (requireNamespace("regmedint", quietly = TRUE)) {
   res_med <- leo_cox_mediation(
     df = med_df,
     y_out = c("outcome", "outcome_censor"),
@@ -188,9 +249,12 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
 }
 ```
 
+这类输出关注的是效应分解，所以解读逻辑和普通 HR 表不一样，通常建议单独成段报告。
+
 ## Logistic 回归
 
-对 logistic 来说，`y_out` 就是二分类结局列名，`case_value` 指定哪个值代表病例。
+对 logistic 来说，`y_out` 是单个二分类结局列，`case_value` 指定哪个值代表病例。  
+这一段故意和 Cox 的结构保持平行，这样你会更容易感受到这套接口的一致性。
 
 ```{r}
 set.seed(123)
@@ -203,6 +267,10 @@ logi_df <- data.frame(
   bmi_group = factor(sample(c("Low", "Mid", "High"), n, replace = TRUE), levels = c("Low", "Mid", "High"))
 )
 
+knitr::kable(utils::head(logi_df, 6))
+```
+
+```{r}
 res_logi <- leo_logistic(
   df = logi_df,
   y_out = "outcome",
@@ -222,9 +290,17 @@ dplyr::select(
 )
 ```
 
+它和 Cox 的共同点非常明确：
+
+- 一样的输入风格
+- 一样的 model list
+- 一样的默认宽表
+- 只是效应量从 HR 变成了 OR
+
 ## Linear 回归
 
-对 linear 来说，`y_out` 是连续性结局列名，其余接口保持一致。
+对 linear 来说，`y_out` 是连续结局列，其余接口仍然保持一致。  
+也就是说，真正变化的主要是 effect measure，而不是工作流本身。
 
 ```{r}
 linear_df <- dplyr::transmute(
@@ -235,6 +311,10 @@ linear_df <- dplyr::transmute(
   bmi_group = factor(cyl, levels = c(4, 6, 8), labels = c("Cyl4", "Cyl6", "Cyl8"))
 )
 
+knitr::kable(utils::head(linear_df, 6))
+```
+
+```{r}
 res_linear <- leo_linear(
   df = linear_df,
   y_out = "outcome",
@@ -253,9 +333,18 @@ dplyr::select(
 )
 ```
 
+所以当你已经熟悉了 `leo_cox()` 的工作流，再切到 logistic 或 linear，思维成本会明显更低。
+
 ## 使用建议
 
 - 同一个分析调用内部，所有 model 使用的是同一个 complete-case cohort，所以 crude 和 adjusted 结果可以直接比较。
-- 如果有缺失值导致删行，函数会明确提示删掉了多少行，并给出 `leo_impute_na()` 的建议写法。
+- 如果缺失值导致删行，函数会明确提示删掉了多少行，并给出 `leo_impute_na()` 的建议写法。
 - `style = "gtsummary"` 目前对 Cox、logistic、linear 都可用，但要求同时安装 `gtsummary` 和 `broom.helpers`。
-- subgroup 表里最应该优先看的，是 `P for interaction`。`P for heterogeneity` 更适合作为补充信息。
+- 对 subgroup 结果，优先解读 `P for interaction`，再看 `P for heterogeneity`。
+
+如果你是第一次把这套接口接进自己的项目，最稳的顺序通常是：
+
+1. 先把主分析 `leo_cox()` / `leo_logistic()` / `leo_linear()` 跑通
+2. 先看默认 `$result`，确认表头和 effect measure 是否符合预期
+3. 需要继续程序化处理时，再切到 `*_format(..., style = "tidy")`
+4. 只有当主分析稳定之后，再进入 subgroup、interaction、mediation

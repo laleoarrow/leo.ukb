@@ -99,7 +99,7 @@ navbar:
   structure:
     left:
       - intro
-      - tutorial_en
+      - tutorial
       - tutorial_zh
       - reference
     right:
@@ -107,12 +107,16 @@ navbar:
       - github
       - lightswitch
   components:
-    tutorial_en:
+    tutorial:
       text: Tutorial
-      href: articles/clinical-regression.html
+      menu:
+        - text: Clinical Regression Workflows
+          href: articles/clinical-regression.html
     tutorial_zh:
       text: 中文教程
-      href: articles/clinical-regression-zh.html
+      menu:
+        - text: 临床回归分析工作流
+          href: articles/clinical-regression-zh.html
     github:
       icon: fa-github
       aria-label: GitHub repository
