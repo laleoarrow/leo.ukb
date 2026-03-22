@@ -54,7 +54,7 @@ Here we build a compact example from `survival::lung`.
 lung_df <- dplyr::transmute(
   survival::lung,
   outcome = as.integer(status == 2),
-  outcome_censor = time,
+  outcome_censor = time / 365.25,
   age = age,
   sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
   ecog_group = factor(
@@ -159,9 +159,10 @@ In routine cohort analyses, this is often close to the table that ultimately
 appears in the main results section. It can therefore serve both as a quick
 analytic check and as the starting point for presentation.
 
-The cumulative follow-up column is reported as `Person-time`, meaning the total
-participant time in the original unit of the input time variable. In this
-teaching example, `survival::lung` records time in days rather than years.
+The cumulative follow-up column is reported as `Person-years`. In this tutorial,
+the original `survival::lung` follow-up time is converted from days to years
+before any model is fitted, so the output table follows the usual reporting
+style used in cohort manuscripts.
 
 # Use tidy output when you need programmable rows
 
@@ -269,6 +270,8 @@ In its current form, the most reliable first-pass use cases are:
 
 Because `survival::lung` was not designed as a mediation example, it is clearer
 to use a compact synthetic teaching dataset for this section.
+Here the generated follow-up time is treated as years, so the summary table is
+still naturally reported in `Person-years`.
 
 ```{r}
 if (requireNamespace("regmedint", quietly = TRUE)) {
@@ -300,21 +303,42 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
     verbose = FALSE
   )
 
-  res_med$result
+  dplyr::select(
+    res_med$result,
+    Model, `Effect code`, Effect, Scale, `Exposure contrast`,
+    `Mediator reference`, Estimate, `95% CI`, `P value`
+  )
 }
 ```
 
 For a first reading, focus on these columns:
 
-- `Effect`: which causal quantity is being reported
+- `Effect code`: the standard short name used in the mediation literature
+- `Effect`: the full causal estimand name
+- `Scale`: whether the estimate is on the hazard-ratio scale or is a proportion
 - `Estimate`: the point estimate
 - `95% CI`: uncertainty interval
 - `P value`: statistical support
 
-The exact interpretation of `cde`, `pnde`, `tnie`, `te`, and `pm` depends on
-the mediation estimand. For a first pass, the important lesson is more modest:
-understand what the input data should look like and how the results are
-organized when a mediation analysis is appropriate.
+The key abbreviations are now displayed together with their full names:
+
+- `cde`: controlled direct effect
+- `pnde`: pure natural direct effect
+- `tnie`: total natural indirect effect
+- `tnde`: total natural direct effect
+- `pnie`: pure natural indirect effect
+- `te`: total effect
+- `pm`: proportion mediated
+
+Two reading rules are especially important:
+
+1. The effects other than `pm` are shown on the hazard-ratio scale.
+2. `pm` is a proportion, not a hazard ratio, so it should not be interpreted on
+   the same scale as the other rows.
+
+The `Exposure contrast` and `Mediator reference` columns make the evaluation
+settings explicit, which is important because mediation results are always
+defined at chosen values of the exposure and mediator.
 
 # Take-home summary
 

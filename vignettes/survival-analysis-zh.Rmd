@@ -50,7 +50,7 @@ suppressPackageStartupMessages(library(leo.ukb))
 lung_df <- dplyr::transmute(
   survival::lung,
   outcome = as.integer(status == 2),
-  outcome_censor = time,
+  outcome_censor = time / 365.25,
   age = age,
   sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
   ecog_group = factor(
@@ -149,9 +149,9 @@ res_cox$result
 
 对很多 cohort study 来说，主结果走到这里其实已经很接近最后要放进文章的表格了。
 
-这里的总随访量列现在统一写成 `Person-time`，意思是所有受试者累计的随访时间，
-并且保留输入时间变量本来的单位。这个教学示例里的 `survival::lung` 使用的是天，
-而不是年。
+这里的累计随访量列统一写成 `Person-years`。这篇教程在建模前先把
+`survival::lung` 的原始随访时间从天换算成年，所以输出表可以直接沿用临床论文里
+更常见的 `Person-years` 表达。
 
 # 什么时候切换到 tidy 结果
 
@@ -250,6 +250,7 @@ utils::head(res_sub$result, 8)
 - 协变量尽量以数值型为主
 
 因为 `lung` 这个数据并不是专门为 mediation 设计的，所以教程里更适合单独构造一个简洁教学示例。
+这里生成的随访时间按“年”来理解，因此中介分析结果表继续沿用 `Person-years` 的写法。
 
 ```{r}
 if (requireNamespace("regmedint", quietly = TRUE)) {
@@ -281,19 +282,42 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
     verbose = FALSE
   )
 
-  res_med$result
+  dplyr::select(
+    res_med$result,
+    Model, `Effect code`, Effect, Scale, `Exposure contrast`,
+    `Mediator reference`, Estimate, `95% CI`, `P value`
+  )
 }
 ```
 
 第一次看结果时，先看这几个列就够了：
 
-- `Effect`：是哪一种中介效应
+- `Effect code`：文献中常见的缩写
+- `Effect`：展开后的完整中介效应名称
+- `Scale`：估计值所在的尺度，是 HR 比值还是比例
 - `Estimate`：估计值
 - `95% CI`：区间
 - `P value`：统计支持
 
-像 `cde`、`pnde`、`tnie`、`te`、`pm` 这些缩写，后面当然可以再展开讲方法学；  
-但作为第一版教程，更重要的是你已经知道：
+这些缩写现在会和全称一起展示：
+
+- `cde`：controlled direct effect
+- `pnde`：pure natural direct effect
+- `tnie`：total natural indirect effect
+- `tnde`：total natural direct effect
+- `pnie`：pure natural indirect effect
+- `te`：total effect
+- `pm`：proportion mediated
+
+这里尤其要注意两点：
+
+1. 除了 `pm` 以外，其余效应都在 hazard-ratio scale 上解读。
+2. `pm` 是比例，不是 HR，不能和前面那些 effect 放在同一尺度上直接比较。
+
+同时，`Exposure contrast` 和 `Mediator reference` 也会直接显示出来，
+帮助你确认这次 mediation 结果到底是在哪组 exposure 对比、哪个 mediator 参考值下计算出来的。
+
+作为第一版教程，更重要的是你已经知道：
 
 - 这类分析的数据该怎么准备
 - 函数入口该怎么调用

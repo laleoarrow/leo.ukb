@@ -78,7 +78,7 @@ lung_df <- stats::na.omit(
   dplyr::transmute(
     survival::lung,
     outcome = as.integer(status == 2),
-    outcome_censor = time,
+    outcome_censor = time / 365.25,
     age = age,
     sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
     ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))

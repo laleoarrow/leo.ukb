@@ -62,6 +62,9 @@ the raw mediation table in \verb{$result_tidy}, and fitted \code{regmedint} obje
 a survival outcome using \code{regmedint::regmedint()} with \code{yreg = "survCox"}.
 Because the official \code{regmedint} interface requires explicit evaluation
 settings, continuous exposures should usually be accompanied by \code{a0} and \code{a1}.
+The display table in \verb{$result} reports both the standard mediation-effect
+codes (for example \code{cde}, \code{pnde}, and \code{pm}) and their full labels, together
+with the exposure contrast and mediator reference value used for evaluation.
 }
 \examples{
 if (requireNamespace("regmedint", quietly = TRUE)) {

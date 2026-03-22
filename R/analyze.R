@@ -512,7 +512,7 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #'   dplyr::transmute(
 #'     survival::lung,
 #'     outcome = as.integer(status == 2),
-#'     outcome_censor = time,
+#'     outcome_censor = time / 365.25,
 #'     age = age,
 #'     sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
 #'     ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
@@ -710,7 +710,7 @@ leo_cox_format <- function(x, style = "wide") {
       result_tidy <- x$result_tidy
       model_ids <- unique(result_tidy$model)
       result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_id", "exposure", "outcome", "case_n", "control_n", "person_time", "exposure_class"), drop = FALSE]
-      names(result_wide) <- c("row_id", "Exposure", "Outcome", "Case N", "Control N", "Person-time", "Class")
+      names(result_wide) <- c("row_id", "Exposure", "Outcome", "Case N", "Control N", "Person-years", "Class")
       for (model_id in model_ids) {
         model_df <- result_tidy[result_tidy$model == model_id, c("row_id", "hr", "hr_ci_l", "hr_ci_u", "p_value"), drop = FALSE]
         model_df$hr <- round(model_df$hr, 3)
@@ -733,7 +733,7 @@ leo_cox_format <- function(x, style = "wide") {
       result_out$`P value` <- vapply(result_tidy$p_value, .format_p_value, character(1))
       result_out$Class <- result_tidy$exposure_class
       result_out$Formula <- result_tidy$formula
-      names(result_out)[1:7] <- c("Model", "Exposure", "Outcome", "Level", "Case N", "Control N", "Person-time")
+      names(result_out)[1:7] <- c("Model", "Exposure", "Outcome", "Level", "Case N", "Control N", "Person-years")
       rownames(result_out) <- NULL
       result_out
     },
@@ -779,7 +779,7 @@ leo_cox_format <- function(x, style = "wide") {
 #'   dplyr::transmute(
 #'     survival::lung,
 #'     outcome = as.integer(status == 2),
-#'     outcome_censor = time,
+#'     outcome_censor = time / 365.25,
 #'     age = age,
 #'     sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
 #'     ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
@@ -871,7 +871,7 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_v
   result_tidy <- do.call(rbind, result_rows)
   rownames(result_tidy) <- NULL
   result <- result_tidy[, c("model", "exposure", "interaction", "n", "case_n", "control_n", "person_time", "interaction_df", "p_interaction", "exposure_class", "interaction_class"), drop = FALSE]
-  names(result) <- c("Model", "Exposure", "Interaction", "N", "Case N", "Control N", "Person-time", "Interaction DF", "P for interaction", "Exposure class", "Interaction class")
+  names(result) <- c("Model", "Exposure", "Interaction", "N", "Case N", "Control N", "Person-years", "Interaction DF", "P for interaction", "Exposure class", "Interaction class")
   result$`P for interaction` <- vapply(result$`P for interaction`, .format_p_value, character(1))
   out <- structure(list(result = result, result_tidy = result_tidy, fit_main = fit_main, fit_inter = fit_inter), class = "leo_cox_interaction")
   leo.basic::leo_log("Cox interaction analysis completed for {x_exp} x {x_inter} with {length(model_list)} model(s).", level = "success", verbose = verbose)
@@ -909,7 +909,7 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_v
 #'   dplyr::transmute(
 #'     survival::lung,
 #'     outcome = as.integer(status == 2),
-#'     outcome_censor = time,
+#'     outcome_censor = time / 365.25,
 #'     age = age,
 #'     sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
 #'     ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
@@ -1063,7 +1063,7 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
       result_tidy <- x$result_tidy
       model_ids <- unique(result_tidy$model)
       result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_key", "subgroup", "subgroup_level", "subgroup_n", "exposure", "outcome", "case_n", "control_n", "person_time", "exposure_class"), drop = FALSE]
-      names(result_wide) <- c("row_key", "Subgroup", "Level", "N", "Exposure", "Outcome", "Case N", "Control N", "Person-time", "Class")
+      names(result_wide) <- c("row_key", "Subgroup", "Level", "N", "Exposure", "Outcome", "Case N", "Control N", "Person-years", "Class")
       for (model_id in model_ids) {
         model_df <- result_tidy[result_tidy$model == model_id, c("row_key", "hr", "hr_ci_l", "hr_ci_u", "p_value", "p_interaction", "p_heterogeneity"), drop = FALSE]
         model_df$hr <- round(model_df$hr, 3)
@@ -1090,7 +1090,7 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
       result_out$`P for heterogeneity` <- vapply(result_tidy$p_heterogeneity, .format_p_value, character(1))
       result_out$Class <- result_tidy$exposure_class
       result_out$Formula <- result_tidy$formula
-      names(result_out)[1:10] <- c("Subgroup", "Level", "N", "Model", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-time")
+      names(result_out)[1:10] <- c("Subgroup", "Level", "N", "Model", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
       rownames(result_out) <- NULL
       result_out
     }
@@ -1105,6 +1105,9 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #' a survival outcome using `regmedint::regmedint()` with `yreg = "survCox"`.
 #' Because the official `regmedint` interface requires explicit evaluation
 #' settings, continuous exposures should usually be accompanied by `a0` and `a1`.
+#' The display table in `$result` reports both the standard mediation-effect
+#' codes (for example `cde`, `pnde`, and `pm`) and their full labels, together
+#' with the exposure contrast and mediator reference value used for evaluation.
 #'
 #' @param df Data frame containing the outcome, follow-up time, exposure, mediator, and covariates.
 #' @param y_out Character vector of length 2 giving the event and follow-up time column names: `c(event, time)`.
@@ -1273,7 +1276,20 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
 
   result_tidy <- do.call(rbind, result_rows)
   rownames(result_tidy) <- NULL
-  result <- result_tidy[, c("model", "effect", "exposure", "mediator", "outcome", "n", "case_n", "control_n", "person_time", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mediator_model"), drop = FALSE]
+  effect_labels <- c(
+    cde = "Controlled direct effect",
+    pnde = "Pure natural direct effect",
+    tnie = "Total natural indirect effect",
+    tnde = "Total natural direct effect",
+    pnie = "Pure natural indirect effect",
+    te = "Total effect",
+    pm = "Proportion mediated"
+  )
+  result_tidy$effect_label <- unname(effect_labels[result_tidy$effect])
+  result_tidy$effect_scale <- ifelse(result_tidy$effect == "pm", "Proportion", "Hazard ratio")
+  result_tidy$exposure_contrast <- paste0(result_tidy$a0, " -> ", result_tidy$a1)
+  result_tidy$mediator_reference <- ifelse(is.na(result_tidy$m_cde), NA_character_, sprintf("%.3f", round(result_tidy$m_cde, 3)))
+  result <- result_tidy[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "control_n", "person_time", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mediator_model"), drop = FALSE]
   result$Estimate <- ifelse(result$effect == "pm", round(result$est, 3), round(result$exp.est, 3))
   result$`95% CI` <- ifelse(
     result$effect == "pm",
@@ -1281,9 +1297,8 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     paste0(sprintf("%.3f", round(result$exp.lower, 3)), ", ", sprintf("%.3f", round(result$exp.upper, 3)))
   )
   result$`P value` <- vapply(result$p, .format_p_value, character(1))
-  result <- result[, c("model", "effect", "exposure", "mediator", "outcome", "n", "case_n", "control_n", "person_time", "Estimate", "95% CI", "P value", "mediator_model"), drop = FALSE]
-  names(result)[1:9] <- c("Model", "Effect", "Exposure", "Mediator", "Outcome", "N", "Case N", "Control N", "Person-time")
-  names(result)[13] <- "Mediator model"
+  result <- result[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "control_n", "person_time", "Estimate", "95% CI", "P value", "mediator_model"), drop = FALSE]
+  names(result) <- c("Model", "Effect code", "Effect", "Scale", "Exposure", "Mediator", "Outcome", "Exposure contrast", "Mediator reference", "N", "Case N", "Control N", "Person-years", "Estimate", "95% CI", "P value", "Mediator model")
   out <- structure(list(result = result, result_tidy = result_tidy, fit = fit_results), class = "leo_cox_mediation")
   leo.basic::leo_log("Cox mediation analysis completed for {x_exp} -> {x_med} -> {y_out[1]} with {length(model_list)} model(s).", level = "success", verbose = verbose)
   if (verbose) leo.basic::leo_time_elapsed(t0)
