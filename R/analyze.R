@@ -777,6 +777,9 @@ leo_cox_format <- function(x, style = "wide") {
 #' @param x_exp_type Exposure type handling for `x_exp`.
 #' @param x_inter_type Interaction-variable type handling for `x_inter`.
 #' @param verbose Logical; print progress messages.
+#' @importFrom cli cat_rule
+#' @importFrom dplyr group_by summarise
+#' @importFrom survival Surv coxph
 #'
 #' @return A `leo_cox_interaction` object containing a display table in `$result`,
 #'   the fitted no-interaction Cox models in `$fit_main`, the fitted
@@ -922,6 +925,7 @@ leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, eve
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Additive Interaction", col = "blue")
+  # interactionR stays in Suggests, so keep runtime checks and explicit namespace calls.
   if (!requireNamespace("interactionR", quietly = TRUE)) stop("leo_cox_add_interaction() requires package 'interactionR'. Please install it first.", call. = FALSE)
   if (!is.character(x_inter) || length(x_inter) != 1) stop("x_inter must be a single column name.", call. = FALSE)
   if (!x_inter %in% names(df)) stop("x_inter must exist in df.", call. = FALSE)
