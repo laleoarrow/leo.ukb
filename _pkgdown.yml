@@ -71,6 +71,9 @@ reference:
       - dx_extract
       - dx_status
       - dx_run
+
+  - title: Diagnosis Processing
+    contents:
       - diagnosis_process_fo
       - diagnosis_process_icd
       - diagnosis_process_icd_multi

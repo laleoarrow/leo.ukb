@@ -561,6 +561,8 @@ leo_hba1c_percent <- function(hba1c, ...) {
 # Kidney function -----
 #' Calculate eGFR by CKD-EPI 2009 (untested)
 #'
+#' `r lifecycle::badge('experimental')`
+#'
 #' Estimate glomerular filtration rate (eGFR, mL/min/1.73m^2) using the 2009 CKD-EPI
 #' creatinine equation with sex-specific coefficients. This implementation follows the
 #' sex-only form commonly used in teaching code and does not apply the historical race coefficient.
@@ -616,6 +618,8 @@ leo_eGFR_v2009 <- function(gender, age, creatinine, creatinine_unit = c("umol/L"
 }
 
 #' Calculate eGFR by CKD-EPI 2021 (untested)
+#'
+#' `r lifecycle::badge('experimental')`
 #'
 #' Estimate glomerular filtration rate (eGFR, mL/min/1.73m^2) using the 2021 CKD-EPI
 #' creatinine equation. This is the race-free creatinine-only equation currently highlighted

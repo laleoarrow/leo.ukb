@@ -27,6 +27,9 @@ leo_eGFR_v2021(
 Numeric vector of eGFR values (mL/min/1.73m^2).
 }
 \description{
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
+}
+\details{
 Estimate glomerular filtration rate (eGFR, mL/min/1.73m^2) using the 2021 CKD-EPI
 creatinine equation. This is the race-free creatinine-only equation currently highlighted
 by NIDDK for adult eGFR reporting.

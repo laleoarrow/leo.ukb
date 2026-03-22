@@ -27,6 +27,9 @@ leo_eGFR_v2009(
 Numeric vector of eGFR values (mL/min/1.73m^2).
 }
 \description{
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
+}
+\details{
 Estimate glomerular filtration rate (eGFR, mL/min/1.73m^2) using the 2009 CKD-EPI
 creatinine equation with sex-specific coefficients. This implementation follows the
 sex-only form commonly used in teaching code and does not apply the historical race coefficient.
