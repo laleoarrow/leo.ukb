@@ -19,33 +19,36 @@ knitr::opts_chunk$set(
 suppressPackageStartupMessages(library(leo.ukb))
 ```
 
-This article shows the unified clinical regression interface in `leo.ukb`. The
-same design now supports:
+This tutorial introduces the unified regression interface in `leo.ukb`. The
+goal is simple: once an analysis-ready data frame is prepared, the same grammar
+should work for survival, binary, and continuous outcomes.
+
+The current interface covers:
 
 - `leo_cox()` for time-to-event outcomes
 - `leo_logistic()` for binary outcomes
 - `leo_linear()` for continuous outcomes
 
-For Cox analyses, the framework now also includes:
+The Cox toolkit also extends to:
 
 - `leo_cox_interaction()` for multiplicative interaction tests
 - `leo_cox_subgroup()` for subgroup tables with `P for interaction`
-- `leo_cox_mediation()` for survival mediation analysis through `regmedint`
+- `leo_cox_mediation()` for survival mediation analysis
 
-Across these functions, the design stays intentionally consistent:
+Across these functions, the design stays deliberately consistent:
 
-- one input data frame
+- one analysis-ready data frame
 - one exposure at a time
 - one outcome at a time
-- one named model list carried into the final table
+- one named model list
 - one shared complete-case cohort within each analysis call
-- one default paper-style table in `$result`
+- one default manuscript-style table in `$result`
 
-## A consistent model list
+## Start with a clear model list
 
-All regression helpers accept `x_cov` as a named list. Those names are kept in
-the formatted output, which makes the final tables easier to read in
-manuscripts.
+All regression helpers accept `x_cov` as a named list. Those names are carried
+forward into the final table headers, so it is worth defining the model
+hierarchy carefully at the start.
 
 ```{r}
 model_list <- list(
@@ -57,9 +60,15 @@ model_list <- list(
 model_list
 ```
 
+In practice, this means the final output will read naturally as `Crude HR`,
+`Model A OR`, or `Model B Beta` without additional post-processing.
+
 ## Cox regression
 
-For Cox models, `y_out` is `c(event, time)`.
+For Cox models, `y_out` must be `c(event, time)`, where the first column is the
+incident event indicator and the second column is the follow-up time.
+
+We start by building a compact, analysis-ready example data frame:
 
 ```{r}
 lung_df <- dplyr::transmute(
@@ -71,6 +80,19 @@ lung_df <- dplyr::transmute(
   ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
 )
 
+knitr::kable(utils::head(lung_df, 6))
+```
+
+This table is already in the shape expected by `leo_cox()`:
+
+- `outcome`: incident event indicator
+- `outcome_censor`: follow-up time
+- `age`: continuous exposure in this example
+- `sex` and `ecog_group`: covariates or subgroup variables
+
+Now define the Cox model hierarchy and fit the main analysis:
+
+```{r}
 cox_model <- list(
   "Crude" = NULL,
   "Model A" = c("sex"),
@@ -88,8 +110,12 @@ res_cox <- leo_cox(
 res_cox$result
 ```
 
-The default output is wide and paper-oriented. The paired formatter gives a
-long table that is easier to join, plot, or export.
+The default output is intentionally paper-oriented: one row for the exposure,
+one block of columns per model, and directly readable `HR`, `95% CI`, and
+`P value`.
+
+When the next step is plotting, row binding, or further programmatic work, the
+paired formatter can return a tidy table:
 
 ```{r}
 dplyr::select(
@@ -98,7 +124,10 @@ dplyr::select(
 )
 ```
 
-Categorical exposures stay in the same framework:
+### Categorical exposure in the same framework
+
+The interface does not change when the exposure is categorical. The only thing
+that changes is that we declare `x_exp_type = "categorical"`.
 
 ```{r}
 res_cox_cat <- leo_cox(
@@ -113,10 +142,17 @@ res_cox_cat <- leo_cox(
 res_cox_cat$result
 ```
 
+Notice that the output now contains a reference row and one row for each
+exposure level. This is usually the layout needed for manuscript tables.
+
 ## Cox interaction
 
-`leo_cox_interaction()` compares nested Cox models with and without the
-interaction term, then reports `P for interaction`.
+`leo_cox_interaction()` answers a different question from the main Cox model.
+It asks whether the exposure effect differs across levels of another variable.
+
+That is why `P for interaction` is not inferred from subgroup-specific
+`P values`; it is estimated from a dedicated interaction model fitted on the
+full cohort.
 
 ```{r}
 res_inter <- leo_cox_interaction(
@@ -131,10 +167,18 @@ res_inter <- leo_cox_interaction(
 res_inter$result
 ```
 
+In a clinical report, this table is usually interpreted alongside subgroup
+tables rather than as a standalone endpoint.
+
 ## Cox subgroup
 
-`leo_cox_subgroup()` combines subgroup-specific HRs with the interaction test.
-If requested, it also appends the summary-statistic-based heterogeneity P value.
+`leo_cox_subgroup()` combines two pieces of information:
+
+- subgroup-specific HRs
+- the matching `P for interaction`
+
+By default, it can also append `P for heterogeneity` as a supplementary
+summary-statistic-based metric.
 
 ```{r}
 res_sub <- leo_cox_subgroup(
@@ -149,11 +193,21 @@ res_sub <- leo_cox_subgroup(
 utils::head(res_sub$result, 8)
 ```
 
+In most applications, `P for interaction` should be treated as the primary
+heterogeneity signal, with `P for heterogeneity` kept as supporting
+information.
+
 ## Cox mediation
 
-`leo_cox_mediation()` uses `regmedint::regmedint()` with `yreg = "survCox"`.
-This is currently most straightforward when the exposure is binary and the
-mediator is either numeric or binary.
+`leo_cox_mediation()` currently wraps `regmedint::regmedint()` with a Cox
+survival outcome. The most reliable first-pass use cases are:
+
+- binary exposure
+- continuous mediator or binary mediator
+- mostly numeric covariates
+
+Before fitting the model, it is helpful to inspect the mediation analysis table
+just as we did for Cox:
 
 ```{r}
 if (requireNamespace("regmedint", quietly = TRUE)) {
@@ -169,6 +223,12 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
     bmi = rnorm(n, 26, 4)
   )
 
+  knitr::kable(utils::head(med_df, 6))
+}
+```
+
+```{r}
+if (requireNamespace("regmedint", quietly = TRUE)) {
   res_med <- leo_cox_mediation(
     df = med_df,
     y_out = c("outcome", "outcome_censor"),
@@ -185,10 +245,14 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
 }
 ```
 
+This output is designed for effect decomposition rather than ordinary
+association reporting, so it is often best interpreted separately from the main
+regression tables.
+
 ## Logistic regression
 
-For logistic regression, `y_out` is a binary outcome column and `case_value`
-defines the case group.
+For logistic regression, `y_out` is a single binary outcome column and
+`case_value` identifies the case group.
 
 ```{r}
 set.seed(123)
@@ -201,6 +265,10 @@ logi_df <- data.frame(
   bmi_group = factor(sample(c("Low", "Mid", "High"), n, replace = TRUE), levels = c("Low", "Mid", "High"))
 )
 
+knitr::kable(utils::head(logi_df, 6))
+```
+
+```{r}
 res_logi <- leo_logistic(
   df = logi_df,
   y_out = "outcome",
@@ -220,10 +288,13 @@ dplyr::select(
 )
 ```
 
+The overall user experience is intentionally parallel to Cox: same input style,
+same model list logic, same default wide table, different effect measure.
+
 ## Linear regression
 
-For linear regression, `y_out` is continuous and the rest of the interface is
-kept the same.
+For linear regression, `y_out` is continuous while the rest of the interface
+stays aligned with Cox and logistic workflows.
 
 ```{r}
 linear_df <- dplyr::transmute(
@@ -234,6 +305,10 @@ linear_df <- dplyr::transmute(
   bmi_group = factor(cyl, levels = c(4, 6, 8), labels = c("Cyl4", "Cyl6", "Cyl8"))
 )
 
+knitr::kable(utils::head(linear_df, 6))
+```
+
+```{r}
 res_linear <- leo_linear(
   df = linear_df,
   y_out = "outcome",
@@ -252,12 +327,12 @@ dplyr::select(
 )
 ```
 
-## Practical notes
+## Practical guidance
 
-- Within each analysis call, all models use the same complete-case cohort.
-- Missing-value filtering is reported explicitly, and the functions suggest
-  `leo_impute_na()` when row loss occurs.
-- `style = "gtsummary"` is available for Cox, logistic, and linear analyses
-  when both `gtsummary` and `broom.helpers` are installed.
-- For subgroup tables, the primary inferential quantity is `P for interaction`;
-  `P for heterogeneity` is supplementary.
+- Within a single analysis call, all models use the same complete-case cohort.
+- If missingness removes rows, the functions report the row loss and suggest
+  `leo_impute_na()`.
+- `style = "gtsummary"` is available for Cox, logistic, and linear analyses,
+  but requires both `gtsummary` and `broom.helpers`.
+- For subgroup analyses, interpret `P for interaction` before
+  `P for heterogeneity`.
