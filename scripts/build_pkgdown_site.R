@@ -1,3 +1,5 @@
+devtools::build_vignettes(pkg = ".")
+
 pkgdown::build_site(
   pkg = ".",
   install = TRUE,
