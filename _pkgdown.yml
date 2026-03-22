@@ -10,8 +10,8 @@ template:
 articles:
   - title: Tutorials
     contents:
-      - clinical-regression
-      - clinical-regression-zh
+      - survival-analysis
+      - survival-analysis-zh
 
 reference:
   - title: Regression Analyses
@@ -113,13 +113,13 @@ navbar:
     tutorial:
       text: Tutorial
       menu:
-        - text: Clinical Regression Workflows
-          href: articles/clinical-regression.html
+        - text: Survival Analysis with leo.ukb
+          href: articles/survival-analysis.html
     tutorial_zh:
       text: 中文教程
       menu:
-        - text: 临床回归分析工作流
-          href: articles/clinical-regression-zh.html
+        - text: leo.ukb 生存分析教程
+          href: articles/survival-analysis-zh.html
     github:
       icon: fa-github
       aria-label: GitHub repository
