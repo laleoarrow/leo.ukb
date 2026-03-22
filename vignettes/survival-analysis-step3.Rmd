@@ -17,7 +17,10 @@ knitr::opts_chunk$set(
   warning = FALSE
 )
 suppressPackageStartupMessages(library(leo.ukb))
-if (!requireNamespace("regmedint", quietly = TRUE)) stop("Package 'regmedint' is required to build this tutorial.")
+has_regmedint <- requireNamespace("regmedint", quietly = TRUE)
+if (!has_regmedint) {
+  knitr::opts_chunk$set(eval = FALSE)
+}
 ```
 
 # What this step is for
@@ -28,6 +31,17 @@ Cox model and the subgroup/interaction stage, a different question can appear:
 > does part of the exposure-outcome association operate through a mediator?
 
 That is a mediation question, not a subgroup question.
+
+```{r, echo = FALSE, results = "asis"}
+if (!has_regmedint) {
+  cat(
+    "> Note: regmedint is not installed in the current build environment, ",
+    "so the example code below is shown but not executed. Install regmedint ",
+    "locally to run the full tutorial.\n\n",
+    sep = ""
+  )
+}
+```
 
 # First separate mediation from interaction
 

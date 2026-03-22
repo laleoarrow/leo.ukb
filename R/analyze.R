@@ -1506,7 +1506,18 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
       } else {
         mediator_num <- suppressWarnings(as.numeric(mediator_raw))
         unique_mediator <- sort(unique(stats::na.omit(mediator_num)))
-        mediator_mode_use <- if (length(unique_mediator) == 2 && all(abs(unique_mediator - round(unique_mediator)) < 1e-8)) "logistic" else "linear"
+        mediator_is_integer_like <- length(unique_mediator) > 0 && all(abs(unique_mediator - round(unique_mediator)) < 1e-8)
+        if (length(unique_mediator) == 2 && mediator_is_integer_like) {
+          mediator_mode_use <- "logistic"
+        } else if (mediator_is_integer_like && length(unique_mediator) > 2) {
+          stop(
+            "Automatic mediator detection does not treat integer-coded multi-level mediators as linear. ",
+            "Please recode x_med to a scientifically justified binary or truly continuous variable, or specify mediator_model explicitly.",
+            call. = FALSE
+          )
+        } else {
+          mediator_mode_use <- "linear"
+        }
       }
     }
     if (mediator_mode_use == "logistic") {

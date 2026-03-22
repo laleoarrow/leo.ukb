@@ -359,3 +359,39 @@ test_that("leo_cox_mediation rejects factor mediators when mediator_model is lin
     "Mediator must be truly numeric"
   )
 })
+
+test_that("leo_cox_mediation auto mode rejects small integer-coded multi-level mediators", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_df()
+  med_df$mediator_tri <- sample(c(0, 1, 2), nrow(med_df), replace = TRUE)
+
+  expect_error(
+    leo_cox_mediation(
+      df = med_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      x_med = "mediator_tri",
+      x_cov = "age",
+      verbose = FALSE
+    ),
+    "integer-coded multi-level mediators"
+  )
+})
+
+test_that("leo_cox_mediation auto mode rejects larger integer-coded multi-level mediators", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_df()
+  med_df$mediator_many <- sample(1:12, nrow(med_df), replace = TRUE)
+
+  expect_error(
+    leo_cox_mediation(
+      df = med_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      x_med = "mediator_many",
+      x_cov = "age",
+      verbose = FALSE
+    ),
+    "integer-coded multi-level mediators"
+  )
+})
