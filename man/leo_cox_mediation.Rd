@@ -42,7 +42,10 @@ leo_cox_mediation(
 
 \item{m_cde}{Numeric scalar; mediator value at which the controlled direct effect is evaluated.}
 
-\item{c_cond}{Optional numeric vector of covariate values at which effects are evaluated. If \code{NULL}, medians are used for numeric covariates.}
+\item{c_cond}{Optional covariate profile at which effects are evaluated. Use a
+numeric vector when all covariates are numeric, or a named list / named
+vector keyed by original covariate names when non-numeric covariates are
+present. If \code{NULL}, medians are used for numeric covariates.}
 
 \item{mediator_model}{One of \code{"auto"}, \code{"linear"}, or \code{"logistic"}.}
 
@@ -52,7 +55,9 @@ leo_cox_mediation(
 }
 \value{
 A \code{leo_cox_mediation} object containing a display table in \verb{$result},
-the raw mediation table in \verb{$result_tidy}, and fitted \code{regmedint} objects.
+a detailed mediation table in \verb{$result_detail} (also available as the
+backward-compatible alias \verb{$result_tidy}), an evaluation summary in
+\verb{$evaluation}, and fitted \code{regmedint} objects in \verb{$fit}.
 }
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
@@ -62,6 +67,11 @@ the raw mediation table in \verb{$result_tidy}, and fitted \code{regmedint} obje
 a survival outcome using \code{regmedint::regmedint()} with \code{yreg = "survCox"}.
 Because the official \code{regmedint} interface requires explicit evaluation
 settings, continuous exposures should usually be accompanied by \code{a0} and \code{a1}.
+Binary factor exposures and mediators are internally recoded to \code{0/1} for
+compatibility with \code{regmedint}, while the display table keeps human-readable
+exposure contrasts and mediator reference labels. For \code{yreg = "survCox"},
+\code{regmedint} relies on the rare-event approximation, so non-rare outcomes
+should be interpreted with extra caution.
 The display table in \verb{$result} reports both the standard mediation-effect
 codes (for example \code{cde}, \code{pnde}, and \code{pm}) and their full labels, together
 with the exposure contrast and mediator reference value used for evaluation.

@@ -1,0 +1,205 @@
+---
+title: "生存分析 Step 3：中介分析"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{生存分析 Step 3：中介分析}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  message = FALSE,
+  warning = FALSE
+)
+suppressPackageStartupMessages(library(leo.ukb))
+if (!requireNamespace("regmedint", quietly = TRUE)) stop("构建本教程需要安装 `regmedint`。")
+```
+
+# 这一步要解决什么问题
+
+这篇教程是 `leo.ukb` 生存分析部分的第三步。完成主 Cox 分析和亚组/交互分析之后，经常会继续问：
+
+> exposure 和结局之间的关联，有没有一部分是通过某个 mediator 传递的？
+
+这就是中介分析，不再是亚组分析。
+
+# 先把中介分析和交互分析分清楚
+
+当前这套生存分析流程里，三步分别回答三类问题：
+
+1. Step 1：有没有主 exposure-outcome 关联？
+2. Step 2：这个关联会不会在不同人群里不一样？
+3. Step 3：这个关联是否部分通过某条中介路径传递？
+
+所以：
+
+- interaction 讨论的是效应异质性
+- mediation 讨论的是可能的作用路径
+
+# 建模前先明确方法边界
+
+`leo_cox_mediation()` 目前封装的是 `regmedint::regmedint()`，并使用
+`yreg = "survCox"`。
+
+当前最适合的使用场景是：
+
+- 结局是 time-to-event
+- exposure 是二分类，或是已经明确给定 `a0` 和 `a1` 的连续变量
+- mediator 是二分类或连续变量
+- 事件相对较少
+- 时间顺序在科学上说得通
+
+在 UK Biobank 这类 baseline 队列研究里，尤其要记住两点：
+
+1. `survCox` 中介分析依赖 rare-event approximation
+2. 如果 exposure 和 mediator 都在同一次 baseline visit 测量，结果更适合解释为
+   “与中介路径一致的分解结果”，而不是过强的因果结论，除非时间顺序有额外依据
+
+# 先构造一个适合教学的示例数据
+
+下面用一个小型模拟数据来演示：rare event、二分类 exposure、二分类
+mediator，再加几个常见协变量。
+
+```{r}
+set.seed(20260323)
+n <- 500
+age <- rnorm(n, 60, 8)
+bmi <- rnorm(n, 26, 4)
+smoking <- factor(sample(c("Never", "Ever"), n, replace = TRUE))
+exposure_num <- rbinom(n, 1, plogis(-0.2 + 0.02 * (age - 60)))
+mediator_num <- rbinom(n, 1, plogis(-0.5 + 0.9 * exposure_num + 0.02 * (bmi - 26)))
+event_prob <- plogis(-3.1 + 0.55 * exposure_num + 0.40 * mediator_num + 0.02 * (age - 60))
+
+med_df <- data.frame(
+  outcome = rbinom(n, 1, event_prob),
+  outcome_censor = rexp(n, rate = 0.08) + 0.2,
+  exposure = factor(exposure_num, levels = c(0, 1), labels = c("No", "Yes")),
+  mediator = factor(mediator_num, levels = c(0, 1), labels = c("Low", "High")),
+  age = age,
+  bmi = bmi,
+  smoking = smoking
+)
+
+mean(med_df$outcome)
+```
+
+这个示例里事件率比较低，和 `survCox` 当前推荐的教学场景更一致。
+
+# 先跑最基础的中介分析
+
+和主 Cox 分析一样，先把协变量层次定义清楚。
+
+```{r}
+med_models <- list(
+  "Model A" = c("age"),
+  "Model B" = c("age", "bmi")
+)
+
+res_med <- leo_cox_mediation(
+  df = med_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "exposure",
+  x_med = "mediator",
+  x_cov = med_models,
+  verbose = FALSE
+)
+
+res_med$result
+```
+
+# 结果表该怎么读
+
+当前输出已经把中介分析里最容易混的几件事分开了：
+
+- `Effect code` 给标准缩写，例如 `cde`、`pnde`、`tnie`、`pm`
+- `Effect` 给完整名称
+- `Scale` 提醒你：`pm` 是比例，其余几项是 hazard ratio 尺度
+- `Exposure contrast` 和 `Mediator reference` 明确告诉你这些效应是在哪个比较上计算出来的
+
+这点非常重要，因为中介效应不是“天然唯一”的，它取决于你指定的评价点。
+
+# 直接查看评价设置
+
+`leo_cox_mediation()` 现在会把评价设置整理在 `$evaluation` 里。
+
+```{r}
+res_med$evaluation
+```
+
+这张表可以快速核对：
+
+- exposure 是按哪个 `a0 -> a1` 比较的
+- `cde` 是在 mediator 的哪个参考值上计算的
+- `c_cond` 用的是哪一组协变量取值
+
+# 如果协变量里有分类变量，要显式给 `c_cond`
+
+当 adjustment set 里包含非数值协变量时，建议显式指定评价点。
+
+```{r}
+res_med_smoking <- leo_cox_mediation(
+  df = med_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "exposure",
+  x_med = "mediator",
+  x_cov = "smoking",
+  c_cond = list(smoking = "Never"),
+  verbose = FALSE
+)
+
+res_med_smoking$evaluation
+```
+
+这种写法比让 factor 在内部被隐式处理更透明，也更利于论文里说明分析设置。
+
+# 连续 mediator 也可以做
+
+如果 mediator 是连续变量，接口不变，只需要明确 `mediator_model = "linear"`。
+
+```{r}
+med_df_cont <- dplyr::mutate(
+  med_df,
+  mediator_cont = rnorm(n, mean = 0.5 * as.integer(exposure == "Yes") + 0.02 * (age - 60), sd = 1)
+)
+
+res_med_cont <- leo_cox_mediation(
+  df = med_df_cont,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "exposure",
+  x_med = "mediator_cont",
+  x_cov = "age",
+  mediator_model = "linear",
+  verbose = FALSE
+)
+
+res_med_cont$result
+```
+
+这时结果表里的 `Mediator reference` 会是一个数值，因为 `cde` 是在指定的
+`m_cde` 上评价的。
+
+# 文章里怎么写会更稳妥
+
+比较稳妥的写法通常是：
+
+1. 先报告 main Cox 结果
+2. 再把中介分析作为路径分解的补充证据
+3. 明确写出 exposure contrast、mediator reference 和协变量评价点
+4. 说明 `survCox` 中介分析依赖 rare-event approximation
+5. 如果 exposure 和 mediator 都来自同一次 baseline 测量，避免把结论写得过强
+
+也就是说，中介分析通常是在主关联已经成立以后，用来细化生物学故事，而不是替代主分析。
+
+# Step 3 最后应当带走什么
+
+这一步最重要的 4 个结论是：
+
+1. mediation 讨论的是路径，不是异质性
+2. `a0`、`a1`、`m_cde`、`c_cond` 决定了中介效应是在哪里被评价的
+3. `leo_cox_mediation()` 同时支持二分类和连续 mediator，但 factor mediator 不应该强行用 `mediator_model = "linear"`
+4. `survCox` 中介结果必须结合 rare-event 假设和研究中的时间顺序一起解释

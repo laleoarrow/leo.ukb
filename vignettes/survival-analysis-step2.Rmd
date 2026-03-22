@@ -204,3 +204,7 @@ This step should leave you with three practical rules:
 
 With that logic in place, your survival-analysis reporting becomes much easier
 to defend scientifically.
+
+Step 3 then asks a new question:
+
+> could part of the exposure-outcome association operate through a mediator?

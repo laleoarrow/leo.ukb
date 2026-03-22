@@ -190,3 +190,7 @@ res_sub_hetero$result
 3. subgroup-specific HR 是描述层，不是用来替代 interaction test 的
 
 把这套逻辑理顺以后，生存分析结果在文章里会清楚很多，也更经得起推敲。
+
+接下来的 Step 3 会换一个问题：
+
+> exposure 和结局之间的关联，是否有一部分可能通过 mediator 传递？

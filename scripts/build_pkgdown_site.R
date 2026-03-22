@@ -23,14 +23,18 @@ article_checks <- stats::setNames(
   c(
     "Survival Analysis Step 1: Main Cox Analysis",
     "Survival Analysis Step 2: Subgroup and Interaction",
+    "Survival Analysis Step 3: Mediation Analysis",
     "生存分析 Step 1：主 Cox 分析",
-    "生存分析 Step 2：亚组分析与交互效应"
+    "生存分析 Step 2：亚组分析与交互效应",
+    "生存分析 Step 3：中介分析"
   ),
   c(
     file.path(site_dir, "articles", "survival-analysis-step1.html"),
     file.path(site_dir, "articles", "survival-analysis-step2.html"),
+    file.path(site_dir, "articles", "survival-analysis-step3.html"),
     file.path(site_dir, "articles", "survival-analysis-step1-zh.html"),
-    file.path(site_dir, "articles", "survival-analysis-step2-zh.html")
+    file.path(site_dir, "articles", "survival-analysis-step2-zh.html"),
+    file.path(site_dir, "articles", "survival-analysis-step3-zh.html")
   )
 )
 

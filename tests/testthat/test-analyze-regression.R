@@ -302,3 +302,60 @@ test_that("leo_cox_mediation requests explicit c_cond for non-numeric covariates
     "Please supply c_cond explicitly"
   )
 })
+
+test_that("leo_cox_mediation keeps readable labels and detailed outputs", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_df()
+
+  res <- leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator",
+    x_cov = "age",
+    verbose = FALSE
+  )
+
+  expect_true(all(res$result$`Exposure contrast` == "No -> Yes"))
+  expect_true(all(res$result$`Mediator reference` == "High"))
+  expect_true(all(c("result", "result_detail", "result_tidy", "evaluation", "fit") %in% names(res)))
+  expect_identical(res$result_detail, res$result_tidy)
+  expect_true(all(c("exposure_contrast", "mediator_reference", "c_cond") %in% names(res$evaluation)))
+})
+
+test_that("leo_cox_mediation accepts named c_cond for non-numeric covariates", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_df()
+
+  res <- leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator",
+    x_cov = "smoking",
+    c_cond = list(smoking = "Never"),
+    verbose = FALSE
+  )
+
+  expect_s3_class(res, "leo_cox_mediation")
+  expect_equal(res$evaluation$c_cond, "smoking=Never")
+  expect_true(all(res$result$`Exposure contrast` == "No -> Yes"))
+})
+
+test_that("leo_cox_mediation rejects factor mediators when mediator_model is linear", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_df()
+
+  expect_error(
+    leo_cox_mediation(
+      df = med_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      x_med = "mediator",
+      x_cov = "age",
+      mediator_model = "linear",
+      verbose = FALSE
+    ),
+    "Mediator must be truly numeric"
+  )
+})

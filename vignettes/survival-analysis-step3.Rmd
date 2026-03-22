@@ -1,0 +1,216 @@
+---
+title: "Survival Analysis Step 3: Mediation Analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Survival Analysis Step 3: Mediation Analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  message = FALSE,
+  warning = FALSE
+)
+suppressPackageStartupMessages(library(leo.ukb))
+if (!requireNamespace("regmedint", quietly = TRUE)) stop("Package 'regmedint' is required to build this tutorial.")
+```
+
+# What this step is for
+
+This tutorial is the third survival-analysis step in `leo.ukb`. After the main
+Cox model and the subgroup/interaction stage, a different question can appear:
+
+> does part of the exposure-outcome association operate through a mediator?
+
+That is a mediation question, not a subgroup question.
+
+# First separate mediation from interaction
+
+The three steps in the current survival workflow answer three different
+questions:
+
+1. Step 1: is there a main exposure-outcome association?
+2. Step 2: does that association differ across groups?
+3. Step 3: is part of that association transmitted through a mediator?
+
+This distinction matters because mediation is about **pathways**, whereas
+interaction is about **effect heterogeneity**.
+
+# Know the method boundary before fitting
+
+`leo_cox_mediation()` wraps `regmedint::regmedint()` with `yreg = "survCox"`.
+The current package workflow is most appropriate when:
+
+- the outcome is time-to-event
+- the exposure is binary, or numeric with explicit `a0` and `a1`
+- the mediator is binary or continuous
+- the event is reasonably rare
+- the temporal ordering is scientifically defensible
+
+Two practical cautions are especially important in UK Biobank-style cohort work:
+
+1. `regmedint` with `survCox` relies on the rare-event approximation
+2. if exposure and mediator are both measured at the same baseline visit, the
+   result is easier to defend as a pathway-consistent decomposition than as a
+   strong causal claim unless temporal ordering is otherwise justified
+
+# Build a compact teaching data set
+
+We use a small synthetic example with a rare event, a binary exposure, a binary
+mediator, and a few covariates.
+
+```{r}
+set.seed(20260323)
+n <- 500
+age <- rnorm(n, 60, 8)
+bmi <- rnorm(n, 26, 4)
+smoking <- factor(sample(c("Never", "Ever"), n, replace = TRUE))
+exposure_num <- rbinom(n, 1, plogis(-0.2 + 0.02 * (age - 60)))
+mediator_num <- rbinom(n, 1, plogis(-0.5 + 0.9 * exposure_num + 0.02 * (bmi - 26)))
+event_prob <- plogis(-3.1 + 0.55 * exposure_num + 0.40 * mediator_num + 0.02 * (age - 60))
+
+med_df <- data.frame(
+  outcome = rbinom(n, 1, event_prob),
+  outcome_censor = rexp(n, rate = 0.08) + 0.2,
+  exposure = factor(exposure_num, levels = c(0, 1), labels = c("No", "Yes")),
+  mediator = factor(mediator_num, levels = c(0, 1), labels = c("Low", "High")),
+  age = age,
+  bmi = bmi,
+  smoking = smoking
+)
+
+mean(med_df$outcome)
+```
+
+The observed event proportion is low enough for this toy example to be aligned
+with the intended `survCox` use case.
+
+# Fit the simplest mediation workflow
+
+As in the Cox tutorials, it helps to define the adjustment hierarchy first.
+
+```{r}
+med_models <- list(
+  "Model A" = c("age"),
+  "Model B" = c("age", "bmi")
+)
+
+res_med <- leo_cox_mediation(
+  df = med_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "exposure",
+  x_med = "mediator",
+  x_cov = med_models,
+  verbose = FALSE
+)
+
+res_med$result
+```
+
+# How to read the result table
+
+The mediation output is already organized in a paper-friendly way.
+
+- `Effect code` gives the standard mediation abbreviations such as `cde`,
+  `pnde`, `tnie`, and `pm`
+- `Effect` gives the full label
+- `Scale` reminds you that `pm` is a proportion, while the other mediation
+  effects are reported on the hazard-ratio scale
+- `Exposure contrast` and `Mediator reference` show exactly where the effects
+  were evaluated
+
+This last point is important: mediation estimates are conditional on the chosen
+evaluation settings.
+
+# Inspect the evaluation settings directly
+
+`leo_cox_mediation()` now keeps a compact evaluation summary in `$evaluation`.
+
+```{r}
+res_med$evaluation
+```
+
+This table is especially useful when you want to audit:
+
+- which `a0 -> a1` contrast was used
+- which mediator reference value was used for the controlled direct effect
+- which covariate profile was used for `c_cond`
+
+# Non-numeric covariates need explicit `c_cond`
+
+When the selected adjustment set contains a non-numeric covariate, the
+evaluation profile should be given explicitly.
+
+```{r}
+res_med_smoking <- leo_cox_mediation(
+  df = med_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "exposure",
+  x_med = "mediator",
+  x_cov = "smoking",
+  c_cond = list(smoking = "Never"),
+  verbose = FALSE
+)
+
+res_med_smoking$evaluation
+```
+
+This is more transparent than letting a factor be silently converted in a way
+the reader cannot easily reconstruct.
+
+# Continuous mediators are also supported
+
+The same workflow can be used with a continuous mediator.
+
+```{r}
+med_df_cont <- dplyr::mutate(
+  med_df,
+  mediator_cont = rnorm(n, mean = 0.5 * as.integer(exposure == "Yes") + 0.02 * (age - 60), sd = 1)
+)
+
+res_med_cont <- leo_cox_mediation(
+  df = med_df_cont,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "exposure",
+  x_med = "mediator_cont",
+  x_cov = "age",
+  mediator_model = "linear",
+  verbose = FALSE
+)
+
+res_med_cont$result
+```
+
+For a continuous mediator, the reference value in the table is numeric because
+the controlled direct effect is evaluated at `m_cde`.
+
+# How to write this in a paper
+
+A defensible reporting order is usually:
+
+1. report the main exposure-outcome association first
+2. then present the mediation analysis as a pathway decomposition
+3. state the exposure contrast, mediator reference, and adjustment profile
+4. mention that `survCox` mediation relies on the rare-event approximation
+5. avoid over-claiming causality when exposure and mediator are measured at the
+   same baseline visit
+
+In other words, mediation should usually refine the biological story after the
+main Cox result is already established.
+
+# What to take away from step 3
+
+This step should leave you with four practical rules:
+
+1. mediation asks a pathway question, not a heterogeneity question
+2. `a0`, `a1`, `m_cde`, and `c_cond` define where the mediation effects are
+   evaluated
+3. `leo_cox_mediation()` handles both binary and continuous mediators, but
+   factor mediators should not be forced into `mediator_model = "linear"`
+4. the `survCox` mediation result should always be interpreted with the
+   rare-event assumption and the study's temporal ordering in mind
