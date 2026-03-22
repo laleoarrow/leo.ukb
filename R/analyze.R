@@ -480,8 +480,8 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 # Cox ----
 #' Cox regression fitting and formatting helpers
 #'
-#' `leo_cox_regression()` fits one or more Cox proportional hazards models for a
-#' single exposure and incident outcome. `leo_cox_regression_format()` converts
+#' `leo_cox()` fits one or more Cox proportional hazards models for a
+#' single exposure and incident outcome. `leo_cox_format()` converts
 #' the returned object into a wide summary table, tidy result table, or
 #' `gtsummary` output.
 #'
@@ -504,7 +504,7 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #'   force factor coding. In `"auto"` mode, small integer-coded exposures will
 #'   trigger a warning because they may represent categorical groups.
 #'
-#' @return A `leo_cox_regression` object containing the default wide table in
+#' @return A `leo_cox` object containing the default wide table in
 #'   `$result`, the underlying tidy rows in `$result_tidy`, model metadata, and
 #'   fitted `coxph` objects.
 #' @export
@@ -526,19 +526,19 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #'   "Model B" = c("sex", "ecog_group")
 #' )
 #'
-#' res_age <- leo_cox_regression(
+#' res_age <- leo_cox(
 #'   df = lung_df, y_out = c("outcome", "outcome_censor"),
 #'   x_exp = "age", x_cov = model_cont, verbose = FALSE
 #' )
 #' res_age$result
-#' leo_cox_regression_format(res_age, style = "tidy")
+#' leo_cox_format(res_age, style = "tidy")
 #'
 #' model_cat <- list(
 #'   "Crude" = NULL,
 #'   "Model A" = c("sex")
 #' )
 #'
-#' res_ecog <- leo_cox_regression(
+#' res_ecog <- leo_cox(
 #'   df = lung_df, y_out = c("outcome", "outcome_censor"),
 #'   x_exp = "ecog_group", x_cov = model_cat,
 #'   x_exp_type = "categorical", verbose = FALSE
@@ -546,11 +546,9 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #' res_ecog$result
 #'
 #' if (requireNamespace("gtsummary", quietly = TRUE) && requireNamespace("broom.helpers", quietly = TRUE)) {
-#'   leo_cox_regression_format(res_age, style = "gtsummary")
+#'   leo_cox_format(res_age, style = "gtsummary")
 #' }
-leo_cox_regression <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1,
-                               min_followup_time = 0, x_exp_type = "auto",
-                               verbose = TRUE) {
+leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followup_time = 0, x_exp_type = "auto", verbose = TRUE) {
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Regression", col = "blue")
@@ -569,7 +567,7 @@ leo_cox_regression <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1,
   if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering.", call. = FALSE)
   if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
   if (prep$n_removed_complete_case > 0) {
-    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before Cox regression, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox_regression(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
+    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before Cox analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
   }
   exposure_type <- .check_var_type(prep$data$exposure, var_name = prep$exposure_name, var_type = x_exp_type, verbose = verbose)
 
@@ -682,20 +680,20 @@ leo_cox_regression <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1,
       event_value = prep$event_value
     ),
     fit = fit_results
-  ), class = "leo_cox_regression")
-  out$result <- leo_cox_regression_format(out, style = "wide")
+  ), class = "leo_cox")
+  out$result <- leo_cox_format(out, style = "wide")
   leo.basic::leo_log("Cox regression completed for {prep$exposure_name} -> {prep$outcome_name} with {length(prep$models)} model(s).", level = "success", verbose = verbose)
   if (verbose) leo.basic::leo_time_elapsed(t0)
   return(out)
 }
 
-#' Format a `leo_cox_regression` result
+#' Format a `leo_cox` result
 #'
-#' @rdname leo_cox_regression
-#' @param x Result returned by `leo_cox_regression()`.
+#' @rdname leo_cox
+#' @param x Result returned by `leo_cox()`.
 #' @param style One of `"wide"`, `"tidy"`, or `"gtsummary"`.
 #' @section Formatting output:
-#' `leo_cox_regression_format()` returns:
+#' `leo_cox_format()` returns:
 #' - `"wide"`: a wide summary data frame with one set of HR / CI / p-value
 #'   columns per model.
 #' - `"tidy"`: the row-level tidy result table stored in `x$result_tidy`, with
@@ -704,8 +702,8 @@ leo_cox_regression <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1,
 #'   table when multiple models are present.
 #'
 #' @export
-leo_cox_regression_format <- function(x, style = "wide") {
-  if (!inherits(x, "leo_cox_regression")) stop("x must be a leo_cox_regression result.", call. = FALSE)
+leo_cox_format <- function(x, style = "wide") {
+  if (!inherits(x, "leo_cox")) stop("x must be a leo_cox result.", call. = FALSE)
   if (!style %in% c("wide", "tidy", "gtsummary")) stop("style must be one of 'wide', 'tidy', or 'gtsummary'.", call. = FALSE)
   switch(style,
     wide = {
@@ -754,14 +752,553 @@ leo_cox_regression_format <- function(x, style = "wide") {
   )
 }
 
+#' Cox interaction analysis
+#'
+#' `r lifecycle::badge('experimental')`
+#'
+#' `leo_cox_interaction()` tests whether the association between an exposure and
+#' an incident outcome differs by a candidate interaction variable. It compares
+#' nested Cox models with and without the interaction term using
+#' `stats::anova(..., test = "Chisq")`.
+#'
+#' @param df Data frame containing the outcome, follow-up time, exposure, interaction variable, and covariates.
+#' @param y_out Character vector of length 2 giving the event and follow-up time column names: `c(event, time)`.
+#' @param x_exp Character scalar giving the exposure column name.
+#' @param x_inter Character scalar giving the interaction variable column name.
+#' @param x_cov `NULL`, a character vector of covariate column names, or a list of covariate column-name vectors.
+#' @param min_followup_time Numeric scalar; keep rows with `time > min_followup_time`.
+#' @param event_value Value in the event column that indicates incident events.
+#' @param x_exp_type Exposure type handling for `x_exp`.
+#' @param x_inter_type Interaction-variable type handling for `x_inter`.
+#' @param verbose Logical; print progress messages.
+#'
+#' @return A `leo_cox_interaction` object containing a display table in `$result`,
+#'   the raw interaction rows in `$result_tidy`, and fitted nested Cox models.
+#' @export
+#' @examples
+#' lung_df <- stats::na.omit(
+#'   dplyr::transmute(
+#'     survival::lung,
+#'     outcome = as.integer(status == 2),
+#'     outcome_censor = time,
+#'     age = age,
+#'     sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+#'     ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
+#'   )
+#' )
+#'
+#' model <- list("Crude" = NULL, "Model A" = c("ecog_group"))
+#' leo_cox_interaction(
+#'   df = lung_df, y_out = c("outcome", "outcome_censor"),
+#'   x_exp = "age", x_inter = "sex", x_cov = model, verbose = FALSE
+#' )$result
+leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_value = 1, min_followup_time = 0, x_exp_type = "auto", x_inter_type = "categorical", verbose = TRUE) {
+  t0 <- Sys.time()
+  df_name <- deparse(substitute(df))
+  if (verbose) cli::cat_rule("Cox Interaction", col = "blue")
+  if (!is.character(x_inter) || length(x_inter) != 1) stop("x_inter must be a single column name.", call. = FALSE)
+  if (!x_inter %in% names(df)) stop("x_inter must exist in df.", call. = FALSE)
+  if (!x_exp_type %in% c("auto", "continuous", "categorical")) stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
+  if (!x_inter_type %in% c("auto", "continuous", "categorical")) stop("x_inter_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
+
+  model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
+  prep_models <- lapply(model_list, function(covariates) unique(c(if (is.null(covariates)) character(0) else covariates, x_inter)))
+  prep <- .prepare_cox_regression_data(
+    df = df,
+    y_out = y_out,
+    x_exp = x_exp,
+    x_cov = prep_models,
+    min_followup_time = min_followup_time,
+    event_value = event_value,
+    verbose = verbose
+  )
+  if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering.", call. = FALSE)
+  if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
+  if (prep$n_removed_complete_case > 0) {
+    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before Cox interaction analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox_interaction(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
+  }
+
+  exposure_type <- .check_var_type(prep$data$exposure, var_name = x_exp, var_type = x_exp_type, verbose = verbose)
+  interaction_type <- .check_var_type(prep$data[[x_inter]], var_name = x_inter, var_type = x_inter_type, verbose = verbose)
+  result_rows <- list()
+  fit_main <- list()
+  fit_inter <- list()
+  for (model_name in names(model_list)) {
+    covariates <- if (is.null(model_list[[model_name]])) character(0) else setdiff(model_list[[model_name]], x_inter)
+    leo.basic::leo_log("Testing interaction in {model_name} with {x_inter}{if (length(covariates) > 0) paste0(' adjusted for ', paste(covariates, collapse = ', ')) else ''}.", verbose = verbose)
+    model_df <- prep$data[, c("event", "time", "exposure", x_inter, covariates), drop = FALSE]
+
+    if (exposure_type == "categorical") {
+      model_df$exposure <- droplevels(factor(model_df$exposure))
+      if (nlevels(model_df$exposure) < 2) stop("x_exp must contain at least 2 exposure levels after filtering.", call. = FALSE)
+    } else {
+      model_df$exposure <- suppressWarnings(as.numeric(model_df$exposure))
+      if (anyNA(model_df$exposure)) stop("x_exp_type = 'continuous' requires a numeric or integer exposure.", call. = FALSE)
+    }
+    if (interaction_type == "categorical") {
+      model_df[[x_inter]] <- droplevels(factor(model_df[[x_inter]]))
+      if (nlevels(model_df[[x_inter]]) < 2) stop("x_inter must contain at least 2 levels after filtering.", call. = FALSE)
+    } else {
+      model_df[[x_inter]] <- suppressWarnings(as.numeric(model_df[[x_inter]]))
+      if (anyNA(model_df[[x_inter]])) stop("x_inter_type = 'continuous' requires a numeric or integer interaction variable.", call. = FALSE)
+    }
+
+    rhs_main <- unique(c("exposure", paste0("`", x_inter, "`"), if (length(covariates) > 0) paste0("`", covariates, "`") else character(0)))
+    rhs_inter <- unique(c(paste0("exposure * `", x_inter, "`"), if (length(covariates) > 0) paste0("`", covariates, "`") else character(0)))
+    formula_main <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_main, collapse = " + ")))
+    formula_inter <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_inter, collapse = " + ")))
+    fit_main[[model_name]] <- survival::coxph(formula = formula_main, data = model_df)
+    fit_inter[[model_name]] <- survival::coxph(formula = formula_inter, data = model_df)
+    anova_res <- stats::anova(fit_main[[model_name]], fit_inter[[model_name]], test = "Chisq")
+    p_col <- grep("^P", names(anova_res), value = TRUE)[1]
+    p_interaction <- if (is.na(p_col)) NA_real_ else unname(anova_res[2, p_col])
+    result_rows[[model_name]] <- data.frame(
+      model = model_name,
+      exposure = x_exp,
+      interaction = x_inter,
+      n = nrow(model_df),
+      case_n = sum(model_df$event == 1, na.rm = TRUE),
+      control_n = sum(model_df$event == 0, na.rm = TRUE),
+      person_years = sum(model_df$time, na.rm = TRUE),
+      interaction_df = unname(anova_res[2, "Df"]),
+      p_interaction = p_interaction,
+      exposure_class = if (is.factor(model_df$exposure)) if (nlevels(model_df$exposure) == 2) "Binary" else paste0("Categorical (", nlevels(model_df$exposure), " levels)") else "Continuous",
+      interaction_class = if (is.factor(model_df[[x_inter]])) if (nlevels(model_df[[x_inter]]) == 2) "Binary" else paste0("Categorical (", nlevels(model_df[[x_inter]]), " levels)") else "Continuous",
+      formula_main = Reduce(paste, deparse(formula_main)),
+      formula_inter = Reduce(paste, deparse(formula_inter)),
+      check.names = FALSE
+    )
+  }
+  result_tidy <- do.call(rbind, result_rows)
+  rownames(result_tidy) <- NULL
+  result <- result_tidy[, c("model", "exposure", "interaction", "n", "case_n", "control_n", "person_years", "interaction_df", "p_interaction", "exposure_class", "interaction_class"), drop = FALSE]
+  names(result) <- c("Model", "Exposure", "Interaction", "N", "Case N", "Control N", "Person-years", "Interaction DF", "P for interaction", "Exposure class", "Interaction class")
+  result$`P for interaction` <- vapply(result$`P for interaction`, .format_p_value, character(1))
+  out <- structure(list(result = result, result_tidy = result_tidy, fit_main = fit_main, fit_inter = fit_inter), class = "leo_cox_interaction")
+  leo.basic::leo_log("Cox interaction analysis completed for {x_exp} x {x_inter} with {length(model_list)} model(s).", level = "success", verbose = verbose)
+  if (verbose) leo.basic::leo_time_elapsed(t0)
+  return(out)
+}
+
+#' Cox subgroup analysis
+#'
+#' `r lifecycle::badge('experimental')`
+#'
+#' `leo_cox_subgroup()` runs `leo_cox()` within each level of one or more
+#' subgroup variables and appends a `P for interaction` from
+#' `leo_cox_interaction()`. Optionally, it also calculates a summary-statistic
+#' heterogeneity P value using `leo_heterogeneity_p()`.
+#'
+#' @param df Data frame containing the outcome, follow-up time, exposure, subgroup variables, and covariates.
+#' @param y_out Character vector of length 2 giving the event and follow-up time column names: `c(event, time)`.
+#' @param x_exp Character scalar giving the exposure column name.
+#' @param x_subgroup Character vector giving one or more subgroup column names.
+#' @param x_cov `NULL`, a character vector of covariate column names, or a list of covariate column-name vectors.
+#' @param min_followup_time Numeric scalar; keep rows with `time > min_followup_time`.
+#' @param event_value Value in the event column that indicates incident events.
+#' @param x_exp_type Exposure type handling for `x_exp`.
+#' @param x_subgroup_type Type handling for `x_subgroup`. Subgroup analyses are expected to use categorical grouping variables.
+#' @param include_heterogeneity Logical; whether to calculate a heterogeneity P value from subgroup summary statistics.
+#' @param verbose Logical; print progress messages.
+#'
+#' @return A `leo_cox_subgroup` object containing the default wide table in
+#'   `$result`, subgroup-level tidy rows in `$result_tidy`, and interaction
+#'   test results in `$interaction`.
+#' @export
+#' @examples
+#' lung_df <- stats::na.omit(
+#'   dplyr::transmute(
+#'     survival::lung,
+#'     outcome = as.integer(status == 2),
+#'     outcome_censor = time,
+#'     age = age,
+#'     sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+#'     ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
+#'   )
+#' )
+#'
+#' model <- list("Crude" = NULL, "Model A" = c("ecog_group"))
+#' res_sub <- leo_cox_subgroup(
+#'   df = lung_df, y_out = c("outcome", "outcome_censor"),
+#'   x_exp = "age", x_subgroup = "sex", x_cov = model, verbose = FALSE
+#' )
+#' res_sub$result
+#' leo_cox_subgroup_format(res_sub, style = "tidy")
+leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL, event_value = 1, min_followup_time = 0, x_exp_type = "auto", x_subgroup_type = "categorical", include_heterogeneity = TRUE, verbose = TRUE) {
+  t0 <- Sys.time()
+  if (verbose) cli::cat_rule("Cox Subgroup", col = "blue")
+  if (!is.character(x_subgroup) || length(x_subgroup) < 1) stop("x_subgroup must be a character vector of subgroup column names.", call. = FALSE)
+  if (!all(x_subgroup %in% names(df))) stop("All x_subgroup columns must exist in df.", call. = FALSE)
+  if (!x_exp_type %in% c("auto", "continuous", "categorical")) stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
+  if (!x_subgroup_type %in% c("auto", "continuous", "categorical")) stop("x_subgroup_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
+
+  base_models <- .normalize_model_list(x_cov, df_colnames = names(df))
+  subgroup_rows <- list()
+  interaction_rows <- list()
+  subgroup_index <- 1L
+  for (subgroup_var in x_subgroup) {
+    subgroup_models <- lapply(base_models, function(covariates) setdiff(if (is.null(covariates)) character(0) else covariates, subgroup_var))
+    prep_models <- lapply(subgroup_models, function(covariates) unique(c(covariates, subgroup_var)))
+    prep <- .prepare_cox_regression_data(
+      df = df,
+      y_out = y_out,
+      x_exp = x_exp,
+      x_cov = prep_models,
+      min_followup_time = min_followup_time,
+      event_value = event_value,
+      verbose = verbose
+    )
+    if (prep$n_after_followup == 0 || nrow(prep$data) == 0) next
+    subgroup_type <- .check_var_type(prep$data[[subgroup_var]], var_name = subgroup_var, var_type = x_subgroup_type, verbose = verbose)
+    if (subgroup_type != "categorical") stop("Subgroup analysis requires a categorical grouping variable. Convert ", subgroup_var, " to factor() first if needed.", call. = FALSE)
+    prep$data[[subgroup_var]] <- droplevels(factor(prep$data[[subgroup_var]]))
+    interaction_fit <- tryCatch(
+      leo_cox_interaction(
+        df = df,
+        y_out = y_out,
+        x_exp = x_exp,
+        x_inter = subgroup_var,
+        x_cov = subgroup_models,
+        event_value = event_value,
+        min_followup_time = min_followup_time,
+        x_exp_type = x_exp_type,
+        x_inter_type = "categorical",
+        verbose = FALSE
+      ),
+      error = function(e) {
+        leo.basic::leo_log("Skipping interaction test for subgroup '{subgroup_var}': {e$message}", level = "warning", verbose = verbose)
+        return(NULL)
+      }
+    )
+    interaction_rows[[subgroup_var]] <- if (is.null(interaction_fit)) NULL else interaction_fit$result_tidy
+    for (subgroup_level in levels(prep$data[[subgroup_var]])) {
+      sub_df <- prep$data[prep$data[[subgroup_var]] == subgroup_level, c("event", "time", "exposure", unique(unlist(subgroup_models, use.names = FALSE))), drop = FALSE]
+      if (nrow(sub_df) == 0) next
+      if (length(unique(stats::na.omit(sub_df$event))) < 2) {
+        leo.basic::leo_log("Skipping subgroup '{subgroup_var} = {subgroup_level}' because the outcome has fewer than 2 observed states.", level = "warning", verbose = verbose)
+        next
+      }
+      if (length(unique(stats::na.omit(sub_df$exposure))) < 2) {
+        leo.basic::leo_log("Skipping subgroup '{subgroup_var} = {subgroup_level}' because exposure has fewer than 2 observed values.", level = "warning", verbose = verbose)
+        next
+      }
+      names(sub_df)[1:3] <- c(y_out[1], y_out[2], x_exp)
+      fit_sub <- tryCatch(
+        leo_cox(
+          df = sub_df,
+          y_out = y_out,
+          x_exp = x_exp,
+          x_cov = subgroup_models,
+          event_value = 1,
+          min_followup_time = min_followup_time,
+          x_exp_type = x_exp_type,
+          verbose = FALSE
+        ),
+        error = function(e) {
+          leo.basic::leo_log("Skipping subgroup '{subgroup_var} = {subgroup_level}' because Cox fitting failed: {e$message}", level = "warning", verbose = verbose)
+          return(NULL)
+        }
+      )
+      if (is.null(fit_sub)) next
+      sub_rows <- fit_sub$result_tidy
+      sub_rows$subgroup <- subgroup_var
+      sub_rows$subgroup_level <- as.character(subgroup_level)
+      sub_rows$subgroup_n <- nrow(sub_df)
+      sub_rows$row_key <- paste(subgroup_var, subgroup_level, sub_rows$row_id, sep = "___")
+      sub_rows$display_id <- seq.int(from = subgroup_index, length.out = nrow(sub_rows))
+      subgroup_index <- subgroup_index + nrow(sub_rows)
+      sub_rows$p_interaction <- if (is.null(interaction_fit)) NA_real_ else interaction_fit$result_tidy$p_interaction[match(sub_rows$model, interaction_fit$result_tidy$model)]
+      sub_rows$p_heterogeneity <- NA_real_
+      subgroup_rows[[paste0(subgroup_var, "___", subgroup_level)]] <- sub_rows
+    }
+  }
+  if (length(subgroup_rows) == 0) stop("No subgroup results were generated.", call. = FALSE)
+  result_tidy <- do.call(rbind, subgroup_rows)
+  rownames(result_tidy) <- NULL
+
+  if (include_heterogeneity) {
+    for (model_name in unique(result_tidy$model)) {
+      for (subgroup_var in unique(result_tidy$subgroup)) {
+        for (row_id in unique(result_tidy$row_id[result_tidy$subgroup == subgroup_var])) {
+          idx <- which(result_tidy$model == model_name & result_tidy$subgroup == subgroup_var & result_tidy$row_id == row_id)
+          idx <- idx[is.finite(result_tidy$hr[idx]) & is.finite(result_tidy$p_value[idx]) & !is.na(result_tidy$p_value[idx]) & result_tidy$exposure[idx] != "Ref"]
+          if (length(idx) < 2) next
+          hetero_res <- utils::capture.output(
+            hetero_obj <- leo_heterogeneity_p(
+              hrs = result_tidy$hr[idx],
+              p_values = result_tidy$p_value[idx],
+              subgroup_names = result_tidy$subgroup_level[idx]
+            )
+          )
+          result_tidy$p_heterogeneity[idx] <- hetero_obj$p_value_heterogeneity
+        }
+      }
+    }
+  }
+
+  interaction_tidy <- if (length(interaction_rows) == 0 || all(vapply(interaction_rows, is.null, logical(1)))) data.frame() else do.call(rbind, interaction_rows[!vapply(interaction_rows, is.null, logical(1))])
+  if (nrow(interaction_tidy) > 0) rownames(interaction_tidy) <- NULL
+  out <- structure(list(
+    result = NULL,
+    result_tidy = result_tidy,
+    interaction = interaction_tidy
+  ), class = "leo_cox_subgroup")
+  out$result <- leo_cox_subgroup_format(out, style = "wide")
+  leo.basic::leo_log("Cox subgroup analysis completed for {x_exp} across {length(x_subgroup)} subgroup variable(s).", level = "success", verbose = verbose)
+  if (verbose) leo.basic::leo_time_elapsed(t0)
+  return(out)
+}
+
+#' Format a `leo_cox_subgroup` result
+#'
+#' @rdname leo_cox_subgroup
+#' @param x Result returned by `leo_cox_subgroup()`.
+#' @param style One of `"wide"` or `"tidy"`.
+#' @export
+leo_cox_subgroup_format <- function(x, style = "wide") {
+  if (!inherits(x, "leo_cox_subgroup")) stop("x must be a leo_cox_subgroup result.", call. = FALSE)
+  if (!style %in% c("wide", "tidy")) stop("style must be one of 'wide' or 'tidy'.", call. = FALSE)
+  switch(style,
+    wide = {
+      if (!is.null(x$result)) return(x$result)
+      result_tidy <- x$result_tidy
+      model_ids <- unique(result_tidy$model)
+      result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_key", "subgroup", "subgroup_level", "subgroup_n", "exposure", "outcome", "case_n", "control_n", "person_years", "exposure_class"), drop = FALSE]
+      names(result_wide) <- c("row_key", "Subgroup", "Level", "N", "Exposure", "Outcome", "Case N", "Control N", "Person-years", "Class")
+      for (model_id in model_ids) {
+        model_df <- result_tidy[result_tidy$model == model_id, c("row_key", "hr", "hr_ci_l", "hr_ci_u", "p_value", "p_interaction", "p_heterogeneity"), drop = FALSE]
+        model_df$hr <- round(model_df$hr, 3)
+        model_df$ci_95 <- ifelse(is.na(model_df$hr_ci_l) | is.na(model_df$hr_ci_u), "NA", paste0(sprintf("%.3f", round(model_df$hr_ci_l, 3)), ", ", sprintf("%.3f", round(model_df$hr_ci_u, 3))))
+        model_df$p_value <- vapply(model_df$p_value, .format_p_value, character(1))
+        model_df$p_interaction <- vapply(model_df$p_interaction, .format_p_value, character(1))
+        model_df$p_heterogeneity <- vapply(model_df$p_heterogeneity, .format_p_value, character(1))
+        model_df <- model_df[, c("row_key", "hr", "ci_95", "p_value", "p_interaction", "p_heterogeneity"), drop = FALSE]
+        names(model_df) <- c("row_key", paste(model_id, "HR"), paste(model_id, "95% CI"), paste(model_id, "P value"), paste(model_id, "P for interaction"), paste(model_id, "P for heterogeneity"))
+        result_wide <- merge(result_wide, model_df, by = "row_key", all.x = TRUE, sort = FALSE)
+      }
+      result_wide <- result_wide[match(unique(result_tidy$row_key), result_wide$row_key), , drop = FALSE]
+      result_wide$row_key <- NULL
+      rownames(result_wide) <- NULL
+      result_wide
+    },
+    tidy = {
+      result_tidy <- x$result_tidy
+      result_out <- result_tidy[, c("subgroup", "subgroup_level", "subgroup_n", "model", "exposure", "outcome", "level", "case_n", "control_n", "person_years"), drop = FALSE]
+      result_out$HR <- round(result_tidy$hr, 3)
+      result_out$`95% CI` <- ifelse(is.na(result_tidy$hr_ci_l) | is.na(result_tidy$hr_ci_u), "NA", paste0(sprintf("%.3f", round(result_tidy$hr_ci_l, 3)), ", ", sprintf("%.3f", round(result_tidy$hr_ci_u, 3))))
+      result_out$`P value` <- vapply(result_tidy$p_value, .format_p_value, character(1))
+      result_out$`P for interaction` <- vapply(result_tidy$p_interaction, .format_p_value, character(1))
+      result_out$`P for heterogeneity` <- vapply(result_tidy$p_heterogeneity, .format_p_value, character(1))
+      result_out$Class <- result_tidy$exposure_class
+      result_out$Formula <- result_tidy$formula
+      names(result_out)[1:10] <- c("Subgroup", "Level", "N", "Model", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
+      rownames(result_out) <- NULL
+      result_out
+    }
+  )
+}
+
+#' Cox mediation analysis
+#'
+#' `r lifecycle::badge('experimental')`
+#'
+#' `leo_cox_mediation()` performs regression-based causal mediation analysis for
+#' a survival outcome using `regmedint::regmedint()` with `yreg = "survCox"`.
+#' Because the official `regmedint` interface requires explicit evaluation
+#' settings, continuous exposures should usually be accompanied by `a0` and `a1`.
+#'
+#' @param df Data frame containing the outcome, follow-up time, exposure, mediator, and covariates.
+#' @param y_out Character vector of length 2 giving the event and follow-up time column names: `c(event, time)`.
+#' @param x_exp Character scalar giving the exposure column name.
+#' @param x_med Character scalar giving the mediator column name.
+#' @param x_cov `NULL`, a character vector of covariate column names, or a list of covariate column-name vectors.
+#' @param min_followup_time Numeric scalar; keep rows with `time > min_followup_time`.
+#' @param event_value Value in the event column that indicates incident events.
+#' @param a0 Numeric scalar; reference exposure value.
+#' @param a1 Numeric scalar; contrasted exposure value.
+#' @param m_cde Numeric scalar; mediator value at which the controlled direct effect is evaluated.
+#' @param c_cond Optional numeric vector of covariate values at which effects are evaluated. If `NULL`, medians are used for numeric covariates.
+#' @param mediator_model One of `"auto"`, `"linear"`, or `"logistic"`.
+#' @param interaction Logical; whether to include exposure-mediator interaction in the outcome model.
+#' @param verbose Logical; print progress messages.
+#'
+#' @return A `leo_cox_mediation` object containing a display table in `$result`,
+#'   the raw mediation table in `$result_tidy`, and fitted `regmedint` objects.
+#' @export
+#' @examples
+#' if (requireNamespace("regmedint", quietly = TRUE)) {
+#'   set.seed(123)
+#'   n <- 200
+#'   med_df <- data.frame(
+#'     outcome = rbinom(n, 1, 0.4),
+#'     outcome_censor = rexp(n, rate = 0.1),
+#'     exposure = rbinom(n, 1, 0.5),
+#'     mediator = rnorm(n),
+#'     age = rnorm(n, 60, 8)
+#'   )
+#'   res_med <- leo_cox_mediation(
+#'     df = med_df, y_out = c("outcome", "outcome_censor"),
+#'     x_exp = "exposure", x_med = "mediator", x_cov = "age",
+#'     a0 = 0, a1 = 1, verbose = FALSE
+#'   )
+#'   res_med$result
+#' }
+leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value = 1, min_followup_time = 0, a0 = NULL, a1 = NULL, m_cde = NULL, c_cond = NULL, mediator_model = "auto", interaction = TRUE, verbose = TRUE) {
+  t0 <- Sys.time()
+  df_name <- deparse(substitute(df))
+  if (verbose) cli::cat_rule("Cox Mediation", col = "blue")
+  if (!requireNamespace("regmedint", quietly = TRUE)) stop("leo_cox_mediation() requires package 'regmedint'. Please install it first.", call. = FALSE)
+  if (!is.character(x_med) || length(x_med) != 1) stop("x_med must be a single column name.", call. = FALSE)
+  if (!x_med %in% names(df)) stop("x_med must exist in df.", call. = FALSE)
+  mediator_model <- match.arg(mediator_model, c("auto", "linear", "logistic"))
+
+  model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
+  prep_models <- lapply(model_list, function(covariates) unique(c(if (is.null(covariates)) character(0) else covariates, x_med)))
+  prep <- .prepare_cox_regression_data(
+    df = df,
+    y_out = y_out,
+    x_exp = x_exp,
+    x_cov = prep_models,
+    min_followup_time = min_followup_time,
+    event_value = event_value,
+    verbose = verbose
+  )
+  if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering.", call. = FALSE)
+  if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
+  if (prep$n_removed_complete_case > 0) {
+    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before Cox mediation analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox_mediation(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
+  }
+
+  result_rows <- list()
+  fit_results <- list()
+  for (model_name in names(model_list)) {
+    covariates <- if (is.null(model_list[[model_name]])) character(0) else model_list[[model_name]]
+    model_df <- prep$data[, c("event", "time", "exposure", x_med, covariates), drop = FALSE]
+    a0_use <- a0
+    a1_use <- a1
+    m_cde_use <- m_cde
+
+    exposure_raw <- model_df$exposure
+    if (is.factor(exposure_raw) || is.character(exposure_raw) || is.logical(exposure_raw)) {
+      exposure_factor <- droplevels(factor(exposure_raw))
+      if (nlevels(exposure_factor) != 2) stop("leo_cox_mediation() currently supports binary factor exposures or numeric exposures.", call. = FALSE)
+      model_df$exposure <- as.integer(exposure_factor == levels(exposure_factor)[2])
+      if (is.null(a0_use)) a0_use <- 0
+      if (is.null(a1_use)) a1_use <- 1
+    } else {
+      model_df$exposure <- suppressWarnings(as.numeric(exposure_raw))
+      unique_exposure <- sort(unique(stats::na.omit(model_df$exposure)))
+      if (length(unique_exposure) == 2 && is.null(a0_use) && is.null(a1_use)) {
+        a0_use <- unique_exposure[1]
+        a1_use <- unique_exposure[2]
+      }
+      if (is.null(a0_use) || is.null(a1_use)) stop("Please provide both a0 and a1 for Cox mediation when x_exp is not a binary factor.", call. = FALSE)
+    }
+
+    mediator_raw <- model_df[[x_med]]
+    mediator_mode_use <- mediator_model
+    if (mediator_mode_use == "auto") {
+      if (is.factor(mediator_raw) || is.character(mediator_raw) || is.logical(mediator_raw)) {
+        mediator_levels <- levels(droplevels(factor(mediator_raw)))
+        if (length(mediator_levels) != 2) stop("Automatic mediator detection only supports binary factors or numeric mediators.", call. = FALSE)
+        mediator_mode_use <- "logistic"
+      } else {
+        mediator_num <- suppressWarnings(as.numeric(mediator_raw))
+        unique_mediator <- sort(unique(stats::na.omit(mediator_num)))
+        mediator_mode_use <- if (length(unique_mediator) == 2 && all(abs(unique_mediator - round(unique_mediator)) < 1e-8)) "logistic" else "linear"
+      }
+    }
+    if (mediator_mode_use == "logistic") {
+      mediator_factor <- droplevels(factor(mediator_raw))
+      if (nlevels(mediator_factor) != 2) stop("Mediator must have exactly 2 levels when mediator_model = 'logistic'.", call. = FALSE)
+      model_df[[x_med]] <- as.integer(mediator_factor == levels(mediator_factor)[2])
+      if (is.null(m_cde_use)) m_cde_use <- 1
+    } else {
+      model_df[[x_med]] <- suppressWarnings(as.numeric(mediator_raw))
+      if (anyNA(model_df[[x_med]])) stop("Mediator must be numeric when mediator_model = 'linear'.", call. = FALSE)
+      if (is.null(m_cde_use)) m_cde_use <- stats::median(model_df[[x_med]], na.rm = TRUE)
+    }
+
+    if (length(covariates) > 0) {
+      cov_df <- model_df[, covariates, drop = FALSE]
+      if (is.null(c_cond)) {
+        if (!all(vapply(cov_df, function(x) is.numeric(x) || is.integer(x), logical(1)))) {
+          stop("Please supply c_cond explicitly when x_cov contains non-numeric covariates for leo_cox_mediation().", call. = FALSE)
+        }
+        c_cond_use <- vapply(cov_df, stats::median, numeric(1), na.rm = TRUE)
+      } else {
+        c_cond_use <- as.numeric(c_cond)
+        if (length(c_cond_use) != length(covariates)) stop("c_cond must have the same length as the selected covariates.", call. = FALSE)
+      }
+    } else {
+      c_cond_use <- NULL
+    }
+
+    leo.basic::leo_log("Fitting mediation {model_name} with mediator {x_med}{if (length(covariates) > 0) paste0(' adjusted for ', paste(covariates, collapse = ', ')) else ''}.", verbose = verbose)
+    fit_results[[model_name]] <- regmedint::regmedint(
+      data = model_df,
+      yvar = "time",
+      avar = "exposure",
+      mvar = x_med,
+      cvar = if (length(covariates) > 0) covariates else NULL,
+      eventvar = "event",
+      a0 = a0_use,
+      a1 = a1_use,
+      m_cde = m_cde_use,
+      c_cond = c_cond_use,
+      mreg = mediator_mode_use,
+      yreg = "survCox",
+      interaction = interaction,
+      casecontrol = FALSE,
+      na_omit = FALSE
+    )
+    med_summary <- summary(fit_results[[model_name]], exponentiate = TRUE)
+    med_coef <- as.data.frame(coef(med_summary))
+    names(med_coef) <- gsub("\\(", ".", gsub("\\)", "", names(med_coef)))
+    med_coef$effect <- rownames(med_coef)
+    rownames(med_coef) <- NULL
+    med_coef$model <- model_name
+    med_coef$exposure <- x_exp
+    med_coef$mediator <- x_med
+    med_coef$outcome <- y_out[1]
+    med_coef$n <- nrow(model_df)
+    med_coef$case_n <- sum(model_df$event == 1, na.rm = TRUE)
+    med_coef$control_n <- sum(model_df$event == 0, na.rm = TRUE)
+    med_coef$person_years <- sum(model_df$time, na.rm = TRUE)
+    med_coef$mediator_model <- mediator_mode_use
+    med_coef$a0 <- a0_use
+    med_coef$a1 <- a1_use
+    med_coef$m_cde <- m_cde_use
+    result_rows[[model_name]] <- med_coef
+  }
+
+  result_tidy <- do.call(rbind, result_rows)
+  rownames(result_tidy) <- NULL
+  result <- result_tidy[, c("model", "effect", "exposure", "mediator", "outcome", "n", "case_n", "control_n", "person_years", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mediator_model"), drop = FALSE]
+  result$Estimate <- ifelse(result$effect == "pm", round(result$est, 3), round(result$exp.est, 3))
+  result$`95% CI` <- ifelse(
+    result$effect == "pm",
+    paste0(sprintf("%.3f", round(result$lower, 3)), ", ", sprintf("%.3f", round(result$upper, 3))),
+    paste0(sprintf("%.3f", round(result$exp.lower, 3)), ", ", sprintf("%.3f", round(result$exp.upper, 3)))
+  )
+  result$`P value` <- vapply(result$p, .format_p_value, character(1))
+  result <- result[, c("model", "effect", "exposure", "mediator", "outcome", "n", "case_n", "control_n", "person_years", "Estimate", "95% CI", "P value", "mediator_model"), drop = FALSE]
+  names(result)[1:9] <- c("Model", "Effect", "Exposure", "Mediator", "Outcome", "N", "Case N", "Control N", "Person-years")
+  names(result)[13] <- "Mediator model"
+  out <- structure(list(result = result, result_tidy = result_tidy, fit = fit_results), class = "leo_cox_mediation")
+  leo.basic::leo_log("Cox mediation analysis completed for {x_exp} -> {x_med} -> {y_out[1]} with {length(model_list)} model(s).", level = "success", verbose = verbose)
+  if (verbose) leo.basic::leo_time_elapsed(t0)
+  return(out)
+}
+
 # Linear ----
 
 #' Linear regression fitting and formatting helpers
 #'
 #' `r lifecycle::badge('experimental')`
 #'
-#' `leo_linear_regression()` fits one or more linear regression models for a
-#' single exposure and continuous outcome. `leo_linear_regression_format()`
+#' `leo_linear()` fits one or more linear regression models for a
+#' single exposure and continuous outcome. `leo_linear_format()`
 #' converts the returned object into a wide summary table, tidy result table, or
 #' `gtsummary` output.
 #'
@@ -778,7 +1315,7 @@ leo_cox_regression_format <- function(x, style = "wide") {
 #'   `"categorical"` to force factor coding.
 #' @param verbose Logical; print progress messages.
 #'
-#' @return A `leo_linear_regression` object containing the default wide table in
+#' @return A `leo_linear` object containing the default wide table in
 #'   `$result`, the underlying tidy rows in `$result_tidy`, model metadata, and
 #'   fitted `lm` objects.
 #' @export
@@ -797,28 +1334,28 @@ leo_cox_regression_format <- function(x, style = "wide") {
 #'   "Model B" = c("am", "cyl_group")
 #' )
 #'
-#' res_wt <- leo_linear_regression(
+#' res_wt <- leo_linear(
 #'   df = linear_df, y_out = "outcome", x_exp = "wt",
 #'   x_cov = model_cont, verbose = FALSE
 #' )
 #' res_wt$result
-#' leo_linear_regression_format(res_wt, style = "tidy")
+#' leo_linear_format(res_wt, style = "tidy")
 #'
 #' model_cat <- list(
 #'   "Crude" = NULL,
 #'   "Model A" = c("am")
 #' )
 #'
-#' res_cyl <- leo_linear_regression(
+#' res_cyl <- leo_linear(
 #'   df = linear_df, y_out = "outcome", x_exp = "cyl_group",
 #'   x_cov = model_cat, x_exp_type = "categorical", verbose = FALSE
 #' )
 #' res_cyl$result
 #'
 #' if (requireNamespace("gtsummary", quietly = TRUE) && requireNamespace("broom.helpers", quietly = TRUE)) {
-#'   leo_linear_regression_format(res_wt, style = "gtsummary")
+#'   leo_linear_format(res_wt, style = "gtsummary")
 #' }
-leo_linear_regression <- function(df, y_out, x_exp, x_cov = NULL, x_exp_type = "auto", verbose = TRUE) {
+leo_linear <- function(df, y_out, x_exp, x_cov = NULL, x_exp_type = "auto", verbose = TRUE) {
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Linear Regression", col = "blue")
@@ -831,7 +1368,7 @@ leo_linear_regression <- function(df, y_out, x_exp, x_cov = NULL, x_exp_type = "
   if (!is.numeric(prep$data[[y_out]]) && !is.integer(prep$data[[y_out]])) stop("y_out must be numeric for linear regression.", call. = FALSE)
   if (prep$n_removed_complete_case > 0) {
     leo.basic::leo_log("Complete-case filtering removed {prep$n_removed_complete_case} row(s) with missing values across exposure/outcome/model covariates{if (length(prep$missing_vars) > 0) paste0(': ', paste(prep$missing_vars, collapse = ', ')) else ''}.", level = "warning", verbose = verbose)
-    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before linear regression, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_linear_regression(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
+    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before linear analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_linear(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
   }
   exposure_type <- .check_var_type(prep$data$exposure, var_name = prep$exposure_name, var_type = x_exp_type, verbose = verbose)
   leo.basic::leo_log("Linear data prepared: total = {prep$n_total}, after complete-case filter = {prep$n_after_complete_case}.", verbose = verbose)
@@ -922,21 +1459,21 @@ leo_linear_regression <- function(df, y_out, x_exp, x_cov = NULL, x_exp_type = "
       n_after_complete_case = prep$n_after_complete_case
     ),
     fit = fit_results
-  ), class = "leo_linear_regression")
-  out$result <- leo_linear_regression_format(out, style = "wide")
+  ), class = "leo_linear")
+  out$result <- leo_linear_format(out, style = "wide")
   leo.basic::leo_log("Linear regression completed for {prep$exposure_name} -> {y_out} with {length(prep$models)} model(s).", level = "success", verbose = verbose)
   if (verbose) leo.basic::leo_time_elapsed(t0)
   return(out)
 }
 
-#' Format a `leo_linear_regression` result
+#' Format a `leo_linear` result
 #'
-#' @rdname leo_linear_regression
-#' @param x Result returned by `leo_linear_regression()`.
+#' @rdname leo_linear
+#' @param x Result returned by `leo_linear()`.
 #' @param style One of `"wide"`, `"tidy"`, or `"gtsummary"`.
 #' @export
-leo_linear_regression_format <- function(x, style = "wide") {
-  if (!inherits(x, "leo_linear_regression")) stop("x must be a leo_linear_regression result.", call. = FALSE)
+leo_linear_format <- function(x, style = "wide") {
+  if (!inherits(x, "leo_linear")) stop("x must be a leo_linear result.", call. = FALSE)
   if (!style %in% c("wide", "tidy", "gtsummary")) stop("style must be one of 'wide', 'tidy', or 'gtsummary'.", call. = FALSE)
   switch(style,
     wide = {
@@ -989,8 +1526,8 @@ leo_linear_regression_format <- function(x, style = "wide") {
 #'
 #' `r lifecycle::badge('experimental')`
 #'
-#' `leo_logistic_regression()` fits one or more logistic regression models for a
-#' single exposure and binary outcome. `leo_logistic_regression_format()`
+#' `leo_logistic()` fits one or more logistic regression models for a
+#' single exposure and binary outcome. `leo_logistic_format()`
 #' converts the returned object into a wide summary table, tidy result table, or
 #' `gtsummary` output.
 #'
@@ -1008,7 +1545,7 @@ leo_linear_regression_format <- function(x, style = "wide") {
 #'   `"categorical"` to force factor coding.
 #' @param verbose Logical; print progress messages.
 #'
-#' @return A `leo_logistic_regression` object containing the default wide table
+#' @return A `leo_logistic` object containing the default wide table
 #'   in `$result`, the underlying tidy rows in `$result_tidy`, model metadata,
 #'   and fitted `glm` objects.
 #' @export
@@ -1028,28 +1565,28 @@ leo_linear_regression_format <- function(x, style = "wide") {
 #'   "Model B" = c("sex", "bmi_group")
 #' )
 #'
-#' res_prs <- leo_logistic_regression(
+#' res_prs <- leo_logistic(
 #'   df = logi_df, y_out = "outcome", x_exp = "prs",
 #'   x_cov = model_cont, verbose = FALSE
 #' )
 #' res_prs$result
-#' leo_logistic_regression_format(res_prs, style = "tidy")
+#' leo_logistic_format(res_prs, style = "tidy")
 #'
 #' model_cat <- list(
 #'   "Crude" = NULL,
 #'   "Model A" = c("sex")
 #' )
 #'
-#' res_bmi <- leo_logistic_regression(
+#' res_bmi <- leo_logistic(
 #'   df = logi_df, y_out = "outcome", x_exp = "bmi_group",
 #'   x_cov = model_cat, x_exp_type = "categorical", verbose = FALSE
 #' )
 #' res_bmi$result
 #'
 #' if (requireNamespace("gtsummary", quietly = TRUE) && requireNamespace("broom.helpers", quietly = TRUE)) {
-#'   leo_logistic_regression_format(res_prs, style = "gtsummary")
+#'   leo_logistic_format(res_prs, style = "gtsummary")
 #' }
-leo_logistic_regression <- function(df, y_out, x_exp, x_cov = NULL, case_value = 1, x_exp_type = "auto", verbose = TRUE) {
+leo_logistic <- function(df, y_out, x_exp, x_cov = NULL, case_value = 1, x_exp_type = "auto", verbose = TRUE) {
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Logistic Regression", col = "blue")
@@ -1061,7 +1598,7 @@ leo_logistic_regression <- function(df, y_out, x_exp, x_cov = NULL, case_value =
   if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
   if (prep$n_removed_complete_case > 0) {
     leo.basic::leo_log("Complete-case filtering removed {prep$n_removed_complete_case} row(s) with missing values across exposure/outcome/model covariates{if (length(prep$missing_vars) > 0) paste0(': ', paste(prep$missing_vars, collapse = ', ')) else ''}.", level = "warning", verbose = verbose)
-    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before logistic regression, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_logistic_regression(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
+    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before logistic analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_logistic(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
   }
 
   outcome_raw <- prep$data[[y_out]]
@@ -1172,21 +1709,21 @@ leo_logistic_regression <- function(df, y_out, x_exp, x_cov = NULL, case_value =
       case_value = case_value
     ),
     fit = fit_results
-  ), class = "leo_logistic_regression")
-  out$result <- leo_logistic_regression_format(out, style = "wide")
+  ), class = "leo_logistic")
+  out$result <- leo_logistic_format(out, style = "wide")
   leo.basic::leo_log("Logistic regression completed for {prep$exposure_name} -> {y_out} with {length(prep$models)} model(s).", level = "success", verbose = verbose)
   if (verbose) leo.basic::leo_time_elapsed(t0)
   return(out)
 }
 
-#' Format a `leo_logistic_regression` result
+#' Format a `leo_logistic` result
 #'
-#' @rdname leo_logistic_regression
-#' @param x Result returned by `leo_logistic_regression()`.
+#' @rdname leo_logistic
+#' @param x Result returned by `leo_logistic()`.
 #' @param style One of `"wide"`, `"tidy"`, or `"gtsummary"`.
 #' @export
-leo_logistic_regression_format <- function(x, style = "wide") {
-  if (!inherits(x, "leo_logistic_regression")) stop("x must be a leo_logistic_regression result.", call. = FALSE)
+leo_logistic_format <- function(x, style = "wide") {
+  if (!inherits(x, "leo_logistic")) stop("x must be a leo_logistic result.", call. = FALSE)
   if (!style %in% c("wide", "tidy", "gtsummary")) stop("style must be one of 'wide', 'tidy', or 'gtsummary'.", call. = FALSE)
   switch(style,
     wide = {

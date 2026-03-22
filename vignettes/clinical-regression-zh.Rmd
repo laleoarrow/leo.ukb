@@ -1,8 +1,8 @@
 ---
-title: "Clinical Regression Workflows"
+title: "临床回归分析工作流"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Clinical Regression Workflows}
+  %\VignetteIndexEntry{临床回归分析工作流}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -19,33 +19,30 @@ knitr::opts_chunk$set(
 suppressPackageStartupMessages(library(leo.ukb))
 ```
 
-This article shows the unified clinical regression interface in `leo.ukb`. The
-same design now supports:
+这篇教程展示 `leo.ukb` 目前已经统一好的临床回归接口。现在同一套设计可以完成：
 
-- `leo_cox()` for time-to-event outcomes
-- `leo_logistic()` for binary outcomes
-- `leo_linear()` for continuous outcomes
+- `leo_cox()`：时间结局 / 生存结局
+- `leo_logistic()`：二分类结局
+- `leo_linear()`：连续性结局
 
-For Cox analyses, the framework now also includes:
+其中 Cox 这部分还进一步扩展到了：
 
-- `leo_cox_interaction()` for multiplicative interaction tests
-- `leo_cox_subgroup()` for subgroup tables with `P for interaction`
-- `leo_cox_mediation()` for survival mediation analysis through `regmedint`
+- `leo_cox_interaction()`：交互作用检验
+- `leo_cox_subgroup()`：分层结果表
+- `leo_cox_mediation()`：生存结局中介分析
 
-Across these functions, the design stays intentionally consistent:
+这套接口的核心思想是统一而克制：
 
-- one input data frame
-- one exposure at a time
-- one outcome at a time
-- one named model list carried into the final table
-- one shared complete-case cohort within each analysis call
-- one default paper-style table in `$result`
+- 一个 `df`
+- 一次只分析一个 exposure
+- 一次只分析一个 outcome
+- `x_cov` 用命名的 model list
+- 默认返回文章表格风格的 `$result`
+- 需要长表时再用配套 formatter
 
-## A consistent model list
+## 先定义模型层次
 
-All regression helpers accept `x_cov` as a named list. Those names are kept in
-the formatted output, which makes the final tables easier to read in
-manuscripts.
+三类回归都接受同样的 `x_cov` 形式。只要你给 model 起了名字，这些名字就会原样保留在输出表头里。
 
 ```{r}
 model_list <- list(
@@ -57,9 +54,9 @@ model_list <- list(
 model_list
 ```
 
-## Cox regression
+## Cox 主分析
 
-For Cox models, `y_out` is `c(event, time)`.
+对 Cox 来说，`y_out = c(event, time)`，前者是结局事件列，后者是随访时间列。
 
 ```{r}
 lung_df <- dplyr::transmute(
@@ -88,8 +85,7 @@ res_cox <- leo_cox(
 res_cox$result
 ```
 
-The default output is wide and paper-oriented. The paired formatter gives a
-long table that is easier to join, plot, or export.
+如果你后面还要接图、拼表或者批量合并结果，用 tidy 风格会更方便：
 
 ```{r}
 dplyr::select(
@@ -98,7 +94,7 @@ dplyr::select(
 )
 ```
 
-Categorical exposures stay in the same framework:
+分类 exposure 也用同一个接口，只是显式说明 `x_exp_type = "categorical"`：
 
 ```{r}
 res_cox_cat <- leo_cox(
@@ -113,10 +109,9 @@ res_cox_cat <- leo_cox(
 res_cox_cat$result
 ```
 
-## Cox interaction
+## 交互作用分析
 
-`leo_cox_interaction()` compares nested Cox models with and without the
-interaction term, then reports `P for interaction`.
+`leo_cox_interaction()` 做的是标准的 multiplicative interaction。它比较“主效应模型”和“交互模型”，最后给出 `P for interaction`。
 
 ```{r}
 res_inter <- leo_cox_interaction(
@@ -131,10 +126,13 @@ res_inter <- leo_cox_interaction(
 res_inter$result
 ```
 
-## Cox subgroup
+这里要注意：  
+`P for interaction` 不是从各 subgroup 的 P 值里“看出来”的，而是单独用全样本交互模型算出来的。
 
-`leo_cox_subgroup()` combines subgroup-specific HRs with the interaction test.
-If requested, it also appends the summary-statistic-based heterogeneity P value.
+## 分层分析
+
+`leo_cox_subgroup()` 会把每个 subgroup level 的 HR 表和 `P for interaction` 拼在一起。  
+如果你保留默认设置，还会额外给一个 summary-statistic based 的 `P for heterogeneity` 作为补充信息。
 
 ```{r}
 res_sub <- leo_cox_subgroup(
@@ -149,11 +147,16 @@ res_sub <- leo_cox_subgroup(
 utils::head(res_sub$result, 8)
 ```
 
-## Cox mediation
+实务上更推荐优先解读 `P for interaction`，而不是把 heterogeneity P 当主结果。
 
-`leo_cox_mediation()` uses `regmedint::regmedint()` with `yreg = "survCox"`.
-This is currently most straightforward when the exposure is binary and the
-mediator is either numeric or binary.
+## 中介分析
+
+`leo_cox_mediation()` 目前走的是 `regmedint::regmedint()` 的 Cox 生存结局接口。  
+第一版最稳的使用场景是：
+
+- 二分类 exposure
+- 连续 mediator 或二分类 mediator
+- 协变量尽量是数值型
 
 ```{r}
 if (requireNamespace("regmedint", quietly = TRUE)) {
@@ -185,10 +188,9 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
 }
 ```
 
-## Logistic regression
+## Logistic 回归
 
-For logistic regression, `y_out` is a binary outcome column and `case_value`
-defines the case group.
+对 logistic 来说，`y_out` 就是二分类结局列名，`case_value` 指定哪个值代表病例。
 
 ```{r}
 set.seed(123)
@@ -220,10 +222,9 @@ dplyr::select(
 )
 ```
 
-## Linear regression
+## Linear 回归
 
-For linear regression, `y_out` is continuous and the rest of the interface is
-kept the same.
+对 linear 来说，`y_out` 是连续性结局列名，其余接口保持一致。
 
 ```{r}
 linear_df <- dplyr::transmute(
@@ -252,12 +253,9 @@ dplyr::select(
 )
 ```
 
-## Practical notes
+## 使用建议
 
-- Within each analysis call, all models use the same complete-case cohort.
-- Missing-value filtering is reported explicitly, and the functions suggest
-  `leo_impute_na()` when row loss occurs.
-- `style = "gtsummary"` is available for Cox, logistic, and linear analyses
-  when both `gtsummary` and `broom.helpers` are installed.
-- For subgroup tables, the primary inferential quantity is `P for interaction`;
-  `P for heterogeneity` is supplementary.
+- 同一个分析调用内部，所有 model 使用的是同一个 complete-case cohort，所以 crude 和 adjusted 结果可以直接比较。
+- 如果有缺失值导致删行，函数会明确提示删掉了多少行，并给出 `leo_impute_na()` 的建议写法。
+- `style = "gtsummary"` 目前对 Cox、logistic、linear 都可用，但要求同时安装 `gtsummary` 和 `broom.helpers`。
+- subgroup 表里最应该优先看的，是 `P for interaction`。`P for heterogeneity` 更适合作为补充信息。
