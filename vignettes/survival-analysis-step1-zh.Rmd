@@ -1,0 +1,184 @@
+---
+title: "生存分析 Step 1：主 Cox 分析"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{生存分析 Step 1：主 Cox 分析}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  message = FALSE,
+  warning = FALSE
+)
+suppressPackageStartupMessages(library(leo.ukb))
+```
+
+# 这一步要解决什么问题
+
+这篇教程是 `leo.ukb` 生存分析部分的第一步。目标很明确：
+
+先把主 Cox 分析做好，再去讨论亚组分析、交互效应或中介分析。
+
+在 cohort study 里，这样分两步最清楚：
+
+1. 先估计 exposure 和结局之间的主关联
+2. 再问这个关联会不会在不同人群里发生变化
+
+这篇教程只讲第一步。
+
+# 先把数据整理成真正适合生存分析的样子
+
+一张适合 Cox 分析的数据框，最好满足下面几个条件：
+
+- 每一行是一个受试者
+- 一列表示是否发生事件
+- 一列表示随访时间
+- 一列是 exposure
+- 其余列是协变量
+
+下面用 `survival::lung` 构造一个紧凑示例。
+
+```{r}
+lung_df <- dplyr::transmute(
+  survival::lung,
+  outcome = as.integer(status == 2),
+  outcome_censor = time / 365.25,
+  age = age,
+  sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+  ecog_group = factor(
+    ph.ecog,
+    levels = 0:3,
+    labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3")
+  )
+)
+```
+
+建模前先像真实研究一样看数据结构、事件数和随访时间。
+
+```{r}
+dplyr::glimpse(lung_df)
+```
+
+```{r}
+knitr::kable(utils::head(lung_df, 6))
+```
+
+```{r}
+knitr::kable(
+  dplyr::count(lung_df, outcome, sex),
+  caption = "按 sex 分层的事件数"
+)
+```
+
+```{r}
+followup_summary <- summary(lung_df$outcome_censor)
+knitr::kable(
+  data.frame(
+    统计量 = names(followup_summary),
+    数值 = as.numeric(followup_summary)
+  )
+)
+```
+
+# 在建模前先把调整层次设计清楚
+
+在 cohort 研究里，模型层次往往对应的是科学解释，而不是简单“多放几个变量”。
+`leo_cox()` 允许把 `x_cov` 写成命名 list，这些名字会直接进入结果表。
+
+```{r}
+cox_models <- list(
+  "Crude" = NULL,
+  "Model A" = c("sex"),
+  "Model B" = c("sex", "ecog_group")
+)
+
+cox_models
+```
+
+这一步的好处是，后面结果会自然显示成 `Crude HR`、`Model A HR`、
+`Model B HR`，不需要再手工整理一遍。
+
+# 先完成主 Cox 分析，并学会读结果
+
+`leo_cox()` 是 `leo.ukb` 生存分析部分的主入口。
+
+```{r}
+res_cox <- leo_cox(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_cov = cox_models,
+  verbose = FALSE
+)
+
+res_cox$result
+```
+
+默认输出已经很接近论文主表：
+
+- 一行一个 exposure 结果
+- 每个模型一组列
+- 直接给 `HR`、`95% CI`、`P value`
+
+累计随访量列统一写成 `Person-years`。这里我们在建模前已经把原始随访
+时间从天换算成年，所以输出表可以直接沿用 cohort 论文里常见的写法。
+
+# 什么时候切换到 tidy 输出
+
+宽表适合直接阅读和汇报。  
+如果你后面还要继续做 `dplyr` 处理、拼接结果或画图，tidy 结果会更方便。
+
+```{r}
+dplyr::select(
+  leo_cox_format(res_cox, style = "tidy"),
+  Model, Exposure, Outcome, HR, `95% CI`, `P value`
+)
+```
+
+可以把规则记成一句话：
+
+- `$result` 用来读主结果表
+- `leo_cox_format(..., style = "tidy")` 用来继续编程处理
+
+# 分类 exposure 也走同一套分析语法
+
+真实研究里，exposure 常常不止是连续变量。  
+如果 exposure 是分组变量，接口不变；你只需要告诉函数这次 exposure 是
+categorical。
+
+```{r}
+res_cox_cat <- leo_cox(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "ecog_group",
+  x_cov = list("Crude" = NULL, "Model A" = c("sex")),
+  x_exp_type = "categorical",
+  verbose = FALSE
+)
+
+res_cox_cat$result
+```
+
+这意味着连续 exposure 和分类 exposure 可以保持同一套结果呈现逻辑，
+对后续写文章会很省力。
+
+# 进入 Step 2 之前你应该带走什么
+
+做完这一步以后，你应该已经清楚：
+
+1. 生存分析数据框应该长什么样
+2. 协变量调整层次应当如何先定义
+3. `leo_cox()` 怎么跑
+4. 宽表和 tidy 表分别在什么场景下使用
+
+接下来的 Step 2 不再问“有没有主关联”，而是问：
+
+> 这个 exposure 的效应，会不会在不同人群里不一样？
+
+这就进入亚组分析和交互效应的范畴了。

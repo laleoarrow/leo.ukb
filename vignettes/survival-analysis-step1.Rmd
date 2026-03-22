@@ -1,0 +1,188 @@
+---
+title: "Survival Analysis Step 1: Main Cox Analysis"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Survival Analysis Step 1: Main Cox Analysis}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  message = FALSE,
+  warning = FALSE
+)
+suppressPackageStartupMessages(library(leo.ukb))
+```
+
+# What this step is for
+
+This tutorial is the first survival-analysis step in `leo.ukb`. The goal is
+simple: fit and interpret the main Cox model before moving on to subgroup,
+interaction, or mediation questions.
+
+In applied cohort research, it is often helpful to treat the workflow in two
+separate stages:
+
+1. estimate the main exposure-outcome association
+2. only then ask whether that association differs across groups
+
+This step covers the first stage.
+
+# Start from a survival-ready data frame
+
+A Cox model is easiest to teach, read, and audit when the data frame already
+has one row per participant and clearly separated analytic roles:
+
+- an event indicator
+- a follow-up time variable
+- an exposure
+- covariates for adjustment
+
+Here we build a compact example from `survival::lung`.
+
+```{r}
+lung_df <- dplyr::transmute(
+  survival::lung,
+  outcome = as.integer(status == 2),
+  outcome_censor = time / 365.25,
+  age = age,
+  sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+  ecog_group = factor(
+    ph.ecog,
+    levels = 0:3,
+    labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3")
+  )
+)
+```
+
+Before fitting any model, check the cohort the same way you would in a real
+study: confirm structure, event counts, and follow-up.
+
+```{r}
+dplyr::glimpse(lung_df)
+```
+
+```{r}
+knitr::kable(utils::head(lung_df, 6))
+```
+
+```{r}
+knitr::kable(
+  dplyr::count(lung_df, outcome, sex),
+  caption = "Event counts by sex"
+)
+```
+
+```{r}
+followup_summary <- summary(lung_df$outcome_censor)
+knitr::kable(
+  data.frame(
+    Statistic = names(followup_summary),
+    Value = as.numeric(followup_summary)
+  )
+)
+```
+
+# Define the adjustment hierarchy before fitting
+
+In cohort studies, model labels usually reflect the scientific argument rather
+than mere coding convenience. `leo_cox()` accepts `x_cov` as a named list, and
+those names are carried directly into the output table.
+
+```{r}
+cox_models <- list(
+  "Crude" = NULL,
+  "Model A" = c("sex"),
+  "Model B" = c("sex", "ecog_group")
+)
+
+cox_models
+```
+
+This small habit keeps the eventual table close to manuscript form from the
+start.
+
+# Fit and read the main Cox model
+
+`leo_cox()` is the main entry point for survival analysis in `leo.ukb`.
+
+```{r}
+res_cox <- leo_cox(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_cov = cox_models,
+  verbose = FALSE
+)
+
+res_cox$result
+```
+
+The default output is already manuscript-oriented:
+
+- one row per exposure result
+- one block of columns per model
+- directly formatted `HR`, `95% CI`, and `P value`
+
+The cumulative follow-up column is reported as `Person-years`. In this example,
+the original follow-up time was converted from days to years before fitting the
+model, so the table matches usual cohort reporting style.
+
+# Use tidy output when you need programmable rows
+
+The wide table is convenient for reading. The tidy table is better when the
+next step is plotting, row binding, or programmatic post-processing.
+
+```{r}
+dplyr::select(
+  leo_cox_format(res_cox, style = "tidy"),
+  Model, Exposure, Outcome, HR, `95% CI`, `P value`
+)
+```
+
+A practical rule is:
+
+- use `$result` for manuscript-style reading
+- use `leo_cox_format(..., style = "tidy")` for downstream programming
+
+# The same workflow handles categorical exposures
+
+Many real analyses alternate between continuous and grouped exposures. The
+workflow does not change; you simply declare the exposure type explicitly.
+
+```{r}
+res_cox_cat <- leo_cox(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "ecog_group",
+  x_cov = list("Crude" = NULL, "Model A" = c("sex")),
+  x_exp_type = "categorical",
+  verbose = FALSE
+)
+
+res_cox_cat$result
+```
+
+This consistency is useful in practice because continuous and categorical
+exposures can still be presented in the same reporting grammar.
+
+# What to take to step 2
+
+After step 1, you should already know:
+
+1. how to structure a survival-ready cohort data frame
+2. how to define a model hierarchy before fitting
+3. how to run `leo_cox()`
+4. how to read the wide and tidy Cox outputs
+
+Step 2 then asks a different question:
+
+> does the exposure effect differ across groups?
+
+That second question belongs to subgroup and interaction analysis, not to the
+main Cox table itself.

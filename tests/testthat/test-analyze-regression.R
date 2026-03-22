@@ -35,6 +35,23 @@ make_mediation_df <- function() {
   )
 }
 
+make_add_interaction_df <- function() {
+  set.seed(20260323)
+  n <- 400
+  exposure <- factor(rbinom(n, 1, 0.5), levels = c(0, 1), labels = c("No", "Yes"))
+  sex <- factor(rbinom(n, 1, 0.5), levels = c(0, 1), labels = c("Female", "Male"))
+  exposure_num <- as.integer(exposure == "Yes")
+  sex_num <- as.integer(sex == "Male")
+  event_prob <- stats::plogis(-1.4 + 0.5 * exposure_num + 0.4 * sex_num + 0.7 * exposure_num * sex_num)
+  data.frame(
+    outcome = rbinom(n, 1, event_prob),
+    outcome_censor = stats::rexp(n, rate = 0.08) + 0.1,
+    exposure = exposure,
+    sex = sex,
+    age = stats::rnorm(n, 60, 8)
+  )
+}
+
 test_that("leo_cox keeps named model columns and tidy models aligned", {
   lung_df <- make_lung_cox_df()
   model <- list("Crude" = NULL, "Model A" = c("sex"), "Model B" = c("sex", "ecog_group"))
@@ -72,9 +89,90 @@ test_that("leo_cox_interaction returns one row per model with finite interaction
   expect_equal(res$result$Model, names(model))
   expect_equal(length(res$fit_main), length(model))
   expect_equal(length(res$fit_inter), length(model))
+  expect_equal(names(res$formula_main), names(model))
+  expect_equal(names(res$formula_inter), names(model))
   expect_true("Person-years" %in% names(res$result))
-  expect_true(all(is.finite(res$result_tidy$p_interaction)))
-  expect_equal(length(unique(res$result_tidy$n)), 1L)
+  expect_false("result_tidy" %in% names(res))
+  expect_true(all(nzchar(res$result$`P for interaction`)))
+})
+
+test_that("leo_cox_interaction auto-detects continuous interaction variables", {
+  lung_df <- make_lung_cox_df()
+
+  res <- leo_cox_interaction(
+    df = lung_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "sex",
+    x_inter = "age",
+    x_exp_type = "categorical",
+    verbose = FALSE
+  )
+
+  expect_s3_class(res, "leo_cox_interaction")
+  expect_equal(res$result$`Exposure class`, "Binary")
+  expect_equal(res$result$`Interaction class`, "Continuous")
+})
+
+test_that("leo_cox_add_interaction returns additive interaction summaries for binary exposures", {
+  skip_if_not_installed("interactionR")
+  df <- make_add_interaction_df()
+  model <- list("Crude" = NULL, "Model A" = c("age"))
+
+  res <- leo_cox_add_interaction(
+    df = df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_inter = "sex",
+    x_cov = model,
+    verbose = FALSE
+  )
+
+  expect_s3_class(res, "leo_cox_add_interaction")
+  expect_equal(res$result$Model, names(model))
+  expect_equal(length(res$fit_main), length(model))
+  expect_equal(length(res$fit_inter), length(model))
+  expect_equal(names(res$formula_main), names(model))
+  expect_equal(names(res$formula_inter), names(model))
+  expect_type(res$backend, "list")
+  expect_equal(names(res$backend), names(model))
+  expect_true(all(c(
+    "Reference group", "Recode applied",
+    "Multiplicative interaction", "Multiplicative 95% CI", "P for interaction",
+    "RERI", "RERI 95% CI", "AP", "AP 95% CI", "S", "S 95% CI"
+  ) %in% names(res$result)))
+})
+
+test_that("leo_cox_add_interaction rejects non-binary interaction variables", {
+  skip_if_not_installed("interactionR")
+  lung_df <- make_lung_cox_df()
+
+  expect_error(
+    leo_cox_add_interaction(
+      df = lung_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "sex",
+      x_inter = "ecog_group",
+      verbose = FALSE
+    ),
+    "must contain exactly 2 levels"
+  )
+})
+
+test_that("leo_cox_add_interaction requires all four joint exposure groups", {
+  skip_if_not_installed("interactionR")
+  df <- make_add_interaction_df()
+  df <- df[!(df$exposure == "Yes" & df$sex == "Male"), , drop = FALSE]
+
+  expect_error(
+    leo_cox_add_interaction(
+      df = df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      x_inter = "sex",
+      verbose = FALSE
+    ),
+    "All four joint exposure groups"
+  )
 })
 
 test_that("leo_cox_subgroup propagates custom event_value into nested subgroup fits", {
@@ -93,9 +191,11 @@ test_that("leo_cox_subgroup propagates custom event_value into nested subgroup f
   )
 
   expect_s3_class(res, "leo_cox_subgroup")
-  expect_true(all(res$result_tidy$case_n > 0))
+  expect_s3_class(res$interaction, "leo_cox_interaction")
+  expect_true(all(res$result$`Case N` > 0))
   expect_true("Person-years" %in% names(res$result))
-  expect_true(all(c("Crude P for interaction", "Crude P for heterogeneity") %in% names(res$result)))
+  expect_true("P for interaction" %in% names(res$result))
+  expect_false("P for heterogeneity" %in% names(res$result))
 })
 
 test_that("leo_cox_subgroup supports multiple subgroup variables and retains interaction output", {
@@ -112,9 +212,28 @@ test_that("leo_cox_subgroup supports multiple subgroup variables and retains int
   )
 
   expect_s3_class(res, "leo_cox_subgroup")
-  expect_true(all(c("sex", "ecog_group") %in% unique(res$result_tidy$subgroup)))
-  expect_true(nrow(res$interaction) >= 2)
-  expect_true(any(!is.na(res$result_tidy$p_interaction)))
+  expect_true(all(c("sex", "ecog_group") %in% unique(res$result$Subgroup)))
+  expect_type(res$interaction, "list")
+  expect_true(all(c("sex", "ecog_group") %in% names(res$interaction)))
+  expect_true(all(vapply(res$interaction, inherits, logical(1), what = "leo_cox_interaction")))
+  expect_true(any(!is.na(res$result$`P for interaction`)))
+})
+
+test_that("leo_cox_subgroup can optionally append heterogeneity p values", {
+  lung_df <- make_lung_cox_df()
+
+  res <- leo_cox_subgroup(
+    df = lung_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "age",
+    x_subgroup = "sex",
+    x_cov = list("Crude" = NULL),
+    add_heterogeneity = TRUE,
+    verbose = FALSE
+  )
+
+  expect_s3_class(res, "leo_cox_subgroup")
+  expect_true("P for heterogeneity" %in% names(res$result))
 })
 
 test_that("leo_cox_mediation fits binary mediator models across multiple covariate models", {

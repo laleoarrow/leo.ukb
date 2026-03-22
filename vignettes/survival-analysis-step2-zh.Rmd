@@ -1,0 +1,192 @@
+---
+title: "生存分析 Step 2：亚组分析与交互效应"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{生存分析 Step 2：亚组分析与交互效应}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  message = FALSE,
+  warning = FALSE
+)
+suppressPackageStartupMessages(library(leo.ukb))
+```
+
+# 这一步要解决什么问题
+
+这篇教程是 `leo.ukb` 生存分析部分的第二步。  
+主 Cox 分析之后，一个非常常见的问题是：
+
+> exposure 的效应，会不会在不同人群里不一样？
+
+这时才进入亚组分析和交互效应分析。
+
+# 先把两个问题分清楚
+
+亚组分析和交互分析有关联，但它们回答的不是同一个问题。
+
+- `leo_cox_subgroup()` 问的是：每个 subgroup 里，HR 分别是多少？
+- `leo_cox_interaction()` 问的是：这些 subgroup 之间的效应，是否真的不同？
+  在当前 Cox 工作流里，这个检验对应的是 HR 尺度上的乘法交互。
+
+这点在论文里非常重要。  
+“一个 subgroup 显著、另一个 subgroup 不显著” 并不等于  
+“两个 subgroup 之间存在显著差异”。
+
+# 继续用一个紧凑示例来教学
+
+这里继续使用 `survival::lung` 数据。
+
+```{r}
+lung_df <- dplyr::transmute(
+  survival::lung,
+  outcome = as.integer(status == 2),
+  outcome_censor = time / 365.25,
+  age = age,
+  sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+  ecog_group = factor(
+    ph.ecog,
+    levels = 0:3,
+    labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3")
+  )
+)
+
+cox_models <- list(
+  "Crude" = NULL,
+  "Model A" = c("ecog_group")
+)
+```
+
+# 先做 interaction：这是正式的异质性检验
+
+当科学问题是“效应会不会因人群不同而变化”时，正式答案来自交互模型，
+不是来自各 subgroup P 值的肉眼比较。
+
+```{r}
+res_inter <- leo_cox_interaction(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_inter = "sex",
+  x_cov = cox_models,
+  verbose = FALSE
+)
+
+res_inter$result
+```
+
+这张表要这样读：
+
+- `P for interaction` 是正式的异质性检验
+- 在当前 Cox 分析里，它对应的是 hazard-ratio scale 上的乘法交互
+- `Interaction class` 会告诉你这个 effect modifier 是 binary、
+  多分类，还是连续变量
+
+如果 modifier 是连续变量，`leo_cox_interaction()` 仍然可以做正式检验；
+但除非你先把它分成有临床意义的组，否则不适合直接做 subgroup 表。
+
+# 再做 subgroup：把每层内部的 HR 展示出来
+
+正式 interaction 做完以后，通常还需要把各层 HR 展示出来。
+
+```{r}
+res_sub <- leo_cox_subgroup(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_subgroup = c("sex", "ecog_group"),
+  x_cov = list("Crude" = NULL),
+  verbose = FALSE
+)
+
+utils::head(res_sub$result, 8)
+```
+
+这张 subgroup 表适合直接放进文章主表或补充表：
+
+- 每一行对应一个 subgroup level 和一个 model
+- 直接给 subgroup 内部的 `HR`、`95% CI`、`P value`
+- 同时附上对应的 `P for interaction`
+
+# 这两张表应该怎么一起解读
+
+最清楚的逻辑是：
+
+1. 先用 `leo_cox_interaction()` 判断是否存在正式的效应修饰
+2. 再用 `leo_cox_subgroup()` 展示各 subgroup 内部的 HR 模式
+
+实务上可以记住一句话：
+
+- `P for interaction` 是主异质性证据
+- subgroup HR 用来描述各层里效应方向和大小
+
+所以，亚组分析不应该被简化成“这一组显著，另一组不显著”。
+
+# 在论文里应该怎么表述
+
+更稳妥的写法顺序是：
+
+1. 先说明正式 interaction test 是否支持异质性
+2. 再描述 subgroup-specific HR 的方向和大小
+
+例如可以写成：
+
+> age 与结局的关联在不同 sex 间存在差异（`P for interaction = ...`）。
+> 在亚组分析中，该关联在 ... 组更强，在 ... 组较弱。
+
+这样能把正式检验和描述性结果区分清楚。
+
+# subgroup 变量为什么最好是分类变量
+
+`leo_cox_subgroup()` 的设计前提是 subgroup 变量本身是分类变量。
+
+- 二分类变量很自然，比如 `sex`
+- 多分类变量也可以，比如 `ecog_group`
+- 连续变量更适合先进入 `leo_cox_interaction()` 做正式交互检验
+
+如果 modifier 是连续变量，通常有两条路：
+
+1. 保持连续，只做 formal interaction test
+2. 先按临床意义分组，再做 subgroup analysis
+
+关键不是哪种更方便，而是哪种更符合你的科学问题。
+
+# 可选的 heterogeneity P
+
+默认情况下，`leo_cox_subgroup()` 会附上 `P for interaction`。  
+对大多数 cohort 的 Cox subgroup 表来说，这已经是主异质性信息了。
+
+如果需要，也可以额外加 `P for heterogeneity`：
+
+```{r}
+res_sub_hetero <- leo_cox_subgroup(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_subgroup = "sex",
+  x_cov = list("Crude" = NULL),
+  add_heterogeneity = TRUE,
+  verbose = FALSE
+)
+
+res_sub_hetero$result
+```
+
+但在 cohort 论文里，更建议把它当成补充信息，而不是主要决策依据。
+
+# 做完 Step 2 以后你应该带走什么
+
+这一步最重要的 3 个结论是：
+
+1. 亚组分析和交互分析有关联，但不是同一个统计问题
+2. `P for interaction` 才是正式的效应修饰检验
+3. subgroup-specific HR 是描述层，不是用来替代 interaction test 的
+
+把这套逻辑理顺以后，生存分析结果在文章里会清楚很多，也更经得起推敲。

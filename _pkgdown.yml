@@ -10,8 +10,10 @@ template:
 articles:
   - title: Tutorials
     contents:
-      - survival-analysis
-      - survival-analysis-zh
+      - survival-analysis-step1
+      - survival-analysis-step2
+      - survival-analysis-step1-zh
+      - survival-analysis-step2-zh
 
 reference:
   - title: Regression Analyses
@@ -113,13 +115,17 @@ navbar:
     tutorial:
       text: Tutorial
       menu:
-        - text: Survival Analysis with leo.ukb
-          href: articles/survival-analysis.html
+        - text: "Survival Analysis Step 1: Main Cox Analysis"
+          href: articles/survival-analysis-step1.html
+        - text: "Survival Analysis Step 2: Subgroup and Interaction"
+          href: articles/survival-analysis-step2.html
     tutorial_zh:
       text: 中文教程
       menu:
-        - text: leo.ukb 生存分析教程
-          href: articles/survival-analysis-zh.html
+        - text: "生存分析 Step 1：主 Cox 分析"
+          href: articles/survival-analysis-step1-zh.html
+        - text: "生存分析 Step 2：亚组分析与交互效应"
+          href: articles/survival-analysis-step2-zh.html
     github:
       icon: fa-github
       aria-label: GitHub repository

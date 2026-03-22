@@ -611,7 +611,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
         level = NA_character_,
         case_n = total_case,
         control_n = total_control,
-        person_time = total_years,
+        person_year = total_years,
         hr = exposure_row$estimate[1],
         hr_ci_l = exposure_row$conf.low[1],
         hr_ci_u = exposure_row$conf.high[1],
@@ -631,7 +631,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
         level = level,
         Case_N = sum(level_df$event == 1, na.rm = TRUE),
         Control_N = sum(level_df$event == 0, na.rm = TRUE),
-        Person_time = sum(level_df$time, na.rm = TRUE)
+        person_year = sum(level_df$time, na.rm = TRUE)
       )
     }))
     result_df <- data.frame(
@@ -642,7 +642,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
       level = levels_x,
       case_n = level_counts$Case_N[match(levels_x, level_counts$level)],
       control_n = level_counts$Control_N[match(levels_x, level_counts$level)],
-      person_time = level_counts$Person_time[match(levels_x, level_counts$level)],
+      person_year = level_counts$person_year[match(levels_x, level_counts$level)],
       hr = c(1, rep(NA_real_, length(levels_x) - 1)),
       hr_ci_l = c(1, rep(NA_real_, length(levels_x) - 1)),
       hr_ci_u = c(1, rep(NA_real_, length(levels_x) - 1)),
@@ -709,7 +709,7 @@ leo_cox_format <- function(x, style = "wide") {
       if (!is.null(x$result)) return(x$result)
       result_tidy <- x$result_tidy
       model_ids <- unique(result_tidy$model)
-      result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_id", "exposure", "outcome", "case_n", "control_n", "person_time", "exposure_class"), drop = FALSE]
+      result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_id", "exposure", "outcome", "case_n", "control_n", "person_year", "exposure_class"), drop = FALSE]
       names(result_wide) <- c("row_id", "Exposure", "Outcome", "Case N", "Control N", "Person-years", "Class")
       for (model_id in model_ids) {
         model_df <- result_tidy[result_tidy$model == model_id, c("row_id", "hr", "hr_ci_l", "hr_ci_u", "p_value"), drop = FALSE]
@@ -727,7 +727,7 @@ leo_cox_format <- function(x, style = "wide") {
     },
     tidy = {
       result_tidy <- x$result_tidy
-      result_out <- result_tidy[, c("model", "exposure", "outcome", "level", "case_n", "control_n", "person_time"), drop = FALSE]
+      result_out <- result_tidy[, c("model", "exposure", "outcome", "level", "case_n", "control_n", "person_year"), drop = FALSE]
       result_out$HR <- round(result_tidy$hr, 3)
       result_out$`95% CI` <- ifelse(is.na(result_tidy$hr_ci_l) | is.na(result_tidy$hr_ci_u), "NA", paste0(sprintf("%.3f", round(result_tidy$hr_ci_l, 3)), ", ", sprintf("%.3f", round(result_tidy$hr_ci_u, 3))))
       result_out$`P value` <- vapply(result_tidy$p_value, .format_p_value, character(1))
@@ -751,7 +751,7 @@ leo_cox_format <- function(x, style = "wide") {
   )
 }
 
-#' Cox interaction analysis
+#' Cox interaction analyses
 #'
 #' `r lifecycle::badge('experimental')`
 #'
@@ -759,6 +759,13 @@ leo_cox_format <- function(x, style = "wide") {
 #' an incident outcome differs by a candidate interaction variable. It compares
 #' nested Cox models with and without the interaction term using
 #' `stats::anova(..., test = "Chisq")`.
+#'
+#' `leo_cox_add_interaction()` focuses on the binary-binary setting and reports
+#' additive interaction summaries from a Cox model, including `RERI`, `AP`, and
+#' `S`, together with the multiplicative interaction estimate. When the original
+#' binary coding does not use the lowest-incidence joint stratum as the
+#' reference group, `leo_cox_add_interaction()` recodes the two binary variables
+#' before handing the fitted interaction model to `interactionR`.
 #'
 #' @param df Data frame containing the outcome, follow-up time, exposure, interaction variable, and covariates.
 #' @param y_out Character vector of length 2 giving the event and follow-up time column names: `c(event, time)`.
@@ -772,7 +779,9 @@ leo_cox_format <- function(x, style = "wide") {
 #' @param verbose Logical; print progress messages.
 #'
 #' @return A `leo_cox_interaction` object containing a display table in `$result`,
-#'   the raw interaction rows in `$result_tidy`, and fitted nested Cox models.
+#'   the fitted no-interaction Cox models in `$fit_main`, the fitted
+#'   interaction Cox models in `$fit_inter`, and the corresponding model
+#'   formulas in `$formula_main` and `$formula_inter`.
 #' @export
 #' @examples
 #' lung_df <- stats::na.omit(
@@ -791,7 +800,9 @@ leo_cox_format <- function(x, style = "wide") {
 #'   df = lung_df, y_out = c("outcome", "outcome_censor"),
 #'   x_exp = "age", x_inter = "sex", x_cov = model, verbose = FALSE
 #' )$result
-leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_value = 1, min_followup_time = 0, x_exp_type = "auto", x_inter_type = "categorical", verbose = TRUE) {
+leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL,
+                                event_value = 1, min_followup_time = 0,
+                                x_exp_type = "auto", x_inter_type = "auto", verbose = TRUE) {
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Interaction", col = "blue")
@@ -822,6 +833,8 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_v
   result_rows <- list()
   fit_main <- list()
   fit_inter <- list()
+  formula_main <- stats::setNames(character(length(model_list)), names(model_list))
+  formula_inter <- stats::setNames(character(length(model_list)), names(model_list))
   for (model_name in names(model_list)) {
     covariates <- if (is.null(model_list[[model_name]])) character(0) else setdiff(model_list[[model_name]], x_inter)
     leo.basic::leo_log("Testing interaction in {model_name} with {x_inter}{if (length(covariates) > 0) paste0(' adjusted for ', paste(covariates, collapse = ', ')) else ''}.", verbose = verbose)
@@ -844,10 +857,12 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_v
 
     rhs_main <- unique(c("exposure", paste0("`", x_inter, "`"), if (length(covariates) > 0) paste0("`", covariates, "`") else character(0)))
     rhs_inter <- unique(c(paste0("exposure * `", x_inter, "`"), if (length(covariates) > 0) paste0("`", covariates, "`") else character(0)))
-    formula_main <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_main, collapse = " + ")))
-    formula_inter <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_inter, collapse = " + ")))
-    fit_main[[model_name]] <- survival::coxph(formula = formula_main, data = model_df)
-    fit_inter[[model_name]] <- survival::coxph(formula = formula_inter, data = model_df)
+    formula_main_fit <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_main, collapse = " + ")))
+    formula_inter_fit <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_inter, collapse = " + ")))
+    fit_main[[model_name]] <- survival::coxph(formula = formula_main_fit, data = model_df)
+    fit_inter[[model_name]] <- survival::coxph(formula = formula_inter_fit, data = model_df)
+    formula_main[[model_name]] <- Reduce(paste, deparse(formula_main_fit))
+    formula_inter[[model_name]] <- Reduce(paste, deparse(formula_inter_fit))
     anova_res <- stats::anova(fit_main[[model_name]], fit_inter[[model_name]], test = "Chisq")
     p_col <- grep("^P", names(anova_res), value = TRUE)[1]
     p_interaction <- if (is.na(p_col)) NA_real_ else unname(anova_res[2, p_col])
@@ -858,23 +873,205 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_v
       n = nrow(model_df),
       case_n = sum(model_df$event == 1, na.rm = TRUE),
       control_n = sum(model_df$event == 0, na.rm = TRUE),
-      person_time = sum(model_df$time, na.rm = TRUE),
+      person_year = sum(model_df$time, na.rm = TRUE),
       interaction_df = unname(anova_res[2, "Df"]),
       p_interaction = p_interaction,
       exposure_class = if (is.factor(model_df$exposure)) if (nlevels(model_df$exposure) == 2) "Binary" else paste0("Categorical (", nlevels(model_df$exposure), " levels)") else "Continuous",
       interaction_class = if (is.factor(model_df[[x_inter]])) if (nlevels(model_df[[x_inter]]) == 2) "Binary" else paste0("Categorical (", nlevels(model_df[[x_inter]]), " levels)") else "Continuous",
-      formula_main = Reduce(paste, deparse(formula_main)),
-      formula_inter = Reduce(paste, deparse(formula_inter)),
       check.names = FALSE
     )
   }
-  result_tidy <- do.call(rbind, result_rows)
-  rownames(result_tidy) <- NULL
-  result <- result_tidy[, c("model", "exposure", "interaction", "n", "case_n", "control_n", "person_time", "interaction_df", "p_interaction", "exposure_class", "interaction_class"), drop = FALSE]
+  result_df <- do.call(rbind, result_rows)
+  rownames(result_df) <- NULL
+  result <- result_df[, c("model", "exposure", "interaction", "n", "case_n", "control_n", "person_year", "interaction_df", "p_interaction", "exposure_class", "interaction_class"), drop = FALSE]
   names(result) <- c("Model", "Exposure", "Interaction", "N", "Case N", "Control N", "Person-years", "Interaction DF", "P for interaction", "Exposure class", "Interaction class")
   result$`P for interaction` <- vapply(result$`P for interaction`, .format_p_value, character(1))
-  out <- structure(list(result = result, result_tidy = result_tidy, fit_main = fit_main, fit_inter = fit_inter), class = "leo_cox_interaction")
+  out <- structure(list(result = result, fit_main = fit_main, fit_inter = fit_inter, formula_main = formula_main, formula_inter = formula_inter), class = "leo_cox_interaction")
   leo.basic::leo_log("Cox interaction analysis completed for {x_exp} x {x_inter} with {length(model_list)} model(s).", level = "success", verbose = verbose)
+  if (verbose) leo.basic::leo_time_elapsed(t0)
+  return(out)
+}
+
+#' @rdname leo_cox_interaction
+#' @return A `leo_cox_add_interaction` object containing a display table in
+#'   `$result`, the fitted no-interaction Cox models in `$fit_main`, the fitted
+#'   interaction Cox models in `$fit_inter`, the corresponding model formulas in
+#'   `$formula_main` and `$formula_inter`, and the raw `interactionR` backend
+#'   objects in `$backend`.
+#' @export
+#' @examples
+#' if (requireNamespace("interactionR", quietly = TRUE)) {
+#'   lung_df <- stats::na.omit(
+#'     dplyr::transmute(
+#'       survival::lung,
+#'       outcome = as.integer(status == 2),
+#'       outcome_censor = time / 365.25,
+#'       smoking = factor(age > median(age), levels = c(FALSE, TRUE), labels = c("Low", "High")),
+#'       sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+#'       ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
+#'     )
+#'   )
+#'
+#'   model <- list("Crude" = NULL, "Model A" = c("ecog_group"))
+#'   leo_cox_add_interaction(
+#'     df = lung_df, y_out = c("outcome", "outcome_censor"),
+#'     x_exp = "smoking", x_inter = "sex", x_cov = model, verbose = FALSE
+#'   )$result
+#' }
+leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_value = 1, min_followup_time = 0, verbose = TRUE) {
+  t0 <- Sys.time()
+  df_name <- deparse(substitute(df))
+  if (verbose) cli::cat_rule("Cox Additive Interaction", col = "blue")
+  if (!requireNamespace("interactionR", quietly = TRUE)) stop("leo_cox_add_interaction() requires package 'interactionR'. Please install it first.", call. = FALSE)
+  if (!is.character(x_inter) || length(x_inter) != 1) stop("x_inter must be a single column name.", call. = FALSE)
+  if (!x_inter %in% names(df)) stop("x_inter must exist in df.", call. = FALSE)
+
+  model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
+  prep_models <- lapply(model_list, function(covariates) unique(c(if (is.null(covariates)) character(0) else covariates, x_inter)))
+  prep <- .prepare_cox_regression_data(
+    df = df,
+    y_out = y_out,
+    x_exp = x_exp,
+    x_cov = prep_models,
+    min_followup_time = min_followup_time,
+    event_value = event_value,
+    verbose = verbose
+  )
+  if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering.", call. = FALSE)
+  if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
+  if (prep$n_removed_complete_case > 0) {
+    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before additive interaction analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox_add_interaction(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
+  }
+
+  result_rows <- list()
+  fit_main <- list()
+  fit_inter <- list()
+  formula_main <- stats::setNames(character(length(model_list)), names(model_list))
+  formula_inter <- stats::setNames(character(length(model_list)), names(model_list))
+  backend <- list()
+  for (model_name in names(model_list)) {
+    covariates <- if (is.null(model_list[[model_name]])) character(0) else setdiff(model_list[[model_name]], x_inter)
+    leo.basic::leo_log("Fitting additive interaction in {model_name} with binary {x_exp} and {x_inter}{if (length(covariates) > 0) paste0(' adjusted for ', paste(covariates, collapse = ', ')) else ''}.", verbose = verbose)
+    model_df <- prep$data[, c("event", "time", "exposure", x_inter, covariates), drop = FALSE]
+
+    exposure_factor <- if (is.factor(model_df$exposure)) droplevels(model_df$exposure) else droplevels(factor(model_df$exposure))
+    if (nlevels(exposure_factor) != 2) stop("x_exp must contain exactly 2 levels after filtering for leo_cox_add_interaction().", call. = FALSE)
+    interaction_factor <- if (is.factor(model_df[[x_inter]])) droplevels(model_df[[x_inter]]) else droplevels(factor(model_df[[x_inter]]))
+    if (nlevels(interaction_factor) != 2) stop("x_inter must contain exactly 2 levels after filtering for leo_cox_add_interaction().", call. = FALSE)
+
+    exposure_bin <- as.integer(exposure_factor == levels(exposure_factor)[2])
+    interaction_bin <- as.integer(interaction_factor == levels(interaction_factor)[2])
+    joint_counts <- table(exposure_bin, interaction_bin)
+    if (!all(dim(joint_counts) == c(2, 2)) || any(joint_counts == 0)) stop("All four joint exposure groups must be present after filtering for leo_cox_add_interaction().", call. = FALSE)
+
+    incidence_df <- dplyr::summarise(
+      dplyr::group_by(
+        data.frame(event = model_df$event, time = model_df$time, exposure_bin = exposure_bin, interaction_bin = interaction_bin),
+        exposure_bin,
+        interaction_bin
+      ),
+      case_n = sum(event),
+      person_year = sum(time),
+      .groups = "drop"
+    )
+    incidence_df$incidence_rate <- incidence_df$case_n / incidence_df$person_year
+    ref_idx <- which.min(incidence_df$incidence_rate)
+    recode_exposure <- incidence_df$exposure_bin[ref_idx] == 1
+    recode_interaction <- incidence_df$interaction_bin[ref_idx] == 1
+    if (recode_exposure) exposure_bin <- 1L - exposure_bin
+    if (recode_interaction) interaction_bin <- 1L - interaction_bin
+    reference_group <- paste0(
+      x_exp, "=", levels(exposure_factor)[if (recode_exposure) 2 else 1],
+      ", ",
+      x_inter, "=", levels(interaction_factor)[if (recode_interaction) 2 else 1]
+    )
+
+    analysis_df <- data.frame(
+      event = model_df$event,
+      time = model_df$time,
+      check.names = FALSE
+    )
+    analysis_df[[x_exp]] <- exposure_bin
+    analysis_df[[x_inter]] <- interaction_bin
+    if (length(covariates) > 0) analysis_df[covariates] <- model_df[covariates]
+
+    rhs_main <- unique(c(paste0("`", x_exp, "`"), paste0("`", x_inter, "`"), if (length(covariates) > 0) paste0("`", covariates, "`") else character(0)))
+    rhs_inter <- unique(c(paste0("`", x_exp, "` * `", x_inter, "`"), if (length(covariates) > 0) paste0("`", covariates, "`") else character(0)))
+    formula_main_fit <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_main, collapse = " + ")))
+    formula_inter_fit <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_inter, collapse = " + ")))
+    fit_main[[model_name]] <- survival::coxph(formula = formula_main_fit, data = analysis_df)
+    fit_inter[[model_name]] <- survival::coxph(formula = formula_inter_fit, data = analysis_df)
+    formula_main[[model_name]] <- Reduce(paste, deparse(formula_main_fit))
+    formula_inter[[model_name]] <- Reduce(paste, deparse(formula_inter_fit))
+
+    anova_res <- stats::anova(fit_main[[model_name]], fit_inter[[model_name]], test = "Chisq")
+    p_col <- grep("^P", names(anova_res), value = TRUE)[1]
+    p_interaction <- if (is.na(p_col)) NA_real_ else unname(anova_res[2, p_col])
+    backend_obj <- suppressWarnings(interactionR::interactionR(
+      model = fit_inter[[model_name]],
+      exposure_names = c(x_exp, x_inter),
+      ci.type = "delta",
+      ci.level = 0.95,
+      em = FALSE,
+      recode = FALSE
+    ))
+    backend[[model_name]] <- backend_obj
+    backend_df <- backend_obj$dframe
+    mult_row <- backend_df[backend_df$Measures == "Multiplicative scale", , drop = FALSE]
+    reri_row <- backend_df[backend_df$Measures == "RERI", , drop = FALSE]
+    ap_row <- backend_df[backend_df$Measures == "AP", , drop = FALSE]
+    s_row <- backend_df[backend_df$Measures %in% c("SI", "S"), , drop = FALSE]
+
+    result_rows[[model_name]] <- data.frame(
+      model = model_name,
+      exposure = x_exp,
+      interaction = x_inter,
+      n = nrow(analysis_df),
+      case_n = sum(analysis_df$event == 1, na.rm = TRUE),
+      control_n = sum(analysis_df$event == 0, na.rm = TRUE),
+      person_year = sum(analysis_df$time, na.rm = TRUE),
+      reference_group = reference_group,
+      recode_applied = recode_exposure || recode_interaction,
+      mult = mult_row$Estimates[1],
+      mult_l = mult_row$CI.ll[1],
+      mult_u = mult_row$CI.ul[1],
+      p_interaction = p_interaction,
+      reri = reri_row$Estimates[1],
+      reri_l = reri_row$CI.ll[1],
+      reri_u = reri_row$CI.ul[1],
+      ap = ap_row$Estimates[1],
+      ap_l = ap_row$CI.ll[1],
+      ap_u = ap_row$CI.ul[1],
+      s = s_row$Estimates[1],
+      s_l = s_row$CI.ll[1],
+      s_u = s_row$CI.ul[1],
+      check.names = FALSE
+    )
+  }
+
+  result_df <- do.call(rbind, result_rows)
+  rownames(result_df) <- NULL
+  format_ci <- function(lower, upper) ifelse(is.na(lower) | is.na(upper), "NA", paste0(sprintf("%.3f", round(lower, 3)), ", ", sprintf("%.3f", round(upper, 3))))
+  result <- result_df[, c("model", "exposure", "interaction", "n", "case_n", "control_n", "person_year", "reference_group", "recode_applied"), drop = FALSE]
+  result$`Multiplicative interaction` <- round(result_df$mult, 3)
+  result$`Multiplicative 95% CI` <- format_ci(result_df$mult_l, result_df$mult_u)
+  result$`P for interaction` <- vapply(result_df$p_interaction, .format_p_value, character(1))
+  result$RERI <- round(result_df$reri, 3)
+  result$`RERI 95% CI` <- format_ci(result_df$reri_l, result_df$reri_u)
+  result$AP <- round(result_df$ap, 3)
+  result$`AP 95% CI` <- format_ci(result_df$ap_l, result_df$ap_u)
+  result$S <- round(result_df$s, 3)
+  result$`S 95% CI` <- format_ci(result_df$s_l, result_df$s_u)
+  names(result)[1:9] <- c("Model", "Exposure", "Interaction", "N", "Case N", "Control N", "Person-years", "Reference group", "Recode applied")
+  out <- structure(list(
+    result = result,
+    fit_main = fit_main,
+    fit_inter = fit_inter,
+    formula_main = formula_main,
+    formula_inter = formula_inter,
+    backend = backend
+  ), class = "leo_cox_add_interaction")
+  leo.basic::leo_log("Cox additive interaction analysis completed for {x_exp} x {x_inter} with {length(model_list)} model(s).", level = "success", verbose = verbose)
   if (verbose) leo.basic::leo_time_elapsed(t0)
   return(out)
 }
@@ -897,12 +1094,15 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_v
 #' @param event_value Value in the event column that indicates incident events.
 #' @param x_exp_type Exposure type handling for `x_exp`.
 #' @param x_subgroup_type Type handling for `x_subgroup`. Subgroup analyses are expected to use categorical grouping variables.
-#' @param include_heterogeneity Logical; whether to calculate a heterogeneity P value from subgroup summary statistics.
+#' @param add_interaction Logical; whether to append `P for interaction` from `leo_cox_interaction()`.
+#' @param add_heterogeneity Logical; whether to calculate a heterogeneity P value from subgroup summary statistics.
 #' @param verbose Logical; print progress messages.
 #'
-#' @return A `leo_cox_subgroup` object containing the default wide table in
-#'   `$result`, subgroup-level tidy rows in `$result_tidy`, and interaction
-#'   test results in `$interaction`.
+#' @return A `leo_cox_subgroup` object containing a subgroup result table in
+#'   `$result` and, when requested, interaction test objects in `$interaction`.
+#'   When `x_subgroup` has length 1, `$interaction` is a single
+#'   `leo_cox_interaction` object; otherwise it is a named list of
+#'   `leo_cox_interaction` objects keyed by subgroup variable.
 #' @export
 #' @examples
 #' lung_df <- stats::na.omit(
@@ -922,8 +1122,11 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_v
 #'   x_exp = "age", x_subgroup = "sex", x_cov = model, verbose = FALSE
 #' )
 #' res_sub$result
-#' leo_cox_subgroup_format(res_sub, style = "tidy")
-leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL, event_value = 1, min_followup_time = 0, x_exp_type = "auto", x_subgroup_type = "categorical", include_heterogeneity = TRUE, verbose = TRUE) {
+#' leo_cox_subgroup_format(res_sub, style = "wide")
+leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
+                             event_value = 1, min_followup_time = 0,
+                             x_exp_type = "auto", x_subgroup_type = "categorical",
+                             add_interaction = TRUE, add_heterogeneity = FALSE, verbose = TRUE) {
   t0 <- Sys.time()
   if (verbose) cli::cat_rule("Cox Subgroup", col = "blue")
   if (!is.character(x_subgroup) || length(x_subgroup) < 1) stop("x_subgroup must be a character vector of subgroup column names.", call. = FALSE)
@@ -933,7 +1136,7 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL, event_v
 
   base_models <- .normalize_model_list(x_cov, df_colnames = names(df))
   subgroup_rows <- list()
-  interaction_rows <- list()
+  interaction_fits <- list()
   subgroup_index <- 1L
   for (subgroup_var in x_subgroup) {
     subgroup_models <- lapply(base_models, function(covariates) setdiff(if (is.null(covariates)) character(0) else covariates, subgroup_var))
@@ -951,25 +1154,28 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL, event_v
     subgroup_type <- .check_var_type(prep$data[[subgroup_var]], var_name = subgroup_var, var_type = x_subgroup_type, verbose = verbose)
     if (subgroup_type != "categorical") stop("Subgroup analysis requires a categorical grouping variable. Convert ", subgroup_var, " to factor() first if needed.", call. = FALSE)
     prep$data[[subgroup_var]] <- droplevels(factor(prep$data[[subgroup_var]]))
-    interaction_fit <- tryCatch(
-      leo_cox_interaction(
-        df = df,
-        y_out = y_out,
-        x_exp = x_exp,
-        x_inter = subgroup_var,
-        x_cov = subgroup_models,
-        event_value = event_value,
-        min_followup_time = min_followup_time,
-        x_exp_type = x_exp_type,
-        x_inter_type = "categorical",
-        verbose = FALSE
-      ),
-      error = function(e) {
-        leo.basic::leo_log("Skipping interaction test for subgroup '{subgroup_var}': {e$message}", level = "warning", verbose = verbose)
-        return(NULL)
-      }
-    )
-    interaction_rows[[subgroup_var]] <- if (is.null(interaction_fit)) NULL else interaction_fit$result_tidy
+    interaction_fit <- NULL
+    if (add_interaction) {
+      interaction_fit <- tryCatch(
+        leo_cox_interaction(
+          df = df,
+          y_out = y_out,
+          x_exp = x_exp,
+          x_inter = subgroup_var,
+          x_cov = subgroup_models,
+          event_value = event_value,
+          min_followup_time = min_followup_time,
+          x_exp_type = x_exp_type,
+          x_inter_type = "categorical",
+          verbose = FALSE
+        ),
+        error = function(e) {
+          leo.basic::leo_log("Skipping interaction test for subgroup '{subgroup_var}': {e$message}", level = "warning", verbose = verbose)
+          return(NULL)
+        }
+      )
+    }
+    interaction_fits[[subgroup_var]] <- interaction_fit
     for (subgroup_level in levels(prep$data[[subgroup_var]])) {
       sub_df <- prep$data[prep$data[[subgroup_var]] == subgroup_level, c("event", "time", "exposure", unique(unlist(subgroup_models, use.names = FALSE))), drop = FALSE]
       if (nrow(sub_df) == 0) next
@@ -981,12 +1187,11 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL, event_v
         leo.basic::leo_log("Skipping subgroup '{subgroup_var} = {subgroup_level}' because exposure has fewer than 2 observed values.", level = "warning", verbose = verbose)
         next
       }
-      names(sub_df)[1:3] <- c(y_out[1], y_out[2], x_exp)
       fit_sub <- tryCatch(
         leo_cox(
           df = sub_df,
-          y_out = y_out,
-          x_exp = x_exp,
+          y_out = c("event", "time"),
+          x_exp = "exposure",
           x_cov = subgroup_models,
           event_value = 1,
           min_followup_time = min_followup_time,
@@ -1006,43 +1211,50 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL, event_v
       sub_rows$row_key <- paste(subgroup_var, subgroup_level, sub_rows$row_id, sep = "___")
       sub_rows$display_id <- seq.int(from = subgroup_index, length.out = nrow(sub_rows))
       subgroup_index <- subgroup_index + nrow(sub_rows)
-      sub_rows$p_interaction <- if (is.null(interaction_fit)) NA_real_ else interaction_fit$result_tidy$p_interaction[match(sub_rows$model, interaction_fit$result_tidy$model)]
+      sub_rows$p_interaction_display <- if (is.null(interaction_fit)) NA_character_ else interaction_fit$result$`P for interaction`[match(sub_rows$model, interaction_fit$result$Model)]
       sub_rows$p_heterogeneity <- NA_real_
       subgroup_rows[[paste0(subgroup_var, "___", subgroup_level)]] <- sub_rows
     }
   }
   if (length(subgroup_rows) == 0) stop("No subgroup results were generated.", call. = FALSE)
-  result_tidy <- do.call(rbind, subgroup_rows)
-  rownames(result_tidy) <- NULL
+  result_df <- do.call(rbind, subgroup_rows)
+  rownames(result_df) <- NULL
 
-  if (include_heterogeneity) {
-    for (model_name in unique(result_tidy$model)) {
-      for (subgroup_var in unique(result_tidy$subgroup)) {
-        for (row_id in unique(result_tidy$row_id[result_tidy$subgroup == subgroup_var])) {
-          idx <- which(result_tidy$model == model_name & result_tidy$subgroup == subgroup_var & result_tidy$row_id == row_id)
-          idx <- idx[is.finite(result_tidy$hr[idx]) & is.finite(result_tidy$p_value[idx]) & !is.na(result_tidy$p_value[idx]) & result_tidy$exposure[idx] != "Ref"]
+  if (add_heterogeneity) {
+    for (model_name in unique(result_df$model)) {
+      for (subgroup_var in unique(result_df$subgroup)) {
+        for (row_id in unique(result_df$row_id[result_df$subgroup == subgroup_var])) {
+          idx <- which(result_df$model == model_name & result_df$subgroup == subgroup_var & result_df$row_id == row_id)
+          idx <- idx[is.finite(result_df$hr[idx]) & is.finite(result_df$p_value[idx]) & !is.na(result_df$p_value[idx]) & result_df$exposure[idx] != "Ref"]
           if (length(idx) < 2) next
           hetero_res <- utils::capture.output(
             hetero_obj <- leo_heterogeneity_p(
-              hrs = result_tidy$hr[idx],
-              p_values = result_tidy$p_value[idx],
-              subgroup_names = result_tidy$subgroup_level[idx]
+              hrs = result_df$hr[idx],
+              p_values = result_df$p_value[idx],
+              subgroup_names = result_df$subgroup_level[idx]
             )
           )
-          result_tidy$p_heterogeneity[idx] <- hetero_obj$p_value_heterogeneity
+          result_df$p_heterogeneity[idx] <- hetero_obj$p_value_heterogeneity
         }
       }
     }
   }
 
-  interaction_tidy <- if (length(interaction_rows) == 0 || all(vapply(interaction_rows, is.null, logical(1)))) data.frame() else do.call(rbind, interaction_rows[!vapply(interaction_rows, is.null, logical(1))])
-  if (nrow(interaction_tidy) > 0) rownames(interaction_tidy) <- NULL
+  result <- result_df[, c("subgroup", "subgroup_level", "subgroup_n", "model", "exposure", "outcome", "level", "case_n", "control_n", "person_year"), drop = FALSE]
+  result$HR <- round(result_df$hr, 3)
+  result$`95% CI` <- ifelse(is.na(result_df$hr_ci_l) | is.na(result_df$hr_ci_u), "NA", paste0(sprintf("%.3f", round(result_df$hr_ci_l, 3)), ", ", sprintf("%.3f", round(result_df$hr_ci_u, 3))))
+  result$`P value` <- vapply(result_df$p_value, .format_p_value, character(1))
+  if (add_interaction) result$`P for interaction` <- ifelse(is.na(result_df$p_interaction_display), "NA", result_df$p_interaction_display)
+  if (add_heterogeneity) result$`P for heterogeneity` <- vapply(result_df$p_heterogeneity, .format_p_value, character(1))
+  names(result)[1:10] <- c("Subgroup", "Level", "N", "Model", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
+  rownames(result) <- NULL
+
+  interaction_out <- interaction_fits
+  if (length(interaction_out) == 1) interaction_out <- interaction_out[[1]]
   out <- structure(list(
-    result = NULL,
-    result_tidy = result_tidy,
-    interaction = interaction_tidy
+    result = result,
+    interaction = interaction_out
   ), class = "leo_cox_subgroup")
-  out$result <- leo_cox_subgroup_format(out, style = "wide")
   leo.basic::leo_log("Cox subgroup analysis completed for {x_exp} across {length(x_subgroup)} subgroup variable(s).", level = "success", verbose = verbose)
   if (verbose) leo.basic::leo_time_elapsed(t0)
   return(out)
@@ -1059,40 +1271,29 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
   if (!style %in% c("wide", "tidy")) stop("style must be one of 'wide' or 'tidy'.", call. = FALSE)
   switch(style,
     wide = {
-      if (!is.null(x$result)) return(x$result)
-      result_tidy <- x$result_tidy
-      model_ids <- unique(result_tidy$model)
-      result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_key", "subgroup", "subgroup_level", "subgroup_n", "exposure", "outcome", "case_n", "control_n", "person_time", "exposure_class"), drop = FALSE]
-      names(result_wide) <- c("row_key", "Subgroup", "Level", "N", "Exposure", "Outcome", "Case N", "Control N", "Person-years", "Class")
+      result_long <- x$result
+      base_cols <- c("Subgroup", "Level", "N", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
+      model_ids <- unique(result_long$Model)
+      result_wide <- result_long[result_long$Model == model_ids[1], base_cols, drop = FALSE]
       for (model_id in model_ids) {
-        model_df <- result_tidy[result_tidy$model == model_id, c("row_key", "hr", "hr_ci_l", "hr_ci_u", "p_value", "p_interaction", "p_heterogeneity"), drop = FALSE]
-        model_df$hr <- round(model_df$hr, 3)
-        model_df$ci_95 <- ifelse(is.na(model_df$hr_ci_l) | is.na(model_df$hr_ci_u), "NA", paste0(sprintf("%.3f", round(model_df$hr_ci_l, 3)), ", ", sprintf("%.3f", round(model_df$hr_ci_u, 3))))
-        model_df$p_value <- vapply(model_df$p_value, .format_p_value, character(1))
-        model_df$p_interaction <- vapply(model_df$p_interaction, .format_p_value, character(1))
-        model_df$p_heterogeneity <- vapply(model_df$p_heterogeneity, .format_p_value, character(1))
-        model_df <- model_df[, c("row_key", "hr", "ci_95", "p_value", "p_interaction", "p_heterogeneity"), drop = FALSE]
-        names(model_df) <- c("row_key", paste(model_id, "HR"), paste(model_id, "95% CI"), paste(model_id, "P value"), paste(model_id, "P for interaction"), paste(model_id, "P for heterogeneity"))
-        result_wide <- merge(result_wide, model_df, by = "row_key", all.x = TRUE, sort = FALSE)
+        model_df <- result_long[result_long$Model == model_id, c("Subgroup", "Level", "HR", "95% CI", "P value"), drop = FALSE]
+        rename_cols <- c("Subgroup", "Level", paste(model_id, "HR"), paste(model_id, "95% CI"), paste(model_id, "P value"))
+        if ("P for interaction" %in% names(result_long)) {
+          model_df$`P for interaction` <- result_long$`P for interaction`[result_long$Model == model_id]
+          rename_cols <- c(rename_cols, paste(model_id, "P for interaction"))
+        }
+        if ("P for heterogeneity" %in% names(result_long)) {
+          model_df$`P for heterogeneity` <- result_long$`P for heterogeneity`[result_long$Model == model_id]
+          rename_cols <- c(rename_cols, paste(model_id, "P for heterogeneity"))
+        }
+        names(model_df) <- rename_cols
+        result_wide <- merge(result_wide, model_df, by = c("Subgroup", "Level"), all.x = TRUE, sort = FALSE)
       }
-      result_wide <- result_wide[match(unique(result_tidy$row_key), result_wide$row_key), , drop = FALSE]
-      result_wide$row_key <- NULL
       rownames(result_wide) <- NULL
       result_wide
     },
     tidy = {
-      result_tidy <- x$result_tidy
-      result_out <- result_tidy[, c("subgroup", "subgroup_level", "subgroup_n", "model", "exposure", "outcome", "level", "case_n", "control_n", "person_time"), drop = FALSE]
-      result_out$HR <- round(result_tidy$hr, 3)
-      result_out$`95% CI` <- ifelse(is.na(result_tidy$hr_ci_l) | is.na(result_tidy$hr_ci_u), "NA", paste0(sprintf("%.3f", round(result_tidy$hr_ci_l, 3)), ", ", sprintf("%.3f", round(result_tidy$hr_ci_u, 3))))
-      result_out$`P value` <- vapply(result_tidy$p_value, .format_p_value, character(1))
-      result_out$`P for interaction` <- vapply(result_tidy$p_interaction, .format_p_value, character(1))
-      result_out$`P for heterogeneity` <- vapply(result_tidy$p_heterogeneity, .format_p_value, character(1))
-      result_out$Class <- result_tidy$exposure_class
-      result_out$Formula <- result_tidy$formula
-      names(result_out)[1:10] <- c("Subgroup", "Level", "N", "Model", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
-      rownames(result_out) <- NULL
-      result_out
+      x$result
     }
   )
 }
@@ -1266,7 +1467,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     med_coef$n <- nrow(model_df)
     med_coef$case_n <- sum(model_df$event == 1, na.rm = TRUE)
     med_coef$control_n <- sum(model_df$event == 0, na.rm = TRUE)
-    med_coef$person_time <- sum(model_df$time, na.rm = TRUE)
+    med_coef$person_year <- sum(model_df$time, na.rm = TRUE)
     med_coef$mediator_model <- mediator_mode_use
     med_coef$a0 <- a0_use
     med_coef$a1 <- a1_use
@@ -1289,7 +1490,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
   result_tidy$effect_scale <- ifelse(result_tidy$effect == "pm", "Proportion", "Hazard ratio")
   result_tidy$exposure_contrast <- paste0(result_tidy$a0, " -> ", result_tidy$a1)
   result_tidy$mediator_reference <- ifelse(is.na(result_tidy$m_cde), NA_character_, sprintf("%.3f", round(result_tidy$m_cde, 3)))
-  result <- result_tidy[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "control_n", "person_time", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mediator_model"), drop = FALSE]
+  result <- result_tidy[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "control_n", "person_year", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mediator_model"), drop = FALSE]
   result$Estimate <- ifelse(result$effect == "pm", round(result$est, 3), round(result$exp.est, 3))
   result$`95% CI` <- ifelse(
     result$effect == "pm",
@@ -1297,7 +1498,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     paste0(sprintf("%.3f", round(result$exp.lower, 3)), ", ", sprintf("%.3f", round(result$exp.upper, 3)))
   )
   result$`P value` <- vapply(result$p, .format_p_value, character(1))
-  result <- result[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "control_n", "person_time", "Estimate", "95% CI", "P value", "mediator_model"), drop = FALSE]
+  result <- result[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "control_n", "person_year", "Estimate", "95% CI", "P value", "mediator_model"), drop = FALSE]
   names(result) <- c("Model", "Effect code", "Effect", "Scale", "Exposure", "Mediator", "Outcome", "Exposure contrast", "Mediator reference", "N", "Case N", "Control N", "Person-years", "Estimate", "95% CI", "P value", "Mediator model")
   out <- structure(list(result = result, result_tidy = result_tidy, fit = fit_results), class = "leo_cox_mediation")
   leo.basic::leo_log("Cox mediation analysis completed for {x_exp} -> {x_med} -> {y_out[1]} with {length(model_list)} model(s).", level = "success", verbose = verbose)

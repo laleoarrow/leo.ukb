@@ -15,7 +15,8 @@ leo_cox_subgroup(
   min_followup_time = 0,
   x_exp_type = "auto",
   x_subgroup_type = "categorical",
-  include_heterogeneity = TRUE,
+  add_interaction = TRUE,
+  add_heterogeneity = FALSE,
   verbose = TRUE
 )
 
@@ -40,7 +41,9 @@ leo_cox_subgroup_format(x, style = "wide")
 
 \item{x_subgroup_type}{Type handling for \code{x_subgroup}. Subgroup analyses are expected to use categorical grouping variables.}
 
-\item{include_heterogeneity}{Logical; whether to calculate a heterogeneity P value from subgroup summary statistics.}
+\item{add_interaction}{Logical; whether to append \verb{P for interaction} from \code{leo_cox_interaction()}.}
+
+\item{add_heterogeneity}{Logical; whether to calculate a heterogeneity P value from subgroup summary statistics.}
 
 \item{verbose}{Logical; print progress messages.}
 
@@ -49,9 +52,11 @@ leo_cox_subgroup_format(x, style = "wide")
 \item{style}{One of \code{"wide"} or \code{"tidy"}.}
 }
 \value{
-A \code{leo_cox_subgroup} object containing the default wide table in
-\verb{$result}, subgroup-level tidy rows in \verb{$result_tidy}, and interaction
-test results in \verb{$interaction}.
+A \code{leo_cox_subgroup} object containing a subgroup result table in
+\verb{$result} and, when requested, interaction test objects in \verb{$interaction}.
+When \code{x_subgroup} has length 1, \verb{$interaction} is a single
+\code{leo_cox_interaction} object; otherwise it is a named list of
+\code{leo_cox_interaction} objects keyed by subgroup variable.
 }
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
@@ -80,5 +85,5 @@ res_sub <- leo_cox_subgroup(
   x_exp = "age", x_subgroup = "sex", x_cov = model, verbose = FALSE
 )
 res_sub$result
-leo_cox_subgroup_format(res_sub, style = "tidy")
+leo_cox_subgroup_format(res_sub, style = "wide")
 }

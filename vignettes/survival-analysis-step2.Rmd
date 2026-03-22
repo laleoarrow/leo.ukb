@@ -1,0 +1,206 @@
+---
+title: "Survival Analysis Step 2: Subgroup and Interaction"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Survival Analysis Step 2: Subgroup and Interaction}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5,
+  message = FALSE,
+  warning = FALSE
+)
+suppressPackageStartupMessages(library(leo.ukb))
+```
+
+# What this step is for
+
+This tutorial is the second survival-analysis step in `leo.ukb`. After fitting
+the main Cox model, a common next question is:
+
+> does the exposure effect differ across groups?
+
+This is where subgroup analysis and interaction analysis begin.
+
+# First separate two questions
+
+Subgroup analysis and interaction analysis are related, but they do not answer
+exactly the same question.
+
+- `leo_cox_subgroup()` asks: what is the hazard ratio within each subgroup?
+- `leo_cox_interaction()` asks: are those subgroup-specific effects genuinely
+  different from each other on the multiplicative hazard-ratio scale?
+
+This distinction matters in papers. One subgroup can be "statistically
+significant" and another can be "not significant" without there being strong
+evidence that the two subgroup effects differ.
+
+# Build a compact teaching data set
+
+We continue with the `survival::lung` example.
+
+```{r}
+lung_df <- dplyr::transmute(
+  survival::lung,
+  outcome = as.integer(status == 2),
+  outcome_censor = time / 365.25,
+  age = age,
+  sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+  ecog_group = factor(
+    ph.ecog,
+    levels = 0:3,
+    labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3")
+  )
+)
+
+cox_models <- list(
+  "Crude" = NULL,
+  "Model A" = c("ecog_group")
+)
+```
+
+# Interaction first: the formal heterogeneity test
+
+When the scientific question is "does the effect differ across groups?", the
+formal answer comes from an interaction model, not from visually comparing
+subgroup-specific `P values`.
+
+```{r}
+res_inter <- leo_cox_interaction(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_inter = "sex",
+  x_cov = cox_models,
+  verbose = FALSE
+)
+
+res_inter$result
+```
+
+Read this table as the formal interaction summary:
+
+- `P for interaction` is the key heterogeneity test
+- in the current Cox workflow, this is a multiplicative interaction test on the
+  hazard-ratio scale
+- `Interaction class` tells you whether the modifier was treated as binary,
+  multi-level categorical, or continuous
+
+For a continuous modifier, `leo_cox_interaction()` can still test interaction,
+but `leo_cox_subgroup()` is not the right follow-up unless you first define a
+meaningful categorical grouping.
+
+# Subgroup analysis next: show the stratum-specific HRs
+
+After the formal interaction test, it is often useful to show the hazard ratio
+within each subgroup itself.
+
+```{r}
+res_sub <- leo_cox_subgroup(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_subgroup = c("sex", "ecog_group"),
+  x_cov = list("Crude" = NULL),
+  verbose = FALSE
+)
+
+utils::head(res_sub$result, 8)
+```
+
+The subgroup table is designed to be easy to read in a manuscript:
+
+- one row per subgroup level and model
+- the subgroup-specific `HR`, `95% CI`, and `P value`
+- the matching `P for interaction`
+
+# How to interpret the two outputs together
+
+The cleanest reporting logic is:
+
+1. use `leo_cox_interaction()` to decide whether there is evidence that the
+   exposure effect differs by subgroup
+2. use `leo_cox_subgroup()` to describe the pattern of subgroup-specific hazard
+   ratios
+
+A practical interpretation rule is:
+
+- `P for interaction` is the primary evidence for heterogeneity
+- subgroup-specific `HR` values describe the direction and magnitude within
+  each group
+
+This is why subgroup analysis should not be reduced to "one subgroup was
+significant and another was not".
+
+# How to write the finding in a paper
+
+In a manuscript, the safest reporting order is:
+
+1. state whether the interaction test supported heterogeneity
+2. then describe the subgroup-specific hazard ratios
+
+For example:
+
+> The association between age and the event differed by sex
+> (`P for interaction = ...`). In subgroup analyses, the hazard ratio was
+> higher in ... than in ...
+
+This wording keeps the formal test and the descriptive pattern in the right
+order.
+
+# When should subgroup variables be categorical?
+
+`leo_cox_subgroup()` is designed for categorical subgroup variables.
+
+- binary subgroup variables are natural here, such as `sex`
+- multi-level subgroup variables are also fine, such as `ecog_group`
+- continuous modifiers belong first in `leo_cox_interaction()`
+
+If a modifier is continuous, you have two options:
+
+1. keep it continuous and do a formal interaction test only
+2. define a clinically meaningful grouping first, then use subgroup analysis
+
+The choice should follow the scientific question, not convenience.
+
+# Optional heterogeneity P values
+
+By default, `leo_cox_subgroup()` appends `P for interaction`. This is the main
+heterogeneity signal for most Cox subgroup tables in cohort papers.
+
+`P for heterogeneity` is available as an optional supplement:
+
+```{r}
+res_sub_hetero <- leo_cox_subgroup(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_subgroup = "sex",
+  x_cov = list("Crude" = NULL),
+  add_heterogeneity = TRUE,
+  verbose = FALSE
+)
+
+res_sub_hetero$result
+```
+
+In most cohort papers, it is better to treat `P for heterogeneity` as
+supporting information rather than the primary decision point.
+
+# What to take away from step 2
+
+This step should leave you with three practical rules:
+
+1. subgroup analysis and interaction analysis are connected, but not identical
+2. `P for interaction` is the formal test of effect modification
+3. subgroup-specific hazard ratios are for description, not for replacing the
+   interaction test
+
+With that logic in place, your survival-analysis reporting becomes much easier
+to defend scientifically.

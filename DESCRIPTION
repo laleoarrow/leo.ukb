@@ -36,6 +36,7 @@ Imports:
     xtable
 Suggests:
     broom.helpers,
+    interactionR,
     gtsummary,
     jsonlite,
     knitr,

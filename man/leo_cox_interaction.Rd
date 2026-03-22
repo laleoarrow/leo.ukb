@@ -2,7 +2,8 @@
 % Please edit documentation in R/analyze.R
 \name{leo_cox_interaction}
 \alias{leo_cox_interaction}
-\title{Cox interaction analysis}
+\alias{leo_cox_add_interaction}
+\title{Cox interaction analyses}
 \usage{
 leo_cox_interaction(
   df,
@@ -13,7 +14,18 @@ leo_cox_interaction(
   event_value = 1,
   min_followup_time = 0,
   x_exp_type = "auto",
-  x_inter_type = "categorical",
+  x_inter_type = "auto",
+  verbose = TRUE
+)
+
+leo_cox_add_interaction(
+  df,
+  y_out,
+  x_exp,
+  x_inter,
+  x_cov = NULL,
+  event_value = 1,
+  min_followup_time = 0,
   verbose = TRUE
 )
 }
@@ -40,7 +52,15 @@ leo_cox_interaction(
 }
 \value{
 A \code{leo_cox_interaction} object containing a display table in \verb{$result},
-the raw interaction rows in \verb{$result_tidy}, and fitted nested Cox models.
+the fitted no-interaction Cox models in \verb{$fit_main}, the fitted
+interaction Cox models in \verb{$fit_inter}, and the corresponding model
+formulas in \verb{$formula_main} and \verb{$formula_inter}.
+
+A \code{leo_cox_add_interaction} object containing a display table in
+\verb{$result}, the fitted no-interaction Cox models in \verb{$fit_main}, the fitted
+interaction Cox models in \verb{$fit_inter}, the corresponding model formulas in
+\verb{$formula_main} and \verb{$formula_inter}, and the raw \code{interactionR} backend
+objects in \verb{$backend}.
 }
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
@@ -50,6 +70,13 @@ the raw interaction rows in \verb{$result_tidy}, and fitted nested Cox models.
 an incident outcome differs by a candidate interaction variable. It compares
 nested Cox models with and without the interaction term using
 \code{stats::anova(..., test = "Chisq")}.
+
+\code{leo_cox_add_interaction()} focuses on the binary-binary setting and reports
+additive interaction summaries from a Cox model, including \code{RERI}, \code{AP}, and
+\code{S}, together with the multiplicative interaction estimate. When the original
+binary coding does not use the lowest-incidence joint stratum as the
+reference group, \code{leo_cox_add_interaction()} recodes the two binary variables
+before handing the fitted interaction model to \code{interactionR}.
 }
 \examples{
 lung_df <- stats::na.omit(
@@ -68,4 +95,22 @@ leo_cox_interaction(
   df = lung_df, y_out = c("outcome", "outcome_censor"),
   x_exp = "age", x_inter = "sex", x_cov = model, verbose = FALSE
 )$result
+if (requireNamespace("interactionR", quietly = TRUE)) {
+  lung_df <- stats::na.omit(
+    dplyr::transmute(
+      survival::lung,
+      outcome = as.integer(status == 2),
+      outcome_censor = time / 365.25,
+      smoking = factor(age > median(age), levels = c(FALSE, TRUE), labels = c("Low", "High")),
+      sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
+      ecog_group = factor(ph.ecog, levels = 0:3, labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3"))
+    )
+  )
+
+  model <- list("Crude" = NULL, "Model A" = c("ecog_group"))
+  leo_cox_add_interaction(
+    df = lung_df, y_out = c("outcome", "outcome_censor"),
+    x_exp = "smoking", x_inter = "sex", x_cov = model, verbose = FALSE
+  )$result
+}
 }

@@ -20,10 +20,17 @@ for (file in zh_articles) {
 }
 
 article_checks <- stats::setNames(
-  c("Survival Analysis with leo.ukb", "leo.ukb 生存分析教程"),
   c(
-    file.path(site_dir, "articles", "survival-analysis.html"),
-    file.path(site_dir, "articles", "survival-analysis-zh.html")
+    "Survival Analysis Step 1: Main Cox Analysis",
+    "Survival Analysis Step 2: Subgroup and Interaction",
+    "生存分析 Step 1：主 Cox 分析",
+    "生存分析 Step 2：亚组分析与交互效应"
+  ),
+  c(
+    file.path(site_dir, "articles", "survival-analysis-step1.html"),
+    file.path(site_dir, "articles", "survival-analysis-step2.html"),
+    file.path(site_dir, "articles", "survival-analysis-step1-zh.html"),
+    file.path(site_dir, "articles", "survival-analysis-step2-zh.html")
   )
 )
 
