@@ -305,29 +305,32 @@ pnde_row <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` == "
 pm_ci <- as.numeric(trimws(strsplit(pm_row$`95% CI`, ",", fixed = TRUE)[[1]]))
 
 node_cols <- c(
-  exposure = "#374E55FF",  # ggsci::pal_jama()
-  mediator = "#DF8F44FF",
-  outcome = "#00A1D5FF"
+  exposure = "#0072B5FF",  # ggsci::pal_nejm()
+  mediator = "#20854EFF",
+  outcome = "#BC3C29FF"
 )
-
-draw_box <- function(x, y, label, fill, text_col = "#1F1F1F", cex = 1.15, pad_x = 0.35, pad_y = 0.28) {
-  label_lines <- strsplit(label, "\n", fixed = TRUE)[[1]]
-  box_width <- max(strwidth(label_lines, cex = cex, units = "user")) + 2 * pad_x
-  line_height <- strheight("M", cex = cex, units = "user")
-  box_height <- line_height * length(label_lines) + 2 * pad_y + 0.10 * (length(label_lines) - 1)
-  graphics::rect(x - box_width / 2, y - box_height / 2, x + box_width / 2, y + box_height / 2,
-                 col = grDevices::adjustcolor(fill, alpha.f = 0.82), border = NA)
-  graphics::text(x, y, label, cex = cex, col = text_col)
-  list(x = x, y = y, xleft = x - box_width / 2, xright = x + box_width / 2)
-}
 
 graphics::plot.new()
 graphics::plot.window(xlim = c(0, 12), ylim = c(0, 8.5))
 graphics::par(xpd = NA, mar = c(0, 0, 0, 0))
 
-left_box <- draw_box(2.3, 3.9, "代谢风险", node_cols["exposure"], text_col = "white")
+node_labels <- c("代谢风险", "炎症", "结局事件")
+label_cex <- 1.08
+pad_x <- 0.42
+pad_y <- 0.30
+box_width <- max(strwidth(node_labels, cex = label_cex, units = "user")) + 2 * pad_x
+box_height <- strheight("M", cex = label_cex, units = "user") + 2 * pad_y
+
+draw_box <- function(x, y, label, fill, text_col = "white", cex = label_cex, width = box_width, height = box_height) {
+  graphics::rect(x - width / 2, y - height / 2, x + width / 2, y + height / 2,
+                 col = grDevices::adjustcolor(fill, alpha.f = 0.88), border = fill, lwd = 1.6)
+  graphics::text(x, y, label, cex = cex, col = text_col)
+  list(x = x, y = y, xleft = x - width / 2, xright = x + width / 2)
+}
+
+left_box <- draw_box(2.3, 3.9, "代谢风险", node_cols["exposure"])
 mid_box <- draw_box(6.0, 6.2, "炎症", node_cols["mediator"])
-right_box <- draw_box(10.0, 3.9, "结局事件", node_cols["outcome"])
+right_box <- draw_box(9.7, 3.9, "结局事件", node_cols["outcome"])
 
 graphics::arrows(left_box$xright, 4.15, mid_box$xleft, 5.8, lwd = 2, length = 0.08, col = "#2F2F2F")
 graphics::arrows(mid_box$xright, 5.8, right_box$xleft, 4.15, lwd = 2, length = 0.08, col = "#2F2F2F")
@@ -335,9 +338,9 @@ graphics::arrows(left_box$xright, 3.9, right_box$xleft, 3.9, lwd = 2, length = 0
 
 graphics::text(6.0, 7.65, sprintf("间接效应 (TNIE): %.3f", tnie_row$Estimate), cex = 0.95)
 graphics::text(
-  6.0, 4.95,
+  6.0, 5.05,
   sprintf("中介比例: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]),
-  cex = 0.9
+  cex = 0.86
 )
 graphics::text(6.0, 2.55, sprintf("直接效应 (PNDE): %.3f", pnde_row$Estimate), cex = 0.95)
 graphics::text(6.0, 1.95, sprintf("总效应 (TE): %.3f", te_row$Estimate), cex = 0.9)
@@ -360,3 +363,4 @@ graphics::text(6.0, 1.95, sprintf("总效应 (TE): %.3f", te_row$Estimate), cex 
 2. `a0`、`a1`、`m_cde`、`c_cond` 决定了中介效应是在哪里被评价的
 3. `leo_cox_mediation()` 同时支持二分类和连续 mediator，但 factor mediator 不应该强行用 `mediator_model = "linear"`
 4. `survCox` 中介结果必须结合 rare-event 假设和研究中的时间顺序一起解释
+  
