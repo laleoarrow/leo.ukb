@@ -244,14 +244,20 @@ clearly than a dense table alone.
 ```{r, fig.width = 8.5, fig.height = 5.5}
 pnde_row <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` == "pnde")
 
-draw_box <- function(x, y, label, fill, cex = 1.15, pad_x = 0.35, pad_y = 0.28) {
+node_cols <- c(
+  exposure = "#374E55FF",  # ggsci::pal_jama()
+  mediator = "#DF8F44FF",
+  outcome = "#00A1D5FF"
+)
+
+draw_box <- function(x, y, label, fill, text_col = "#1F1F1F", cex = 1.15, pad_x = 0.35, pad_y = 0.28) {
   label_lines <- strsplit(label, "\n", fixed = TRUE)[[1]]
   box_width <- max(strwidth(label_lines, cex = cex, units = "user")) + 2 * pad_x
   line_height <- strheight("M", cex = cex, units = "user")
   box_height <- line_height * length(label_lines) + 2 * pad_y + 0.10 * (length(label_lines) - 1)
   graphics::rect(x - box_width / 2, y - box_height / 2, x + box_width / 2, y + box_height / 2,
-                 col = grDevices::adjustcolor(fill, alpha.f = 0.95), border = NA)
-  graphics::text(x, y, label, cex = cex)
+                 col = grDevices::adjustcolor(fill, alpha.f = 0.82), border = NA)
+  graphics::text(x, y, label, cex = cex, col = text_col)
   list(x = x, y = y, xleft = x - box_width / 2, xright = x + box_width / 2)
 }
 
@@ -259,13 +265,13 @@ graphics::plot.new()
 graphics::plot.window(xlim = c(0, 12), ylim = c(0, 8.5))
 graphics::par(xpd = NA, mar = c(0, 0, 0, 0))
 
-left_box <- draw_box(2.3, 3.9, "Metabolic risk", "#d9b3a8")
-mid_box <- draw_box(6.0, 6.2, "Inflammation", "#f6c56f")
-right_box <- draw_box(10.0, 3.9, "Incident\noutcome", "#f3b7c4")
+left_box <- draw_box(2.3, 3.9, "Metabolic risk", node_cols["exposure"], text_col = "white")
+mid_box <- draw_box(6.0, 6.2, "Inflammation", node_cols["mediator"])
+right_box <- draw_box(10.0, 3.9, "Incident\noutcome", node_cols["outcome"])
 
-graphics::arrows(left_box$xright, 4.15, mid_box$xleft, 5.8, lwd = 2, length = 0.08)
-graphics::arrows(mid_box$xright, 5.8, right_box$xleft, 4.15, lwd = 2, length = 0.08)
-graphics::arrows(left_box$xright, 3.9, right_box$xleft, 3.9, lwd = 2, length = 0.08)
+graphics::arrows(left_box$xright, 4.15, mid_box$xleft, 5.8, lwd = 2, length = 0.08, col = "#2F2F2F")
+graphics::arrows(mid_box$xright, 5.8, right_box$xleft, 4.15, lwd = 2, length = 0.08, col = "#2F2F2F")
+graphics::arrows(left_box$xright, 3.9, right_box$xleft, 3.9, lwd = 2, length = 0.08, col = "#2F2F2F")
 
 graphics::text(6.0, 7.65, sprintf("Indirect effect (TNIE): %.3f", tnie_row$Estimate), cex = 0.95)
 graphics::text(
