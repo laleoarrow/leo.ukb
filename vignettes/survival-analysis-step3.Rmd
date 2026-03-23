@@ -165,6 +165,45 @@ The mediation output is already organized in a paper-friendly way.
 This last point is important: mediation estimates are conditional on the chosen
 evaluation settings.
 
+# Teach the evaluation settings in `leo.ukb` language
+
+`regmedint` uses four core evaluation arguments, and `leo_cox_mediation()`
+keeps the same scientific meaning while presenting them in a more readable way.
+
+| Question | `leo.ukb` parameter | What it means in practice |
+|---|---|---|
+| Which exposure contrast is being compared? | `a0`, `a1` | The exposure comparison used to define the mediation effect, such as `Low risk -> High risk` or `8.0 -> 9.0`. |
+| At what mediator value is the controlled direct effect evaluated? | `m_cde` | The mediator reference value used for `cde`. |
+| Under what covariate profile are the effects evaluated? | `c_cond` | The covariate setting at which the effects are computed. |
+| Which mediator submodel is used? | `mediator_model` | Whether the mediator is modeled as binary (`logistic`) or continuous (`linear`). |
+
+In other words, `a0`, `a1`, `m_cde`, and `c_cond` are not nuisance options.
+They define **where** the direct and indirect effects are evaluated.
+
+# How `mediator_model = "auto"` behaves
+
+The current `leo.ukb` rule is:
+
+- binary factor / character / logical mediator -> `logistic`
+- two-valued numeric mediator -> `logistic`
+- numeric mediator with more than two observed values -> `linear`
+- multi-level categorical mediator stored as factor -> not currently supported
+
+This is usually the safest workflow for applied cohort studies:
+
+- if the mediator is naturally binary, let `auto` pick `logistic`
+- if the mediator is a true continuous biomarker, let `auto` pick `linear`
+- if the mediator is an ordered score, such as a low-grade inflammation index
+  ranging from `-7` to `7`, keep it numeric and treat it as a continuous
+  mediator, usually with `mediator_model = "linear"`
+- if the scientific question is threshold-based, recode the mediator into a
+  clinically justified binary variable first, then use `logistic`
+
+What is **not** recommended is to pass a multi-level categorical mediator as a
+factor and expect the current survival mediation wrapper to fit an ordinal or
+multinomial mediator model. That is outside the boundary of the present
+function.
+
 # Decode the abbreviations before interpreting anything
 
 ```{r}
@@ -293,6 +332,17 @@ This table is especially useful when you want to audit:
 - which mediator reference value was used for the controlled direct effect
 - which covariate profile was used for `c_cond`
 
+For example, if your output shows:
+
+- `Exposure contrast = Low risk -> High risk`
+- `Mediator reference = High inflammation`
+- `c_cond = age=60.000; bmi=26.000`
+
+then the reported direct and indirect effects should be read as:
+
+> the mediation decomposition comparing `High risk` with `Low risk`, evaluated
+> at the chosen mediator reference and at that specific covariate profile
+
 # Non-numeric covariates need explicit `c_cond`
 
 When the selected adjustment set contains a non-numeric covariate, the
@@ -315,9 +365,11 @@ res_med_smoking$evaluation
 This is more transparent than letting a factor be silently converted in a way
 the reader cannot easily reconstruct.
 
-# Continuous mediators are also supported
+# Continuous mediators, including score-like mediators, are also supported
 
-The same workflow can be used with a continuous mediator.
+The same workflow can be used with a continuous mediator. A truly continuous
+mediator, or an ordered score that you are willing to treat as approximately
+continuous, should usually be handled with `mediator_model = "linear"`.
 
 ```{r}
 med_df_cont <- dplyr::mutate(
@@ -340,6 +392,20 @@ res_med_cont$result
 
 For a continuous mediator, the reference value in the table is numeric because
 the controlled direct effect is evaluated at `m_cde`.
+
+This is also the pattern we would usually recommend for an ordered score-like
+mediator. For example, if a low-grade inflammation index ranges from `-7` to
+`7`, the first question is scientific rather than computational:
+
+- does this index behave like a severity score, where one-unit changes are
+  interpretable enough for a linear approximation?
+- or is there a clinically meaningful threshold that should define a binary
+  mediator instead?
+
+For most ordered severity scores, the cleaner first pass is to keep the score
+numeric and fit a linear mediator model. Only if the study question is really
+about a thresholded state should you dichotomize it and move to a logistic
+mediator model.
 
 # How to write this in a paper
 

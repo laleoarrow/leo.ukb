@@ -360,39 +360,60 @@ test_that("leo_cox_mediation rejects factor mediators when mediator_model is lin
   )
 })
 
-test_that("leo_cox_mediation auto mode rejects small integer-coded multi-level mediators", {
+test_that("leo_cox_mediation auto mode treats integer-coded score mediators as linear", {
   skip_if_not_installed("regmedint")
   med_df <- make_mediation_df()
   med_df$mediator_tri <- sample(c(0, 1, 2), nrow(med_df), replace = TRUE)
 
-  expect_error(
-    leo_cox_mediation(
+  expect_message(
+    res <- leo_cox_mediation(
       df = med_df,
       y_out = c("outcome", "outcome_censor"),
       x_exp = "exposure",
       x_med = "mediator_tri",
       x_cov = "age",
-      verbose = FALSE
+      verbose = TRUE
     ),
-    "integer-coded multi-level mediators"
+    "ignore this warning if expected"
   )
+
+  expect_s3_class(res, "leo_cox_mediation")
+  expect_true(all(res$result$`Mediator model` == "linear"))
 })
 
-test_that("leo_cox_mediation auto mode rejects larger integer-coded multi-level mediators", {
+test_that("leo_cox_mediation auto mode treats broader integer score mediators as linear", {
   skip_if_not_installed("regmedint")
   med_df <- make_mediation_df()
   med_df$mediator_many <- sample(1:12, nrow(med_df), replace = TRUE)
+
+  res <- leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator_many",
+    x_cov = "age",
+    verbose = FALSE
+  )
+
+  expect_s3_class(res, "leo_cox_mediation")
+  expect_true(all(res$result$`Mediator model` == "linear"))
+})
+
+test_that("leo_cox_mediation auto mode still rejects multi-level categorical mediators", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_df()
+  med_df$mediator_group <- factor(sample(c("Low", "Mid", "High"), nrow(med_df), replace = TRUE))
 
   expect_error(
     leo_cox_mediation(
       df = med_df,
       y_out = c("outcome", "outcome_censor"),
       x_exp = "exposure",
-      x_med = "mediator_many",
+      x_med = "mediator_group",
       x_cov = "age",
       verbose = FALSE
     ),
-    "integer-coded multi-level mediators"
+    "multi-level categorical mediators"
   )
 })
 

@@ -1329,14 +1329,22 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #' @param x_cov `NULL`, a character vector of covariate column names, or a list of covariate column-name vectors.
 #' @param min_followup_time Numeric scalar; keep rows with `time > min_followup_time`.
 #' @param event_value Value in the event column that indicates incident events.
-#' @param a0 Numeric scalar; reference exposure value.
-#' @param a1 Numeric scalar; contrasted exposure value.
-#' @param m_cde Numeric scalar; mediator value at which the controlled direct effect is evaluated.
-#' @param c_cond Optional covariate profile at which effects are evaluated. Use a
-#'   numeric vector when all covariates are numeric, or a named list / named
-#'   vector keyed by original covariate names when non-numeric covariates are
-#'   present. If `NULL`, medians are used for numeric covariates.
-#' @param mediator_model One of `"auto"`, `"linear"`, or `"logistic"`.
+#' @param a0 Numeric scalar; reference exposure value used to define the
+#'   exposure contrast at which mediation effects are evaluated.
+#' @param a1 Numeric scalar; contrasted exposure value used to define the
+#'   exposure contrast at which mediation effects are evaluated.
+#' @param m_cde Numeric scalar; mediator value at which the controlled direct
+#'   effect is evaluated.
+#' @param c_cond Optional covariate profile at which mediation effects are
+#'   evaluated. Use a numeric vector when all covariates are numeric, or a
+#'   named list / named vector keyed by original covariate names when
+#'   non-numeric covariates are present. If `NULL`, medians are used for
+#'   numeric covariates.
+#' @param mediator_model One of `"auto"`, `"linear"`, or `"logistic"`. In
+#'   `"auto"` mode, binary mediators are treated as `"logistic"`, while
+#'   numeric mediators with more than two observed values are treated as
+#'   `"linear"`. Multi-level categorical mediators are not currently
+#'   supported.
 #' @param interaction Logical; whether to include exposure-mediator interaction in the outcome model.
 #' @param verbose Logical; print progress messages.
 #'
@@ -1501,7 +1509,14 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     if (mediator_mode_use == "auto") {
       if (is.factor(mediator_raw) || is.character(mediator_raw) || is.logical(mediator_raw)) {
         mediator_levels <- levels(droplevels(factor(mediator_raw)))
-        if (length(mediator_levels) != 2) stop("Automatic mediator detection only supports binary factors or numeric mediators.", call. = FALSE)
+        if (length(mediator_levels) != 2) {
+          stop(
+            "Automatic mediator detection currently supports binary factors or numeric mediators. ",
+            "For multi-level categorical mediators, please recode x_med to a scientifically justified binary mediator, ",
+            "or keep an ordered score as numeric and set mediator_model = 'linear'.",
+            call. = FALSE
+          )
+        }
         mediator_mode_use <- "logistic"
       } else {
         mediator_num <- suppressWarnings(as.numeric(mediator_raw))
@@ -1509,20 +1524,29 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
         mediator_is_integer_like <- length(unique_mediator) > 0 && all(abs(unique_mediator - round(unique_mediator)) < 1e-8)
         if (length(unique_mediator) == 2 && mediator_is_integer_like) {
           mediator_mode_use <- "logistic"
-        } else if (mediator_is_integer_like && length(unique_mediator) > 2) {
-          stop(
-            "Automatic mediator detection does not treat integer-coded multi-level mediators as linear. ",
-            "Please recode x_med to a scientifically justified binary or truly continuous variable, or specify mediator_model explicitly.",
-            call. = FALSE
-          )
         } else {
+          if (length(unique_mediator) >= 3 && length(unique_mediator) <= 10) {
+            leo.basic::leo_log(
+              "Mediator '{x_med}' has only {length(unique_mediator)} unique numeric values ({paste(unique_mediator, collapse = ', ')}). ",
+              "In `mediator_model = 'auto'`, it will be treated as a continuous mediator and fit with `linear`. ",
+              "Please confirm this is scientifically intended and ignore this warning if expected.",
+              level = "warning",
+              verbose = verbose
+            )
+          }
           mediator_mode_use <- "linear"
         }
       }
     }
     if (mediator_mode_use == "logistic") {
       mediator_factor <- droplevels(factor(mediator_raw))
-      if (nlevels(mediator_factor) != 2) stop("Mediator must have exactly 2 levels when mediator_model = 'logistic'.", call. = FALSE)
+      if (nlevels(mediator_factor) != 2) {
+        stop(
+          "Mediator must have exactly 2 levels when mediator_model = 'logistic'. ",
+          "For ordered score-like mediators such as integer severity indices, keep x_med numeric and use mediator_model = 'linear'.",
+          call. = FALSE
+        )
+      }
       model_df[[x_med]] <- as.integer(mediator_factor == levels(mediator_factor)[2])
       if (is.null(m_cde_use)) m_cde_use <- 1
       if (!is.numeric(m_cde_use) || length(m_cde_use) != 1 || is.na(m_cde_use) || !m_cde_use %in% c(0, 1)) {
@@ -1531,7 +1555,11 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
       mediator_reference_display <- levels(mediator_factor)[m_cde_use + 1]
     } else {
       if (is.factor(mediator_raw) || is.character(mediator_raw) || is.logical(mediator_raw)) {
-        stop("Mediator must be truly numeric when mediator_model = 'linear'. Use mediator_model = 'auto' or 'logistic' for binary/categorical mediators.", call. = FALSE)
+        stop(
+          "Mediator must be truly numeric when mediator_model = 'linear'. ",
+          "If x_med is binary, use mediator_model = 'auto' or 'logistic'; if it is a multi-level categorical mediator, recode it to a justified binary mediator before using the current function.",
+          call. = FALSE
+        )
       }
       model_df[[x_med]] <- suppressWarnings(as.numeric(mediator_raw))
       if (anyNA(model_df[[x_med]])) stop("Mediator must be numeric when mediator_model = 'linear'.", call. = FALSE)

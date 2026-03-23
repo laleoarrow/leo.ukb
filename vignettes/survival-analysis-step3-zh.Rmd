@@ -153,6 +153,43 @@ res_med$result
 
 这点非常重要，因为中介效应不是“天然唯一”的，它取决于你指定的评价点。
 
+# 用 `leo.ukb` 的语言理解这些评价参数
+
+`regmedint` 原始接口里最核心的 4 个评价参数，在 `leo_cox_mediation()`
+里保留了相同的科学含义，只是现在会以更容易读懂的方式展示出来。
+
+| 你真正想问的问题 | `leo.ukb` 参数 | 实际含义 |
+|---|---|---|
+| 到底比较哪个 exposure contrast？ | `a0`, `a1` | 定义中介效应时比较的 exposure 对比，例如 `Low risk -> High risk` 或 `8.0 -> 9.0`。 |
+| `cde` 是把 mediator 固定在哪个值上评价的？ | `m_cde` | 计算 controlled direct effect 时采用的 mediator 参考值。 |
+| 这些效应是在什么协变量背景下评价的？ | `c_cond` | 计算直接效应和间接效应时使用的 covariate profile。 |
+| 中介变量是按二分类还是连续变量建模？ | `mediator_model` | 指定 mediator 子模型用 `logistic` 还是 `linear`。 |
+
+也就是说，`a0`、`a1`、`m_cde`、`c_cond` 不是“附属参数”，而是直接决定：
+
+**这些直接/间接效应到底是在什么比较和什么情境下被评价出来的。**
+
+# `mediator_model = "auto"` 现在是怎么判断的
+
+当前 `leo.ukb` 的规则是：
+
+- 二分类 factor / character / logical mediator -> `logistic`
+- 只有两个取值的 numeric mediator -> `logistic`
+- 取值超过两个的 numeric mediator -> `linear`
+- 以 factor 形式存储的多分类 mediator -> 当前不支持
+
+这套规则在队列研究里通常最稳妥：
+
+- 如果 mediator 天然就是二分类，让 `auto` 自动走 `logistic`
+- 如果 mediator 是真正连续的 biomarker，让 `auto` 自动走 `linear`
+- 如果 mediator 是一个有序评分变量，比如低度炎症指数从 `-7` 到 `7`，
+  更推荐保持 numeric，并把它当近似连续 mediator 处理，通常用
+  `mediator_model = "linear"`
+- 如果你的科学问题本来就是一个阈值型状态，那么先按临床上合理的 cutpoint
+  转成二分类 mediator，再走 `logistic`
+
+不推荐的做法是：把一个多分类 mediator 直接作为 factor 传进当前函数，并期待它去拟合 ordinal 或 multinomial mediator model。当前这套 survival mediation 封装还不支持这一层。
+
 # 先把缩写翻成人话
 
 ```{r}
@@ -234,6 +271,17 @@ res_med$evaluation
 -   `cde` 是在 mediator 的哪个参考值上计算的
 -   `c_cond` 用的是哪一组协变量取值
 
+例如，如果结果里显示：
+
+-   `Exposure contrast = Low risk -> High risk`
+-   `Mediator reference = High inflammation`
+-   `c_cond = age=60.000; bmi=26.000`
+
+那就意味着：
+
+> 这里报告的直接效应和间接效应，指的是在 `High risk` 对比 `Low risk`
+> 这一 exposure contrast 下、在所选 mediator 参考值和该协变量情境下的中介分解结果
+
 # 如果协变量里有分类变量，要显式给 `c_cond`
 
 当 adjustment set 里包含非数值协变量时，建议显式指定评价点。
@@ -254,9 +302,10 @@ res_med_smoking$evaluation
 
 这种写法比让 factor 在内部被隐式处理更透明，也更利于论文里说明分析设置。
 
-# 连续 mediator 也可以做
+# 连续 mediator，包括评分型 mediator，也可以做
 
-如果 mediator 是连续变量，接口不变，只需要明确 `mediator_model = "linear"`。
+如果 mediator 是连续变量，接口不变。只要它本质上可以近似理解为连续量，
+通常就可以用 `mediator_model = "linear"`。
 
 ```{r}
 med_df_cont <- dplyr::mutate(
@@ -278,6 +327,20 @@ res_med_cont$result
 ```
 
 这时结果表里的 `Mediator reference` 会是一个数值，因为 `cde` 是在指定的 `m_cde` 上评价的。
+
+这也是我更推荐用于“评分型 mediator”的路线。比如一个低度炎症指数如果从
+`-7` 到 `7`：
+
+-   首先要问的是，这是不是一个有序严重度评分，单位变化在科学上是否还能解释？
+-   还是说研究问题更像“高炎症状态 vs 非高炎症状态”这种阈值型对比？
+
+对大多数有序评分变量来说，第一步更干净的做法通常是：
+
+-   先保持 numeric
+-   先按 `linear` mediator model 跑
+
+只有当研究问题本身明确围绕某个 cutpoint 时，再把它二分类后改用 `logistic`
+mediator model 会更合适。
 
 # 文章里怎么写会更稳妥
 

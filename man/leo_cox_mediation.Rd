@@ -48,18 +48,26 @@ leo_cox_mediation_plot(
 
 \item{min_followup_time}{Numeric scalar; keep rows with \code{time > min_followup_time}.}
 
-\item{a0}{Numeric scalar; reference exposure value.}
+\item{a0}{Numeric scalar; reference exposure value used to define the
+exposure contrast at which mediation effects are evaluated.}
 
-\item{a1}{Numeric scalar; contrasted exposure value.}
+\item{a1}{Numeric scalar; contrasted exposure value used to define the
+exposure contrast at which mediation effects are evaluated.}
 
-\item{m_cde}{Numeric scalar; mediator value at which the controlled direct effect is evaluated.}
+\item{m_cde}{Numeric scalar; mediator value at which the controlled direct
+effect is evaluated.}
 
-\item{c_cond}{Optional covariate profile at which effects are evaluated. Use a
-numeric vector when all covariates are numeric, or a named list / named
-vector keyed by original covariate names when non-numeric covariates are
-present. If \code{NULL}, medians are used for numeric covariates.}
+\item{c_cond}{Optional covariate profile at which mediation effects are
+evaluated. Use a numeric vector when all covariates are numeric, or a
+named list / named vector keyed by original covariate names when
+non-numeric covariates are present. If \code{NULL}, medians are used for
+numeric covariates.}
 
-\item{mediator_model}{One of \code{"auto"}, \code{"linear"}, or \code{"logistic"}.}
+\item{mediator_model}{One of \code{"auto"}, \code{"linear"}, or \code{"logistic"}. In
+\code{"auto"} mode, binary mediators are treated as \code{"logistic"}, while
+numeric mediators with more than two observed values are treated as
+\code{"linear"}. Multi-level categorical mediators are not currently
+supported.}
 
 \item{interaction}{Logical; whether to include exposure-mediator interaction in the outcome model.}
 
