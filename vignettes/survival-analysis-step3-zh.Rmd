@@ -296,7 +296,7 @@ res_med_cont$result
 
 对于单一 mediator，一张紧凑的路径图往往比一大张结果表更容易让读者迅速抓住重点。
 
-```{r, fig.width = 8.5, fig.height = 5.5}
+```{r, fig.width = 8.5, fig.height = 5.5, dev.args = list(bg = "white")}
 key_rows <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` %in% c("te", "tnie", "pm"))
 te_row <- dplyr::filter(key_rows, `Effect code` == "te")
 tnie_row <- dplyr::filter(key_rows, `Effect code` == "tnie")
@@ -310,6 +310,7 @@ node_cols <- c(
   outcome = "#BC3C29FF"
 )
 
+graphics::par(bg = "white")
 graphics::plot.new()
 graphics::plot.window(xlim = c(0, 12), ylim = c(0, 8.5))
 graphics::par(xpd = NA, mar = c(0, 0, 0, 0))

@@ -241,7 +241,7 @@ scientific reading is not “mediation is proven”, but rather:
 For a single mediator, a compact path diagram often communicates the result more
 clearly than a dense table alone.
 
-```{r, fig.width = 8.5, fig.height = 5.5}
+```{r, fig.width = 8.5, fig.height = 5.5, dev.args = list(bg = "white")}
 pnde_row <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` == "pnde")
 
 node_cols <- c(
@@ -250,6 +250,7 @@ node_cols <- c(
   outcome = "#BC3C29FF"
 )
 
+graphics::par(bg = "white")
 graphics::plot.new()
 graphics::plot.window(xlim = c(0, 12), ylim = c(0, 8.5))
 graphics::par(xpd = NA, mar = c(0, 0, 0, 0))
