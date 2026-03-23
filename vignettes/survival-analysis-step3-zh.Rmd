@@ -296,7 +296,7 @@ res_med_cont$result
 
 对于单一 mediator，一张紧凑的路径图往往比一大张结果表更容易让读者迅速抓住重点。
 
-```{r, fig.width = 8, fig.height = 5}
+```{r, fig.width = 8.5, fig.height = 5.5}
 key_rows <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` %in% c("te", "tnie", "pm"))
 te_row <- dplyr::filter(key_rows, `Effect code` == "te")
 tnie_row <- dplyr::filter(key_rows, `Effect code` == "tnie")
@@ -304,30 +304,37 @@ pm_row <- dplyr::filter(key_rows, `Effect code` == "pm")
 pnde_row <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` == "pnde")
 pm_ci <- as.numeric(trimws(strsplit(pm_row$`95% CI`, ",", fixed = TRUE)[[1]]))
 
-plot.new()
-plot.window(xlim = c(0, 10), ylim = c(0, 8))
-par(xpd = NA)
+draw_box <- function(x, y, label, fill, cex = 1.15, pad_x = 0.35, pad_y = 0.28) {
+  label_lines <- strsplit(label, "\n", fixed = TRUE)[[1]]
+  box_width <- max(strwidth(label_lines, cex = cex, units = "user")) + 2 * pad_x
+  line_height <- strheight("M", cex = cex, units = "user")
+  box_height <- line_height * length(label_lines) + 2 * pad_y + 0.10 * (length(label_lines) - 1)
+  graphics::rect(x - box_width / 2, y - box_height / 2, x + box_width / 2, y + box_height / 2,
+                 col = grDevices::adjustcolor(fill, alpha.f = 0.95), border = NA)
+  graphics::text(x, y, label, cex = cex)
+  list(x = x, y = y, xleft = x - box_width / 2, xright = x + box_width / 2)
+}
 
-rect(0.8, 3.0, 3.2, 4.4, col = grDevices::adjustcolor("#d9b3a8", alpha.f = 0.95), border = NA)
-rect(4.0, 5.3, 6.4, 6.7, col = grDevices::adjustcolor("#f6c56f", alpha.f = 0.95), border = NA)
-rect(7.1, 3.0, 9.5, 4.4, col = grDevices::adjustcolor("#f3b7c4", alpha.f = 0.95), border = NA)
+graphics::plot.new()
+graphics::plot.window(xlim = c(0, 12), ylim = c(0, 8.5))
+graphics::par(xpd = NA, mar = c(0, 0, 0, 0))
 
-text(2.0, 3.7, "代谢风险", cex = 1.2)
-text(5.2, 6.0, "炎症", cex = 1.2)
-text(8.3, 3.7, "结局事件", cex = 1.2)
+left_box <- draw_box(2.3, 3.9, "代谢风险", "#d9b3a8")
+mid_box <- draw_box(6.0, 6.2, "炎症", "#f6c56f")
+right_box <- draw_box(10.0, 3.9, "结局事件", "#f3b7c4")
 
-arrows(3.2, 4.0, 4.0, 5.6, lwd = 2, length = 0.08)
-arrows(6.4, 5.6, 7.1, 4.0, lwd = 2, length = 0.08)
-arrows(3.2, 3.7, 7.1, 3.7, lwd = 2, length = 0.08)
+graphics::arrows(left_box$xright, 4.15, mid_box$xleft, 5.8, lwd = 2, length = 0.08)
+graphics::arrows(mid_box$xright, 5.8, right_box$xleft, 4.15, lwd = 2, length = 0.08)
+graphics::arrows(left_box$xright, 3.9, right_box$xleft, 3.9, lwd = 2, length = 0.08)
 
-text(5.2, 7.25, sprintf("间接效应 (TNIE): %.3f", tnie_row$Estimate), cex = 1)
-text(
-  5.2, 4.55,
-  sprintf("中介比例: %.1f%% (%.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]),
-  cex = 0.95
+graphics::text(6.0, 7.65, sprintf("间接效应 (TNIE): %.3f", tnie_row$Estimate), cex = 0.95)
+graphics::text(
+  6.0, 4.95,
+  sprintf("中介比例: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]),
+  cex = 0.9
 )
-text(5.2, 2.85, sprintf("直接效应 (PNDE): %.3f", pnde_row$Estimate), cex = 1)
-text(5.2, 2.35, sprintf("总效应 (TE): %.3f", te_row$Estimate), cex = 0.95)
+graphics::text(6.0, 2.55, sprintf("直接效应 (PNDE): %.3f", pnde_row$Estimate), cex = 0.95)
+graphics::text(6.0, 1.95, sprintf("总效应 (TE): %.3f", te_row$Estimate), cex = 0.9)
 ```
 
 这类图放在论文里会很有帮助，因为它把中介分析最关键的几件事放进了一张图里：
