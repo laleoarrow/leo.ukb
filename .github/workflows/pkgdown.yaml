@@ -34,6 +34,11 @@ jobs:
         with:
           use-public-rspm: true
 
+      - name: Install CJK fonts for vignette rendering
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: any::devtools, any::remotes, any::regmedint, local::.

@@ -245,10 +245,11 @@ clearly than a dense table alone.
 pnde_row <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` == "pnde")
 
 node_cols <- c(
-  exposure = "#0072B5FF",  # ggsci::pal_nejm()
-  mediator = "#20854EFF",
-  outcome = "#BC3C29FF"
+  exposure = "#374E55FF",  # ggsci::pal_jama()
+  mediator = "#79AF97FF",
+  outcome = "#B24745FF"
 )
+edge_col <- "#4A5563"
 
 graphics::par(bg = "white")
 graphics::plot.new()
@@ -265,18 +266,27 @@ box_height <- strheight("M", cex = label_cex, units = "user") + 2 * pad_y
 
 draw_box <- function(x, y, label, fill, text_col = "white", cex = label_cex, width = box_width, height = box_height) {
   graphics::rect(x - width / 2, y - height / 2, x + width / 2, y + height / 2,
-                 col = grDevices::adjustcolor(fill, alpha.f = 0.88), border = fill, lwd = 1.6)
+                 col = grDevices::adjustcolor(fill, alpha.f = 0.92), border = fill, lwd = 1.6)
   graphics::text(x, y, label, cex = cex, col = text_col)
-  list(x = x, y = y, xleft = x - width / 2, xright = x + width / 2)
+  list(
+    x = x,
+    y = y,
+    xleft = x - width / 2,
+    xright = x + width / 2,
+    ybottom = y - height / 2,
+    ytop = y + height / 2
+  )
 }
 
 left_box <- draw_box(2.3, 3.9, "Metabolic risk", node_cols["exposure"])
-mid_box <- draw_box(6.0, 6.2, "Inflammation", node_cols["mediator"])
-right_box <- draw_box(9.7, 3.9, "Incident outcome", node_cols["outcome"])
+mid_box <- draw_box(6.45, 6.15, "Inflammation", node_cols["mediator"])
+right_box <- draw_box(10.1, 3.9, "Incident outcome", node_cols["outcome"])
 
-graphics::arrows(left_box$xright, 4.15, mid_box$xleft, 5.8, lwd = 2, length = 0.08, col = "#2F2F2F")
-graphics::arrows(mid_box$xright, 5.8, right_box$xleft, 4.15, lwd = 2, length = 0.08, col = "#2F2F2F")
-graphics::arrows(left_box$xright, 3.9, right_box$xleft, 3.9, lwd = 2, length = 0.08, col = "#2F2F2F")
+graphics::arrows(left_box$xright - 0.02, left_box$ytop - 0.08, mid_box$xleft + 0.28, mid_box$ybottom + 0.12,
+                 lwd = 2, length = 0.08, col = edge_col)
+graphics::arrows(mid_box$xright - 0.28, mid_box$ybottom + 0.12, right_box$xleft + 0.02, right_box$ytop - 0.08,
+                 lwd = 2, length = 0.08, col = edge_col)
+graphics::arrows(left_box$xright, 3.9, right_box$xleft, 3.9, lwd = 2, length = 0.08, col = edge_col)
 
 graphics::text(6.0, 7.65, sprintf("Indirect effect (TNIE): %.3f", tnie_row$Estimate), cex = 0.95)
 graphics::text(
