@@ -91,8 +91,8 @@ event_prob <- plogis(-3.1 + 0.55 * exposure_num + 0.40 * mediator_num + 0.02 * (
 med_df <- data.frame(
   outcome = rbinom(n, 1, event_prob),
   outcome_censor = rexp(n, rate = 0.08) + 0.2,
-  exposure = factor(exposure_num, levels = c(0, 1), labels = c("No", "Yes")),
-  mediator = factor(mediator_num, levels = c(0, 1), labels = c("Low", "High")),
+  exposure = factor(exposure_num, levels = c(0, 1), labels = c("Low risk", "High risk")),
+  mediator = factor(mediator_num, levels = c(0, 1), labels = c("Low inflammation", "High inflammation")),
   age = age,
   bmi = bmi,
   smoking = smoking
@@ -103,6 +103,30 @@ mean(med_df$outcome)
 
 The observed event proportion is low enough for this toy example to be aligned
 with the intended `survCox` use case.
+
+# Inspect the analysis-ready data before fitting
+
+As in Step 1 and Step 2, it is worth looking at the analysis-ready data first.
+
+```{r}
+head(med_df)
+
+dplyr::count(med_df, exposure, mediator)
+
+data.frame(
+  metric = c("Participants", "Events", "Event rate"),
+  value = c(nrow(med_df), sum(med_df$outcome), sprintf("%.1f%%", 100 * mean(med_df$outcome)))
+)
+```
+
+This quick check already tells us three useful things:
+
+- the sample size is 500, with 46 observed events
+- the event rate is 9.2%, which is low enough for a teaching example built
+  around `survCox`
+- the `High risk` group has more participants in the `High inflammation`
+  category, which is exactly the kind of pathway pattern mediation analysis is
+  meant to quantify
 
 # Fit the simplest mediation workflow
 
@@ -140,6 +164,122 @@ The mediation output is already organized in a paper-friendly way.
 
 This last point is important: mediation estimates are conditional on the chosen
 evaluation settings.
+
+# Decode the abbreviations before interpreting anything
+
+```{r}
+data.frame(
+  `Effect code` = c("cde", "pnde", "tnie", "tnde", "pnie", "te", "pm"),
+  Meaning = c(
+    "Controlled direct effect",
+    "Pure natural direct effect",
+    "Total natural indirect effect",
+    "Total natural direct effect",
+    "Pure natural indirect effect",
+    "Total effect",
+    "Proportion mediated"
+  ),
+  `Practical reading` = c(
+    "Direct effect when the mediator is fixed at the chosen reference value.",
+    "Direct pathway not operating through the mediator.",
+    "Indirect pathway operating through the mediator.",
+    "Direct pathway allowing the mediator to vary naturally.",
+    "Indirect pathway under the pure natural definition.",
+    "Overall exposure-outcome effect.",
+    "Share of the total effect attributed to the mediator pathway."
+  )
+)
+```
+
+For most applied readers, three rows are the most immediately useful:
+
+- `te`: how large the overall association is
+- `tnie`: how large the mediator pathway looks on the hazard-ratio scale
+- `pm`: what fraction of the total effect may be operating through the mediator
+
+# Turn the result into a clinically readable summary
+
+```{r}
+key_rows <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` %in% c("te", "tnie", "pm"))
+key_rows
+
+te_row <- dplyr::filter(key_rows, `Effect code` == "te")
+tnie_row <- dplyr::filter(key_rows, `Effect code` == "tnie")
+pm_row <- dplyr::filter(key_rows, `Effect code` == "pm")
+pm_ci <- as.numeric(trimws(strsplit(pm_row$`95% CI`, ",", fixed = TRUE)[[1]]))
+
+data.frame(
+  Quantity = c("Total effect", "Indirect effect through inflammation", "Proportion mediated"),
+  `Model B summary` = c(
+    sprintf("HR %.3f (%s)", te_row$Estimate, te_row$`95% CI`),
+    sprintf("HR %.3f (%s)", tnie_row$Estimate, tnie_row$`95% CI`),
+    sprintf("%.1f%% (%.1f%% to %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2])
+  )
+)
+```
+
+In this synthetic example, the clinically readable interpretation is:
+
+- the overall hazard in the `High risk` group is about 23.4% higher than in
+  the `Low risk` group after adjusting for age and BMI (`te = 1.234`)
+- the inflammation pathway contributes a small indirect hazard-ratio increment
+  (`tnie = 1.019`), which corresponds to roughly a 1.9% relative increase on
+  the hazard-ratio scale
+- the estimated proportion mediated is about 9.7%, meaning that roughly one
+  tenth of the total association could be attributed to the inflammation
+  pathway in this toy example
+
+But the confidence interval for `pm` is wide and crosses zero, so the right
+scientific reading is not “mediation is proven”, but rather:
+
+> the point estimate is compatible with partial mediation through inflammation,
+> yet the uncertainty is substantial and stronger evidence would be needed
+> before making a firm mechanistic claim
+
+# Add a paper-style pathway figure
+
+For a single mediator, a compact path diagram often communicates the result more
+clearly than a dense table alone.
+
+```{r, fig.width = 8, fig.height = 5}
+pnde_row <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` == "pnde")
+
+plot.new()
+plot.window(xlim = c(0, 10), ylim = c(0, 8))
+par(xpd = NA)
+
+rect(0.8, 3.0, 3.2, 4.4, col = grDevices::adjustcolor("#d9b3a8", alpha.f = 0.95), border = NA)
+rect(4.0, 5.3, 6.4, 6.7, col = grDevices::adjustcolor("#f6c56f", alpha.f = 0.95), border = NA)
+rect(7.1, 3.0, 9.5, 4.4, col = grDevices::adjustcolor("#f3b7c4", alpha.f = 0.95), border = NA)
+
+text(2.0, 3.7, "Metabolic risk", cex = 1.2)
+text(5.2, 6.0, "Inflammation", cex = 1.2)
+text(8.3, 3.7, "Incident outcome", cex = 1.2)
+
+arrows(3.2, 4.0, 4.0, 5.6, lwd = 2, length = 0.08)
+arrows(6.4, 5.6, 7.1, 4.0, lwd = 2, length = 0.08)
+arrows(3.2, 3.7, 7.1, 3.7, lwd = 2, length = 0.08)
+
+text(5.2, 7.25, sprintf("Indirect effect (TNIE): %.3f", tnie_row$Estimate), cex = 1)
+text(
+  5.2, 4.55,
+  sprintf("Proportion mediated: %.1f%% (%.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]),
+  cex = 0.95
+)
+text(5.2, 2.85, sprintf("Direct effect (PNDE): %.3f", pnde_row$Estimate), cex = 1)
+text(5.2, 2.35, sprintf("Total effect (TE): %.3f", te_row$Estimate), cex = 0.95)
+```
+
+This kind of figure is useful when writing a paper because it turns the main
+mediation quantities into one visual story:
+
+- left box: the exposure contrast being compared
+- middle box: the proposed mediator
+- right box: the incident outcome
+- top text: the indirect pathway through the mediator
+- middle text: the estimated proportion of the total effect attributed to that
+  pathway
+- bottom text: the direct pathway not explained by the mediator
 
 # Inspect the evaluation settings directly
 
@@ -184,7 +324,7 @@ The same workflow can be used with a continuous mediator.
 ```{r}
 med_df_cont <- dplyr::mutate(
   med_df,
-  mediator_cont = rnorm(n, mean = 0.5 * as.integer(exposure == "Yes") + 0.02 * (age - 60), sd = 1)
+  mediator_cont = rnorm(n, mean = 0.5 * as.integer(exposure == "High risk") + 0.02 * (age - 60), sd = 1)
 )
 
 res_med_cont <- leo_cox_mediation(
