@@ -218,23 +218,32 @@ data.frame(
 )
 ```
 
-In this synthetic example, the clinically readable interpretation is:
+In this synthetic example, a paper-style reading would be:
 
-- the overall hazard in the `High risk` group is about 23.4% higher than in
-  the `Low risk` group after adjusting for age and BMI (`te = 1.234`)
-- the inflammation pathway contributes a small indirect hazard-ratio increment
-  (`tnie = 1.019`), which corresponds to roughly a 1.9% relative increase on
-  the hazard-ratio scale
-- the estimated proportion mediated is about 9.7%, meaning that roughly one
-  tenth of the total association could be attributed to the inflammation
-  pathway in this toy example
+- after adjustment for age and BMI, the `High risk` group shows an overall
+  hazard that is about 23.4% higher than the `Low risk` group (`te = 1.234`)
+- the inflammation pathway contributes only a modest indirect effect
+  (`tnie = 1.019`), corresponding to a small upward shift on the hazard-ratio
+  scale
+- the point estimate for the proportion mediated is 9.7%, which suggests that
+  roughly one tenth of the total association could be operating through the
+  inflammation pathway in this toy example
 
-But the confidence interval for `pm` is wide and crosses zero, so the right
-scientific reading is not “mediation is proven”, but rather:
+The uncertainty, however, is still substantial. Because the confidence interval
+for `pm` is wide and crosses zero, the scientifically careful interpretation is
+not “mediation has been established”, but:
 
-> the point estimate is compatible with partial mediation through inflammation,
-> yet the uncertainty is substantial and stronger evidence would be needed
-> before making a firm mechanistic claim
+> the estimates are compatible with partial mediation through inflammation, yet
+> they remain too imprecise to support a strong mechanistic claim on their own
+
+If you wanted to write this as a concise Results-style sentence, one reasonable
+version would be:
+
+> After adjustment for age and BMI, `High risk` was associated with a higher
+> incident hazard (`te = 1.234`), while the indirect pathway through
+> inflammation was modest (`tnie = 1.019`). The estimated proportion mediated
+> was 9.7%, suggesting possible but uncertain partial mediation through
+> inflammation.
 
 # Add a paper-style pathway figure
 
@@ -263,6 +272,12 @@ mediation quantities into one visual story:
 - middle text: the estimated proportion of the total effect attributed to that
   pathway
 - bottom text: the direct pathway not explained by the mediator
+
+One subtle but important point is that the mediated pathway here is the full
+`X -> M -> Y` pathway. The figure does not print a separate `M -> Y`
+coefficient because `regmedint` reports causal decomposition quantities such as
+`tnie`, `pnde`, and `te`, rather than a simple product of two regression
+coefficients.
 
 # Inspect the evaluation settings directly
 
