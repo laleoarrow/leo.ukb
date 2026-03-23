@@ -1638,6 +1638,161 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
   return(out)
 }
 
+#' Paper-style Cox mediation plot
+#'
+#' `r lifecycle::badge('experimental')`
+#'
+#' `leo_cox_mediation_plot()` turns a `leo_cox_mediation` result into a compact
+#' pathway figure for a selected model. The plot keeps all annotation text on a
+#' shared vertical center axis, uses equal-sized boxes, and draws only straight
+#' arrows between the exposure, mediator, and outcome nodes.
+#'
+#' @param x A `leo_cox_mediation` object returned by [leo_cox_mediation()].
+#' @param model Character scalar giving the model to display. Defaults to the last model in `x$result`.
+#' @param exposure_label Character label shown in the left box. Manual `\n` line breaks are respected.
+#' @param mediator_label Character label shown in the middle box. Manual `\n` line breaks are respected.
+#' @param outcome_label Character label shown in the right box. Manual `\n` line breaks are respected.
+#' @param language One of `"en"` or `"zh"`.
+#' @param palette One of `"jama"`, `"jco"`, `"lancet"`, or `"nejm"`.
+#' @param font_family Optional graphics font family. Use generic families such as
+#'   `"sans"`, `"serif"`, or `"mono"` for the most robust cross-device output.
+#'
+#' @return For `leo_cox_mediation()`, a `leo_cox_mediation` object containing a display table in `$result`, a detailed mediation table in `$result_detail`, an evaluation summary in `$evaluation`, and fitted `regmedint` objects in `$fit`. For `leo_cox_mediation_plot()`, an invisible `recordedplot` object after drawing the pathway figure on the active graphics device.
+#' @export
+#' @rdname leo_cox_mediation
+#' @examples
+#' if (requireNamespace("regmedint", quietly = TRUE)) {
+#'   set.seed(123)
+#'   n <- 200
+#'   med_df <- data.frame(
+#'     outcome = rbinom(n, 1, 0.08),
+#'     outcome_censor = rexp(n, rate = 0.1),
+#'     exposure = factor(rbinom(n, 1, 0.5), levels = c(0, 1), labels = c("Low risk", "High risk")),
+#'     mediator = factor(rbinom(n, 1, 0.4), levels = c(0, 1), labels = c("Low inflammation", "High inflammation")),
+#'     age = rnorm(n, 60, 8)
+#'   )
+#'   res_med <- leo_cox_mediation(
+#'     df = med_df, y_out = c("outcome", "outcome_censor"),
+#'     x_exp = "exposure", x_med = "mediator", x_cov = "age",
+#'     verbose = FALSE
+#'   )
+#'   leo_cox_mediation_plot(
+#'     res_med, model = "model_1",
+#'     exposure_label = "Metabolic\nrisk",
+#'     mediator_label = "Inflammation",
+#'     outcome_label = "Incident\noutcome"
+#'   )
+#' }
+leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure", mediator_label = "Mediator", outcome_label = "Outcome", language = c("en", "zh"), palette = c("jama", "jco", "lancet", "nejm"), font_family = NULL) {
+  if (!inherits(x, "leo_cox_mediation")) stop("x must be a `leo_cox_mediation` object returned by leo_cox_mediation().", call. = FALSE)
+  if (!is.data.frame(x$result)) stop("x$result is missing or malformed.", call. = FALSE)
+  language <- match.arg(language)
+  palette <- match.arg(palette)
+
+  model_names <- unique(x$result$Model)
+  if (length(model_names) == 0) stop("No mediation results are available for plotting.", call. = FALSE)
+  if (is.null(model)) model <- tail(model_names, 1)
+  if (!model %in% model_names) stop("model must match one of the fitted models in x$result.", call. = FALSE)
+
+  plot_df <- x$result[x$result$Model == model, , drop = FALSE]
+  needed_effects <- c("te", "tnie", "pm", "pnde")
+  if (!all(needed_effects %in% plot_df$`Effect code`)) stop("The selected model must contain te, tnie, pm, and pnde rows.", call. = FALSE)
+  te_row <- plot_df[plot_df$`Effect code` == "te", , drop = FALSE]
+  tnie_row <- plot_df[plot_df$`Effect code` == "tnie", , drop = FALSE]
+  pm_row <- plot_df[plot_df$`Effect code` == "pm", , drop = FALSE]
+  pnde_row <- plot_df[plot_df$`Effect code` == "pnde", , drop = FALSE]
+  pm_ci <- suppressWarnings(as.numeric(trimws(strsplit(pm_row$`95% CI`, ",", fixed = TRUE)[[1]])))
+  if (length(pm_ci) != 2 || anyNA(pm_ci)) pm_ci <- c(NA_real_, NA_real_)
+
+  if (is.null(font_family) || !nzchar(font_family)) font_family <- "sans"
+  device_font_family <- if (font_family %in% c("sans", "serif", "mono")) font_family else ""
+
+  palette_def <- switch(
+    palette,
+    jama = list(fill = c(exposure = "#374E55FF", mediator = "#79AF97FF", outcome = "#B24745FF"), text = c(exposure = "white", mediator = "white", outcome = "white")),
+    jco = list(fill = c(exposure = "#0073C2FF", mediator = "#EFC000FF", outcome = "#CD534CFF"), text = c(exposure = "white", mediator = "#1F1F1F", outcome = "white")),
+    lancet = list(fill = c(exposure = "#00468BFF", mediator = "#42B540FF", outcome = "#ED0000FF"), text = c(exposure = "white", mediator = "white", outcome = "white")),
+    nejm = list(fill = c(exposure = "#0072B5FF", mediator = "#E18727FF", outcome = "#BC3C29FF"), text = c(exposure = "white", mediator = "#1F1F1F", outcome = "white"))
+  )
+
+  if (language == "zh") {
+    top_label <- sprintf("间接效应 (TNIE): %.3f", tnie_row$Estimate)
+    pm_label <- if (all(is.finite(pm_ci))) sprintf("中介比例: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]) else sprintf("中介比例: %.1f%%", 100 * pm_row$Estimate)
+    direct_label <- sprintf("直接效应 (PNDE): %.3f", pnde_row$Estimate)
+    total_label <- sprintf("总效应 (TE): %.3f", te_row$Estimate)
+  } else {
+    top_label <- sprintf("Indirect effect (TNIE): %.3f", tnie_row$Estimate)
+    pm_label <- if (all(is.finite(pm_ci))) sprintf("Proportion mediated: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]) else sprintf("Proportion mediated: %.1f%%", 100 * pm_row$Estimate)
+    direct_label <- sprintf("Direct effect (PNDE): %.3f", pnde_row$Estimate)
+    total_label <- sprintf("Total effect (TE): %.3f", te_row$Estimate)
+  }
+
+  label_cex <- if (language == "zh") 1.12 else 1.05
+  top_cex <- if (language == "zh") 1.18 else 1.16
+  body_cex <- if (language == "zh") 0.98 else 0.96
+  pad_x <- 0.42
+  pad_y <- 0.24
+  edge_col <- "#44546A"
+  xlim <- c(0.2, 11.8)
+  ylim <- c(1.0, 8.1)
+  plot_width <- diff(xlim)
+  plot_height <- diff(ylim)
+  plot_bottom <- ylim[1]
+  plot_top <- ylim[2]
+
+  op <- graphics::par(no.readonly = TRUE)
+  on.exit(graphics::par(op), add = TRUE)
+  graphics::par(bg = "white", family = device_font_family, xpd = NA, mar = c(0, 0, 0, 0))
+  graphics::plot.new()
+  graphics::plot.window(xlim = xlim, ylim = ylim)
+
+  label_lines <- strsplit(c(exposure_label, mediator_label, outcome_label), "\n", fixed = TRUE)
+  max_line_width <- max(vapply(label_lines, function(lines) max(graphics::strwidth(lines, cex = label_cex, units = "user")), numeric(1)))
+  max_nline <- max(vapply(label_lines, length, integer(1)))
+  box_width <- max_line_width + 2 * pad_x
+  box_height <- max_nline * graphics::strheight("M", cex = label_cex, units = "user") * 1.15 + 2 * pad_y
+  x_center <- mean(xlim)
+  side_x_pad <- max(box_width * 0.35, plot_width * 0.085)
+  left_x <- xlim[1] + box_width / 2 + side_x_pad
+  mid_x <- x_center
+  right_x <- xlim[2] - box_width / 2 - side_x_pad
+  side_y <- plot_bottom + plot_height * 0.415
+  mid_y <- side_y + box_height * 1.55 + plot_height * 0.03
+  lower_gap <- side_y - plot_bottom
+  direct_y <- plot_bottom + lower_gap * 0.38
+  total_y <- plot_bottom + lower_gap * 0.24
+
+  draw_box <- function(x, y, label, fill, text_col) {
+    xleft <- x - box_width / 2
+    xright <- x + box_width / 2
+    ybottom <- y - box_height / 2
+    ytop <- y + box_height / 2
+    graphics::rect(xleft, ybottom, xright, ytop, col = fill, border = fill, lwd = 1.8)
+    suppressWarnings(graphics::text(x, y, labels = label, cex = label_cex, col = text_col, font = 2, family = device_font_family, adj = c(0.5, 0.5)))
+    list(x = x, y = y, xleft = xleft, xright = xright, ybottom = ybottom, ytop = ytop)
+  }
+
+  graphics::rect(xlim[1], ylim[1], xlim[2], ylim[2], col = "white", border = NA)
+
+  left_box <- draw_box(left_x, side_y, exposure_label, palette_def$fill["exposure"], palette_def$text["exposure"])
+  mid_box <- draw_box(mid_x, mid_y, mediator_label, palette_def$fill["mediator"], palette_def$text["mediator"])
+  right_box <- draw_box(right_x, side_y, outcome_label, palette_def$fill["outcome"], palette_def$text["outcome"])
+  pm_y <- side_y + (mid_box$ybottom - side_y) * 0.55
+  top_y <- min(plot_top - plot_height * 0.08, mid_box$ytop + plot_height * 0.14)
+
+  graphics::arrows(left_box$xright, side_y + 0.05, mid_box$xleft, mid_box$ybottom + 0.06, length = 0.085, lwd = 2.1, col = edge_col)
+  graphics::arrows(mid_box$xright, mid_box$ybottom + 0.06, right_box$xleft, side_y + 0.05, length = 0.085, lwd = 2.1, col = edge_col)
+  graphics::arrows(left_box$xright, side_y, right_box$xleft, side_y, length = 0.085, lwd = 2.1, col = edge_col)
+
+  suppressWarnings(graphics::text(x_center, top_y, top_label, cex = top_cex, font = 2, family = device_font_family))
+  suppressWarnings(graphics::text(x_center, pm_y, pm_label, cex = body_cex, family = device_font_family))
+  suppressWarnings(graphics::text(x_center, direct_y, direct_label, cex = top_cex, font = 2, family = device_font_family))
+  suppressWarnings(graphics::text(x_center, total_y, total_label, cex = body_cex, family = device_font_family))
+
+  out <- grDevices::recordPlot()
+  return(invisible(out))
+}
+
 # Linear ----
 
 #' Linear regression fitting and formatting helpers

@@ -242,104 +242,15 @@ For a single mediator, a compact path diagram often communicates the result more
 clearly than a dense table alone.
 
 ```{r, fig.width = 8.8, fig.height = 5.8, dev.args = list(bg = "white")}
-pnde_row <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` == "pnde")
-
-x_center <- 6
-box_width <- 2.7
-box_height <- 1.08
-side_y <- 3.95
-mid_y <- 6.10
-left_x <- x_center - 3.55
-mid_x <- x_center
-right_x <- x_center + 3.55
-
-node_df <- data.frame(
-  node = c("Exposure", "Mediator", "Outcome"),
-  label = c("Metabolic\nrisk", "Inflammation", "Incident\noutcome"),
-  x = c(left_x, mid_x, right_x),
-  y = c(side_y, mid_y, side_y),
-  fill = c("#374E55FF", "#79AF97FF", "#DF8F44FF")
+leo_cox_mediation_plot(
+  x = res_med,
+  model = "Model B",
+  exposure_label = "Metabolic\nrisk",
+  mediator_label = "Inflammation",
+  outcome_label = "Incident\noutcome",
+  language = "en",
+  palette = "jama"
 )
-node_df$xmin <- node_df$x - box_width / 2
-node_df$xmax <- node_df$x + box_width / 2
-node_df$ymin <- node_df$y - box_height / 2
-node_df$ymax <- node_df$y + box_height / 2
-
-curve_df <- data.frame(
-  x = c(left_x + box_width / 2 - 0.04, mid_x + box_width / 2 - 0.26),
-  y = c(side_y + 0.18, mid_y - box_height / 2 + 0.08),
-  xend = c(mid_x - box_width / 2 + 0.26, right_x - box_width / 2 + 0.04),
-  yend = c(mid_y - box_height / 2 + 0.08, side_y + 0.18),
-  curvature = c(0.08, -0.08)
-)
-
-direct_df <- data.frame(
-  x = left_x + box_width / 2,
-  xend = right_x - box_width / 2,
-  y = side_y,
-  yend = side_y
-)
-
-ggplot2::ggplot() +
-  ggplot2::geom_rect(
-    data = node_df,
-    ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-    fill = node_df$fill,
-    color = node_df$fill,
-    linewidth = 0.8
-  ) +
-  ggplot2::geom_text(
-    data = node_df,
-    ggplot2::aes(x = x, y = y, label = label),
-    color = "white",
-    size = 6.5,
-    fontface = "bold",
-    lineheight = 0.92
-  ) +
-  ggplot2::geom_curve(
-    data = curve_df,
-    ggplot2::aes(x = x, y = y, xend = xend, yend = yend, curvature = curvature),
-    color = "#4A5563",
-    linewidth = 0.9,
-    arrow = grid::arrow(type = "closed", length = grid::unit(0.18, "cm"))
-  ) +
-  ggplot2::geom_segment(
-    data = direct_df,
-    ggplot2::aes(x = x, y = y, xend = xend, yend = yend),
-    color = "#4A5563",
-    linewidth = 0.9,
-    arrow = grid::arrow(type = "closed", length = grid::unit(0.18, "cm"))
-  ) +
-  ggplot2::annotate(
-    "text", x = x_center, y = 7.55,
-    label = sprintf("Indirect effect (TNIE): %.3f", tnie_row$Estimate),
-    size = 6.3,
-    fontface = "bold"
-  ) +
-  ggplot2::annotate(
-    "text", x = x_center, y = 5.10,
-    label = sprintf("Proportion mediated: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]),
-    size = 5.4,
-    lineheight = 1.15
-  ) +
-  ggplot2::annotate(
-    "text", x = x_center, y = 2.42,
-    label = sprintf("Direct effect (PNDE): %.3f", pnde_row$Estimate),
-    size = 6.1,
-    fontface = "bold"
-  ) +
-  ggplot2::annotate(
-    "text", x = x_center, y = 1.84,
-    label = sprintf("Total effect (TE): %.3f", te_row$Estimate),
-    size = 5.8
-  ) +
-  ggplot2::coord_cartesian(xlim = c(0.35, 11.65), ylim = c(1.2, 8.1), clip = "off") +
-  ggplot2::theme_void() +
-  ggplot2::theme(
-    plot.background = ggplot2::element_rect(fill = "white", color = NA),
-    panel.background = ggplot2::element_rect(fill = "white", color = NA),
-    plot.margin = ggplot2::margin(10, 18, 10, 18)
-  )
 ```
 
 This kind of figure is useful when writing a paper because it turns the main

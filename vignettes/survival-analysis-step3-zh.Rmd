@@ -292,125 +292,15 @@ res_med_cont$result
 对于单一 mediator，一张紧凑的路径图往往比一大张结果表更容易让读者迅速抓住重点。
 
 ```{r, fig.width = 8.8, fig.height = 5.8, dev.args = list(bg = "white")}
-key_rows <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` %in% c("te", "tnie", "pm"))
-te_row <- dplyr::filter(key_rows, `Effect code` == "te")
-tnie_row <- dplyr::filter(key_rows, `Effect code` == "tnie")
-pm_row <- dplyr::filter(key_rows, `Effect code` == "pm")
-pnde_row <- dplyr::filter(res_med$result, Model == "Model B", `Effect code` == "pnde")
-pm_ci <- as.numeric(trimws(strsplit(pm_row$`95% CI`, ",", fixed = TRUE)[[1]]))
-
-fig_family <- "sans"
-x_center <- 6
-box_width <- 2.7
-box_height <- 1.08
-side_y <- 3.95
-mid_y <- 6.10
-left_x <- x_center - 3.55
-mid_x <- x_center
-right_x <- x_center + 3.55
-
-if (requireNamespace("systemfonts", quietly = TRUE)) {
-  font_candidates <- c("Noto Sans CJK SC", "WenQuanYi Micro Hei", "Microsoft YaHei", "PingFang SC",
-                       "Hiragino Sans GB", "Songti SC", "Arial Unicode MS")
-  font_available <- unique(systemfonts::system_fonts()$family)
-  font_match <- font_candidates[font_candidates %in% font_available]
-  if (length(font_match) > 0) {
-    fig_family <- font_match[1]
-  }
-}
-
-node_df <- data.frame(
-  node = c("Exposure", "Mediator", "Outcome"),
-  label = c("代谢风险", "炎症", "结局事件"),
-  x = c(left_x, mid_x, right_x),
-  y = c(side_y, mid_y, side_y),
-  fill = c("#374E55FF", "#79AF97FF", "#DF8F44FF")
+leo_cox_mediation_plot(
+  x = res_med,
+  model = "Model B",
+  exposure_label = "代谢风险",
+  mediator_label = "炎症",
+  outcome_label = "结局事件",
+  language = "zh",
+  palette = "jama"
 )
-node_df$xmin <- node_df$x - box_width / 2
-node_df$xmax <- node_df$x + box_width / 2
-node_df$ymin <- node_df$y - box_height / 2
-node_df$ymax <- node_df$y + box_height / 2
-
-curve_df <- data.frame(
-  x = c(left_x + box_width / 2 - 0.04, mid_x + box_width / 2 - 0.26),
-  y = c(side_y + 0.18, mid_y - box_height / 2 + 0.08),
-  xend = c(mid_x - box_width / 2 + 0.26, right_x - box_width / 2 + 0.04),
-  yend = c(mid_y - box_height / 2 + 0.08, side_y + 0.18),
-  curvature = c(0.08, -0.08)
-)
-
-direct_df <- data.frame(
-  x = left_x + box_width / 2,
-  xend = right_x - box_width / 2,
-  y = side_y,
-  yend = side_y
-)
-
-ggplot2::ggplot() +
-  ggplot2::geom_rect(
-    data = node_df,
-    ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-    fill = node_df$fill,
-    color = node_df$fill,
-    linewidth = 0.8
-  ) +
-  ggplot2::geom_text(
-    data = node_df,
-    ggplot2::aes(x = x, y = y, label = label),
-    color = "white",
-    size = 7.2,
-    fontface = "bold",
-    family = fig_family
-  ) +
-  ggplot2::geom_curve(
-    data = curve_df,
-    ggplot2::aes(x = x, y = y, xend = xend, yend = yend, curvature = curvature),
-    color = "#4A5563",
-    linewidth = 0.9,
-    arrow = grid::arrow(type = "closed", length = grid::unit(0.18, "cm"))
-  ) +
-  ggplot2::geom_segment(
-    data = direct_df,
-    ggplot2::aes(x = x, y = y, xend = xend, yend = yend),
-    color = "#4A5563",
-    linewidth = 0.9,
-    arrow = grid::arrow(type = "closed", length = grid::unit(0.18, "cm"))
-  ) +
-  ggplot2::annotate(
-    "text", x = x_center, y = 7.55,
-    label = sprintf("间接效应 (TNIE): %.3f", tnie_row$Estimate),
-    size = 6.3,
-    fontface = "bold",
-    family = fig_family
-  ) +
-  ggplot2::annotate(
-    "text", x = x_center, y = 5.10,
-    label = sprintf("中介比例: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]),
-    size = 5.4,
-    lineheight = 1.15,
-    family = fig_family
-  ) +
-  ggplot2::annotate(
-    "text", x = x_center, y = 2.42,
-    label = sprintf("直接效应 (PNDE): %.3f", pnde_row$Estimate),
-    size = 6.1,
-    fontface = "bold",
-    family = fig_family
-  ) +
-  ggplot2::annotate(
-    "text", x = x_center, y = 1.84,
-    label = sprintf("总效应 (TE): %.3f", te_row$Estimate),
-    size = 5.8,
-    family = fig_family
-  ) +
-  ggplot2::coord_cartesian(xlim = c(0.35, 11.65), ylim = c(1.2, 8.1), clip = "off") +
-  ggplot2::theme_void() +
-  ggplot2::theme(
-    text = ggplot2::element_text(family = fig_family),
-    plot.background = ggplot2::element_rect(fill = "white", color = NA),
-    panel.background = ggplot2::element_rect(fill = "white", color = NA),
-    plot.margin = ggplot2::margin(10, 18, 10, 18)
-  )
 ```
 
 这类图放在论文里会很有帮助，因为它把中介分析最关键的几件事放进了一张图里：

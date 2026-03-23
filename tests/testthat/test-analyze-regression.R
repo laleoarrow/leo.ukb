@@ -395,3 +395,39 @@ test_that("leo_cox_mediation auto mode rejects larger integer-coded multi-level 
     "integer-coded multi-level mediators"
   )
 })
+
+test_that("leo_cox_mediation_plot returns a recorded plot for a fitted mediation result", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_df()
+
+  res <- leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator",
+    x_cov = list("Model A" = "age", "Model B" = c("age", "bmi")),
+    verbose = FALSE
+  )
+
+  p_en <- leo_cox_mediation_plot(
+    x = res,
+    model = "Model B",
+    exposure_label = "Metabolic\nrisk",
+    mediator_label = "Inflammation",
+    outcome_label = "Incident\noutcome",
+    language = "en",
+    palette = "jco"
+  )
+  p_zh <- leo_cox_mediation_plot(
+    x = res,
+    model = "Model B",
+    exposure_label = "代谢风险",
+    mediator_label = "炎症",
+    outcome_label = "结局事件",
+    language = "zh",
+    palette = "jco"
+  )
+
+  expect_s3_class(p_en, "recordedplot")
+  expect_s3_class(p_zh, "recordedplot")
+})

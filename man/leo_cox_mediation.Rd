@@ -2,6 +2,7 @@
 % Please edit documentation in R/analyze.R
 \name{leo_cox_mediation}
 \alias{leo_cox_mediation}
+\alias{leo_cox_mediation_plot}
 \title{Cox mediation analysis}
 \usage{
 leo_cox_mediation(
@@ -19,6 +20,17 @@ leo_cox_mediation(
   mediator_model = "auto",
   interaction = TRUE,
   verbose = TRUE
+)
+
+leo_cox_mediation_plot(
+  x,
+  model = NULL,
+  exposure_label = "Exposure",
+  mediator_label = "Mediator",
+  outcome_label = "Outcome",
+  language = c("en", "zh"),
+  palette = c("jama", "jco", "lancet", "nejm"),
+  font_family = NULL
 )
 }
 \arguments{
@@ -52,14 +64,35 @@ present. If \code{NULL}, medians are used for numeric covariates.}
 \item{interaction}{Logical; whether to include exposure-mediator interaction in the outcome model.}
 
 \item{verbose}{Logical; print progress messages.}
+
+\item{x}{A \code{leo_cox_mediation} object returned by \code{\link[=leo_cox_mediation]{leo_cox_mediation()}}.}
+
+\item{model}{Character scalar giving the model to display. Defaults to the last model in \code{x$result}.}
+
+\item{exposure_label}{Character label shown in the left box. Manual \verb{\\n} line breaks are respected.}
+
+\item{mediator_label}{Character label shown in the middle box. Manual \verb{\\n} line breaks are respected.}
+
+\item{outcome_label}{Character label shown in the right box. Manual \verb{\\n} line breaks are respected.}
+
+\item{language}{One of \code{"en"} or \code{"zh"}.}
+
+\item{palette}{One of \code{"jama"}, \code{"jco"}, \code{"lancet"}, or \code{"nejm"}.}
+
+\item{font_family}{Optional graphics font family. Use generic families such as
+\code{"sans"}, \code{"serif"}, or \code{"mono"} for the most robust cross-device output.}
 }
 \value{
 A \code{leo_cox_mediation} object containing a display table in \verb{$result},
 a detailed mediation table in \verb{$result_detail} (also available as the
 backward-compatible alias \verb{$result_tidy}), an evaluation summary in
 \verb{$evaluation}, and fitted \code{regmedint} objects in \verb{$fit}.
+
+For \code{leo_cox_mediation()}, a \code{leo_cox_mediation} object containing a display table in \verb{$result}, a detailed mediation table in \verb{$result_detail}, an evaluation summary in \verb{$evaluation}, and fitted \code{regmedint} objects in \verb{$fit}. For \code{leo_cox_mediation_plot()}, an invisible \code{recordedplot} object after drawing the pathway figure on the active graphics device.
 }
 \description{
+\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
+
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
 }
 \details{
@@ -75,6 +108,11 @@ should be interpreted with extra caution.
 The display table in \verb{$result} reports both the standard mediation-effect
 codes (for example \code{cde}, \code{pnde}, and \code{pm}) and their full labels, together
 with the exposure contrast and mediator reference value used for evaluation.
+
+\code{leo_cox_mediation_plot()} turns a \code{leo_cox_mediation} result into a compact
+pathway figure for a selected model. The plot keeps all annotation text on a
+shared vertical center axis, uses equal-sized boxes, and draws only straight
+arrows between the exposure, mediator, and outcome nodes.
 }
 \examples{
 if (requireNamespace("regmedint", quietly = TRUE)) {
@@ -93,5 +131,27 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
     a0 = 0, a1 = 1, verbose = FALSE
   )
   res_med$result
+}
+if (requireNamespace("regmedint", quietly = TRUE)) {
+  set.seed(123)
+  n <- 200
+  med_df <- data.frame(
+    outcome = rbinom(n, 1, 0.08),
+    outcome_censor = rexp(n, rate = 0.1),
+    exposure = factor(rbinom(n, 1, 0.5), levels = c(0, 1), labels = c("Low risk", "High risk")),
+    mediator = factor(rbinom(n, 1, 0.4), levels = c(0, 1), labels = c("Low inflammation", "High inflammation")),
+    age = rnorm(n, 60, 8)
+  )
+  res_med <- leo_cox_mediation(
+    df = med_df, y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure", x_med = "mediator", x_cov = "age",
+    verbose = FALSE
+  )
+  leo_cox_mediation_plot(
+    res_med, model = "model_1",
+    exposure_label = "Metabolic\nrisk",
+    mediator_label = "Inflammation",
+    outcome_label = "Incident\noutcome"
+  )
 }
 }
