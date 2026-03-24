@@ -1995,6 +1995,7 @@ leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure",
   if (!is.data.frame(x$result)) stop("x$result is missing or malformed.", call. = FALSE)
   language <- match.arg(language)
   palette <- match.arg(palette)
+  if (!is.logical(add_note) || length(add_note) != 1L || is.na(add_note)) stop("add_note must be TRUE or FALSE.", call. = FALSE)
 
   model_names <- unique(x$result$Model)
   if (length(model_names) == 0) stop("No mediation results are available for plotting.", call. = FALSE)

@@ -1210,6 +1210,12 @@ test_that("leo_cox_mediation auto mode still rejects multi-level categorical med
 test_that("leo_cox_mediation_plot returns a recorded plot for a fitted mediation result", {
   skip_if_not_installed("regmedint")
   med_df <- make_mediation_df()
+  plot_file <- tempfile(fileext = ".pdf")
+  grDevices::pdf(plot_file, width = 8.8, height = 5.8)
+  on.exit({
+    if (grDevices::dev.cur() > 1) grDevices::dev.off()
+    unlink(plot_file)
+  }, add = TRUE)
 
   res <- leo_cox_mediation(
     df = med_df,
@@ -1246,6 +1252,12 @@ test_that("leo_cox_mediation_plot returns a recorded plot for a fitted mediation
 test_that("leo_cox_mediation_plot can add or suppress tutorial-style notes", {
   skip_if_not_installed("regmedint")
   med_df <- make_mediation_df()
+  plot_file <- tempfile(fileext = ".pdf")
+  grDevices::pdf(plot_file, width = 8.8, height = 5.8)
+  on.exit({
+    if (grDevices::dev.cur() > 1) grDevices::dev.off()
+    unlink(plot_file)
+  }, add = TRUE)
 
   res <- leo_cox_mediation(
     df = med_df,
@@ -1258,7 +1270,7 @@ test_that("leo_cox_mediation_plot can add or suppress tutorial-style notes", {
   res$evaluation$pm_unstable[res$evaluation$model == "Model B"] <- TRUE
 
   assign("captured_text", character(), envir = .GlobalEnv)
-  trace(
+  suppressMessages(trace(
     what = graphics:::text.default,
     tracer = quote({
       assign(
@@ -1268,9 +1280,9 @@ test_that("leo_cox_mediation_plot can add or suppress tutorial-style notes", {
       )
     }),
     print = FALSE
-  )
+  ))
   on.exit({
-    untrace(graphics:::text.default)
+    suppressMessages(untrace(graphics:::text.default))
     rm(captured_text, envir = .GlobalEnv)
   }, add = TRUE)
 
@@ -1304,4 +1316,33 @@ test_that("leo_cox_mediation_plot can add or suppress tutorial-style notes", {
   expect_false(any(grepl("Exposure contrast: No -> Yes", captured_without_note, fixed = TRUE)))
   expect_false(any(grepl("CDE mediator reference: High", captured_without_note, fixed = TRUE)))
   expect_false(any(grepl("TE 95% CI includes the null; interpret cautiously", captured_without_note, fixed = TRUE)))
+})
+
+test_that("leo_cox_mediation_plot validates add_note", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_df()
+  plot_file <- tempfile(fileext = ".pdf")
+  grDevices::pdf(plot_file, width = 8.8, height = 5.8)
+  on.exit({
+    if (grDevices::dev.cur() > 1) grDevices::dev.off()
+    unlink(plot_file)
+  }, add = TRUE)
+
+  res <- leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator",
+    x_cov = "age",
+    verbose = FALSE
+  )
+
+  expect_error(
+    leo_cox_mediation_plot(x = res, add_note = NA, language = "en", palette = "jama"),
+    "add_note must be TRUE or FALSE"
+  )
+  expect_error(
+    leo_cox_mediation_plot(x = res, add_note = c(TRUE, FALSE), language = "en", palette = "jama"),
+    "add_note must be TRUE or FALSE"
+  )
 })
