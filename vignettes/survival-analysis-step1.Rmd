@@ -1,6 +1,6 @@
 ---
 title: "Survival Analysis Step 1: Main Cox Analysis"
-description: "Fit and interpret the main Cox survival model for an incident outcome."
+description: "Learn how to prepare, fit, and interpret the main Cox model for an incident survival outcome."
 output:
   rmarkdown::html_vignette:
     highlight: default
@@ -24,29 +24,28 @@ suppressPackageStartupMessages(library(leo.ukb))
 
 # What this step is for
 
-This tutorial is the first survival-analysis step in `leo.ukb`. The goal is
-simple: fit and interpret the main Cox model before moving on to subgroup,
-interaction, or mediation questions.
+This tutorial is the first survival-analysis step in `leo.ukb`. Before we talk
+about subgroup differences, interaction, or mediation, we need a clean answer
+to the first question:
 
-In applied cohort research, it is often helpful to treat the workflow in two
-separate stages:
+> is there a main exposure-outcome association in the cohort?
 
-1. estimate the main exposure-outcome association
+That is the role of the main Cox model.
+
+In practice, a strong survival-analysis workflow is easier to defend when it
+is split into stages:
+
+1. establish the main exposure-outcome association
 2. only then ask whether that association differs across groups
+3. only then ask whether part of that association may operate through a
+   mediator
 
-This step covers the first stage.
+Step 1 is therefore the foundation for everything that comes later.
 
-# Start from a survival-ready data frame
+# Start from the cohort question and analytic roles
 
-A Cox model is easiest to teach, read, and audit when the data frame already
-has one row per participant and clearly separated analytic roles:
-
-- an event indicator
-- a follow-up time variable
-- an exposure
-- covariates for adjustment
-
-Here we build a compact example from `survival::lung`.
+We use `survival::lung` as a compact teaching example, but we structure the
+data frame the same way we would for a real cohort analysis.
 
 ```{r}
 lung_df <- dplyr::transmute(
@@ -63,8 +62,38 @@ lung_df <- dplyr::transmute(
 )
 ```
 
-Before fitting any model, check the cohort the same way you would in a real
-study: confirm structure, event counts, and follow-up.
+Now check the analytic roles explicitly instead of jumping straight into model
+fitting.
+
+```{r}
+role_table <- data.frame(
+  Variable = c("outcome", "outcome_censor", "age", "sex", "ecog_group"),
+  Type = c(
+    "Binary event indicator",
+    "Follow-up time in years",
+    "Continuous exposure",
+    "Binary covariate",
+    "4-level categorical covariate"
+  ),
+  Step1_role = c(
+    "Incident outcome event",
+    "Incident outcome follow-up time",
+    "Main exposure in the first example",
+    "Basic demographic adjustment",
+    "Clinical performance-status adjustment"
+  )
+)
+
+knitr::kable(
+  role_table,
+  caption = "Analytic roles in the Step 1 teaching data frame"
+)
+```
+
+# Inspect the analysis-ready data before fitting
+
+Main Cox analysis is easier to trust when the cohort structure, event counts,
+and follow-up burden have already been checked.
 
 ```{r}
 dplyr::glimpse(lung_df)
@@ -75,8 +104,24 @@ knitr::kable(utils::head(lung_df, 6))
 ```
 
 ```{r}
+event_summary <- data.frame(
+  Metric = c("Participants", "Events", "Event rate"),
+  Value = c(
+    nrow(lung_df),
+    sum(lung_df$outcome),
+    sprintf("%.1f%%", 100 * mean(lung_df$outcome))
+  )
+)
+
 knitr::kable(
-  dplyr::count(lung_df, outcome, sex),
+  event_summary,
+  caption = "Overall event burden"
+)
+```
+
+```{r}
+knitr::kable(
+  dplyr::count(lung_df, sex, outcome),
   caption = "Event counts by sex"
 )
 ```
@@ -87,15 +132,47 @@ knitr::kable(
   data.frame(
     Statistic = names(followup_summary),
     Value = as.numeric(followup_summary)
-  )
+  ),
+  caption = "Follow-up summary in years"
 )
 ```
 
+These quick checks already tell us whether the event rate, subgroup size, and
+follow-up scale look plausible enough for a first-pass Cox analysis.
+
+# Choose the exposure scale before fitting
+
+Before fitting anything, decide whether your exposure is being treated as
+continuous or categorical. This decision changes what the hazard ratio means.
+
+```{r}
+scale_table <- data.frame(
+  Exposure_setup = c("Continuous exposure", "Categorical exposure"),
+  Typical_question = c(
+    "What is the change in hazard per one-unit increase?",
+    "How does each category compare with the reference level?"
+  ),
+  Example_in_this_step = c("age", "ecog_group"),
+  Main_setting = c("Default", "x_exp_type = 'categorical'")
+)
+
+knitr::kable(
+  scale_table,
+  caption = "Choose the exposure scale before fitting the main Cox model"
+)
+```
+
+This is the practical rule:
+
+- keep the exposure continuous if the scientific question is per-unit change
+- treat it as categorical if the scientific question is level-versus-reference
+  comparison
+
 # Define the adjustment hierarchy before fitting
 
-In cohort studies, model labels usually reflect the scientific argument rather
-than mere coding convenience. `leo_cox()` accepts `x_cov` as a named list, and
-those names are carried directly into the output table.
+In cohort studies, model labels should reflect the scientific adjustment
+hierarchy rather than coding convenience alone. `leo_cox()` accepts a named
+list, and those names are carried directly into the final result table.
 
 ```{r}
 cox_models <- list(
@@ -107,12 +184,12 @@ cox_models <- list(
 cox_models
 ```
 
-This small habit keeps the eventual table close to manuscript form from the
-start.
+This habit makes the output read much more like a manuscript table from the
+beginning.
 
-# Fit and read the main Cox model
+# Main Cox example 1: continuous exposure
 
-`leo_cox()` is the main entry point for survival analysis in `leo.ukb`.
+We first fit the age-outcome association.
 
 ```{r}
 res_cox <- leo_cox(
@@ -126,37 +203,57 @@ res_cox <- leo_cox(
 res_cox$result
 ```
 
-The default output is already manuscript-oriented:
+# How to read the main Cox result
 
-- one row per exposure result
-- one block of columns per model
-- directly formatted `HR`, `95% CI`, and `P value`
+This output is already paper-oriented:
 
-The cumulative follow-up column is reported as `Person-years`. In this example,
-the original follow-up time was converted from days to years before fitting the
-model, so the table matches usual cohort reporting style.
+- `Case N`, `Control N`, and `Person-years` tell you how much information went
+  into the fitted model
+- `Class` tells you whether the exposure was treated as continuous or
+  categorical
+- each model block gives `HR`, `95% CI`, and `P value`
+
+For a continuous exposure, the hazard ratio is interpreted per one-unit
+increase in the exposure. Here that means per one-year increase in age.
+
+```{r}
+age_tidy <- leo_cox_format(res_cox, style = "tidy")
+age_model_b <- dplyr::filter(age_tidy, Model == "Model B")
+age_model_b
+```
+
+In this teaching example, the Model B estimate is `HR = 1.011`, meaning that
+after adjustment for sex and ECOG status, the estimated hazard is about
+`r sprintf("%.1f", 100 * (age_model_b$HR - 1))`% higher per one-year increase
+in age. The confidence interval, however, includes 1, so the adjusted evidence
+for a main age-outcome association is limited in this small example.
+
+That is exactly how a main Cox result should be interpreted:
+
+- first the direction and size of the point estimate
+- then the uncertainty
+- then the scientific caution
 
 # Use tidy output when you need programmable rows
 
-The wide table is convenient for reading. The tidy table is better when the
-next step is plotting, row binding, or programmatic post-processing.
+The wide table is convenient for direct reading. The tidy table is better for
+row-binding, plotting, or manuscript automation.
 
 ```{r}
 dplyr::select(
-  leo_cox_format(res_cox, style = "tidy"),
+  age_tidy,
   Model, Exposure, Outcome, HR, `95% CI`, `P value`
 )
 ```
 
-A practical rule is:
+A useful rule is:
 
 - use `$result` for manuscript-style reading
 - use `leo_cox_format(..., style = "tidy")` for downstream programming
 
-# The same workflow handles categorical exposures
+# Main Cox example 2: categorical exposure
 
-Many real analyses alternate between continuous and grouped exposures. The
-workflow does not change; you simply declare the exposure type explicitly.
+The same workflow also handles categorical exposures.
 
 ```{r}
 res_cox_cat <- leo_cox(
@@ -171,21 +268,83 @@ res_cox_cat <- leo_cox(
 res_cox_cat$result
 ```
 
-This consistency is useful in practice because continuous and categorical
-exposures can still be presented in the same reporting grammar.
+This table is read differently from the age model:
 
-# What to take to step 2
+- `ECOG0` is the reference level
+- each other row compares one ECOG level with `ECOG0`
+- the interpretation is therefore level-versus-reference rather than per-unit
+  increase
 
-After step 1, you should already know:
+```{r}
+ecog_tidy <- leo_cox_format(res_cox_cat, style = "tidy")
+dplyr::select(
+  ecog_tidy,
+  Model, Exposure, Level, HR, `95% CI`, `P value`
+)
+```
+
+In this example, the adjusted Model A hazard ratios suggest that worse
+performance status is associated with a higher incident hazard:
+
+- `ECOG1` versus `ECOG0`: `HR = 1.519`
+- `ECOG2` versus `ECOG0`: `HR = 2.579`
+- `ECOG3` versus `ECOG0`: `HR = 7.756`
+
+The last row also reminds us why raw output must be read critically: `ECOG3`
+has only one event in this small teaching data set, so its confidence interval
+is extremely wide. Sparse cells are a scientific warning, not just a cosmetic
+table issue.
+
+# How to interpret common Step 1 result patterns
+
+For the main Cox model, the usual interpretation logic is:
+
+1. if the HR is clearly away from 1 and the confidence interval does not cross
+   1, the main association is both directionally clear and statistically
+   supported
+2. if the HR is away from 1 but the confidence interval crosses 1, the data
+   suggest a possible association, but the estimate is still imprecise
+3. if the point estimate is close to 1, the evidence for a main association is
+   weak regardless of the exact P value
+4. for categorical exposures, always read both the effect size and the cell
+   sizes; sparse strata can generate unstable large HRs
+
+Step 1 is therefore not only about “running Cox”. It is about learning how to
+separate signal, uncertainty, and sparse-data artifacts.
+
+# How to write Step 1 results in a paper
+
+For a continuous exposure, a concise Results-style sentence could be:
+
+> In the fully adjusted model, each one-year increase in age was associated
+> with an estimated 1.1% higher incident hazard (`HR = 1.011`, `95% CI 0.993
+> to 1.029`), although the confidence interval included the null.
+
+For a categorical exposure, a corresponding sentence might be:
+
+> Compared with `ECOG0`, worse performance status was associated with a higher
+> incident hazard, with the strongest contrast observed for `ECOG2`
+> (`HR = 2.579`, `95% CI 1.660 to 4.007`) after adjustment for sex.
+
+The scientific style is the same in both cases:
+
+- identify the exposure contrast
+- report `HR`, `95% CI`, and model level
+- describe the estimate conservatively
+
+# What to take away from Step 1
+
+After this step, you should already know:
 
 1. how to structure a survival-ready cohort data frame
-2. how to define a model hierarchy before fitting
-3. how to run `leo_cox()`
-4. how to read the wide and tidy Cox outputs
+2. how to inspect event burden and follow-up before fitting
+3. how to choose between continuous and categorical exposure coding
+4. how to define an adjustment hierarchy before fitting
+5. how to interpret a main Cox table in manuscript language
 
 Step 2 then asks a different question:
 
-> does the exposure effect differ across groups?
+> does the exposure effect differ across groups, and on which scale?
 
-That second question belongs to subgroup and interaction analysis, not to the
-main Cox table itself.
+That belongs to subgroup and interaction analysis, not to the main Cox result
+itself.

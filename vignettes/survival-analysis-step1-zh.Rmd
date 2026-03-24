@@ -1,6 +1,6 @@
 ---
 title: "生存分析 Step 1：主 Cox 分析"
-description: "学习 incident outcome 主 Cox 模型的建模、输出与解释。"
+description: "学习如何准备、拟合并解释 incident outcome 的主 Cox 模型。"
 output:
   rmarkdown::html_vignette:
     highlight: default
@@ -24,28 +24,25 @@ suppressPackageStartupMessages(library(leo.ukb))
 
 # 这一步要解决什么问题
 
-这篇教程是 `leo.ukb` 生存分析部分的第一步。目标很明确：
+这篇教程是 `leo.ukb` 生存分析部分的第一步。正式进入亚组分析、交互效应或
+中介分析之前，我们首先要回答最基础的问题：
 
-先把主 Cox 分析做好，再去讨论亚组分析、交互效应或中介分析。
+> 这个 cohort 里，exposure 和 incident outcome 之间有没有主关联？
 
-在 cohort study 里，这样分两步最清楚：
+这就是主 Cox 分析的任务。
 
-1. 先估计 exposure 和结局之间的主关联
-2. 再问这个关联会不会在不同人群里发生变化
+在真实研究里，把流程拆成几个阶段会更清楚：
 
-这篇教程只讲第一步。
+1. 先建立 exposure-outcome 的主关联
+2. 再问这个关联会不会在不同人群里不一样
+3. 再问这个关联有没有可能部分通过某条 mediator 路径传递
 
-# 先把数据整理成真正适合生存分析的样子
+所以 Step 1 是后面所有分析的地基。
 
-一张适合 Cox 分析的数据框，最好满足下面几个条件：
+# 先从研究问题和变量角色开始
 
-- 每一行是一个受试者
-- 一列表示是否发生事件
-- 一列表示随访时间
-- 一列是 exposure
-- 其余列是协变量
-
-下面用 `survival::lung` 构造一个紧凑示例。
+下面继续用 `survival::lung` 做教学示例，但我们先按真实 cohort 分析的思路
+定义好每列变量的角色。
 
 ```{r}
 lung_df <- dplyr::transmute(
@@ -62,7 +59,37 @@ lung_df <- dplyr::transmute(
 )
 ```
 
-建模前先像真实研究一样看数据结构、事件数和随访时间。
+先把变量角色说清楚，而不是直接开始跑模型。
+
+```{r}
+role_table <- data.frame(
+  变量 = c("outcome", "outcome_censor", "age", "sex", "ecog_group"),
+  类型 = c(
+    "二分类事件指示变量",
+    "以年为单位的随访时间",
+    "连续 exposure",
+    "二分类协变量",
+    "4 水平分类协变量"
+  ),
+  Step1_角色 = c(
+    "incident outcome 是否发生",
+    "incident outcome 随访时间",
+    "第一个示例里的主 exposure",
+    "基础人口学调整变量",
+    "临床表现状态调整变量"
+  )
+)
+
+knitr::kable(
+  role_table,
+  caption = "Step 1 教学数据框中的变量角色"
+)
+```
+
+# 建模前先检查分析数据
+
+主 Cox 分析要先让人信服，最简单的办法就是在建模前先把 cohort 结构、事件负担
+和随访情况看清楚。
 
 ```{r}
 dplyr::glimpse(lung_df)
@@ -73,8 +100,24 @@ knitr::kable(utils::head(lung_df, 6))
 ```
 
 ```{r}
+event_summary <- data.frame(
+  指标 = c("Participants", "Events", "Event rate"),
+  数值 = c(
+    nrow(lung_df),
+    sum(lung_df$outcome),
+    sprintf("%.1f%%", 100 * mean(lung_df$outcome))
+  )
+)
+
 knitr::kable(
-  dplyr::count(lung_df, outcome, sex),
+  event_summary,
+  caption = "总体事件负担"
+)
+```
+
+```{r}
+knitr::kable(
+  dplyr::count(lung_df, sex, outcome),
   caption = "按 sex 分层的事件数"
 )
 ```
@@ -85,14 +128,48 @@ knitr::kable(
   data.frame(
     统计量 = names(followup_summary),
     数值 = as.numeric(followup_summary)
-  )
+  ),
+  caption = "以年为单位的随访时间概况"
 )
 ```
 
-# 在建模前先把调整层次设计清楚
+这些检查能先回答几个最基础的问题：
 
-在 cohort 研究里，模型层次往往对应的是科学解释，而不是简单“多放几个变量”。
-`leo_cox()` 允许把 `x_cov` 写成命名 list，这些名字会直接进入结果表。
+- 事件率大概是多少
+- follow-up 的量级是否合理
+- 不同协变量层次里有没有明显过稀的单元
+
+# 建模前先决定 exposure 的尺度
+
+真正开始拟合之前，先决定 exposure 是按连续变量解释，还是按分类变量解释。
+这会直接决定 hazard ratio 的含义。
+
+```{r}
+scale_table <- data.frame(
+  Exposure_设定 = c("连续 exposure", "分类 exposure"),
+  主要科学问题 = c(
+    "每增加 1 个单位，hazard 改变多少？",
+    "每个 level 相对于参考组的 hazard 如何？"
+  ),
+  本教程示例 = c("age", "ecog_group"),
+  主要设置 = c("默认", "x_exp_type = 'categorical'")
+)
+
+knitr::kable(
+  scale_table,
+  caption = "主 Cox 模型中 exposure 尺度的选择"
+)
+```
+
+实践中可以记住一句话：
+
+- 如果问题是“每增加 1 单位会怎样”，就保留连续形式
+- 如果问题是“某一类和参考组相比如何”，就按分类 exposure 跑
+
+# 建模前先定义好调整层次
+
+在 cohort 研究里，模型名字最好对应科学上的调整层次，而不是只为了写代码方便。
+`leo_cox()` 接受命名 list，这些名字会直接出现在最终结果表里。
 
 ```{r}
 cox_models <- list(
@@ -104,12 +181,11 @@ cox_models <- list(
 cox_models
 ```
 
-这一步的好处是，后面结果会自然显示成 `Crude HR`、`Model A HR`、
-`Model B HR`，不需要再手工整理一遍。
+这会让结果天然更像论文表，而不是后面再手工整理一遍。
 
-# 先完成主 Cox 分析，并学会读结果
+# 主 Cox 示例 1：连续 exposure
 
-`leo_cox()` 是 `leo.ukb` 生存分析部分的主入口。
+我们先看 `age` 和结局之间的主关联。
 
 ```{r}
 res_cox <- leo_cox(
@@ -123,23 +199,45 @@ res_cox <- leo_cox(
 res_cox$result
 ```
 
-默认输出已经很接近论文主表：
+# 主 Cox 结果应该怎么读
 
-- 一行一个 exposure 结果
-- 每个模型一组列
-- 直接给 `HR`、`95% CI`、`P value`
+这张表已经很接近论文主表：
 
-累计随访量列统一写成 `Person-years`。这里我们在建模前已经把原始随访
-时间从天换算成年，所以输出表可以直接沿用 cohort 论文里常见的写法。
+- `Case N`、`Control N`、`Person-years` 告诉你用了多少信息
+- `Class` 告诉你 exposure 是按连续还是分类处理的
+- 每个模型块里直接给 `HR`、`95% CI` 和 `P value`
+
+对于连续 exposure，hazard ratio 的含义是：
+
+> exposure 每增加 1 个单位，对应的 hazard ratio 是多少
+
+在这里就是年龄每增加 1 岁的 effect。
+
+```{r}
+age_tidy <- leo_cox_format(res_cox, style = "tidy")
+age_model_b <- dplyr::filter(age_tidy, Model == "Model B")
+age_model_b
+```
+
+这个教学示例里，Model B 的估计值是 `HR = 1.011`，意味着在调整 sex 和 ECOG
+后，年龄每增加 1 岁，incident hazard 大约增加
+`r sprintf("%.1f", 100 * (age_model_b$HR - 1))`%。但它的置信区间跨过了 1，
+说明这个调整后的估计仍然不够精确，证据并不强。
+
+这正是主 Cox 结果最标准的阅读顺序：
+
+- 先看方向和效应大小
+- 再看不确定性
+- 最后再做科学上保守的解释
 
 # 什么时候切换到 tidy 输出
 
-宽表适合直接阅读和汇报。  
-如果你后面还要继续做 `dplyr` 处理、拼接结果或画图，tidy 结果会更方便。
+宽表适合直接读和直接汇报。  
+如果你接下来还要继续做 `dplyr` 处理、拼接多组结果或画图，tidy 表会更方便。
 
 ```{r}
 dplyr::select(
-  leo_cox_format(res_cox, style = "tidy"),
+  age_tidy,
   Model, Exposure, Outcome, HR, `95% CI`, `P value`
 )
 ```
@@ -149,11 +247,9 @@ dplyr::select(
 - `$result` 用来读主结果表
 - `leo_cox_format(..., style = "tidy")` 用来继续编程处理
 
-# 分类 exposure 也走同一套分析语法
+# 主 Cox 示例 2：分类 exposure
 
-真实研究里，exposure 常常不止是连续变量。  
-如果 exposure 是分组变量，接口不变；你只需要告诉函数这次 exposure 是
-categorical。
+同一套工作流也适用于分类 exposure。
 
 ```{r}
 res_cox_cat <- leo_cox(
@@ -168,20 +264,75 @@ res_cox_cat <- leo_cox(
 res_cox_cat$result
 ```
 
-这意味着连续 exposure 和分类 exposure 可以保持同一套结果呈现逻辑，
-对后续写文章会很省力。
+这张表和年龄模型的读法不一样：
 
-# 进入 Step 2 之前你应该带走什么
+- `ECOG0` 是参考组
+- 其他每一行都表示某个 level 相对 `ECOG0` 的比较
+- 所以这里不再是“每增加 1 单位”，而是 “level vs reference”
+
+```{r}
+ecog_tidy <- leo_cox_format(res_cox_cat, style = "tidy")
+dplyr::select(
+  ecog_tidy,
+  Model, Exposure, Level, HR, `95% CI`, `P value`
+)
+```
+
+在这个示例里，Model A 提示较差的 performance status 与更高的 incident hazard
+相关：
+
+- `ECOG1` vs `ECOG0`: `HR = 1.519`
+- `ECOG2` vs `ECOG0`: `HR = 2.579`
+- `ECOG3` vs `ECOG0`: `HR = 7.756`
+
+但最后一行也提醒我们一个真实研究里必须警惕的问题：`ECOG3` 这一层在这个小示例中只有 1 个事件，因此它的置信区间极宽。稀疏单元不是表格上的小问题，而是实质性的解释风险。
+
+# Step 1 常见结果模式应该怎么解读
+
+主 Cox 结果通常按下面这个顺序理解：
+
+1. 如果 HR 明显偏离 1，且置信区间不跨 1，那么主关联方向和统计证据都比较清楚
+2. 如果 HR 偏离 1，但置信区间跨 1，说明数据提示可能存在关联，但估计还不够精确
+3. 如果点估计本身就接近 1，那么无论 P 值如何，主关联证据都不会很强
+4. 对分类 exposure，一定要同时看效应量和每个 level 的样本/事件负担；稀疏组很容易产生看起来很大的不稳定 HR
+
+所以 Step 1 不是“把 Cox 跑出来”就结束，而是要学会分辨：
+
+- 信号
+- 不确定性
+- 稀疏数据带来的假象
+
+# 论文里 Step 1 结果应该怎么写
+
+对于连续 exposure，可以写成：
+
+> 在 fully adjusted model 中，年龄每增加 1 岁，incident hazard 估计增加约 1.1%
+> （`HR = 1.011`, `95% CI 0.993 to 1.029`），但其置信区间包含 1。
+
+对于分类 exposure，可以写成：
+
+> 与 `ECOG0` 相比，较差的 performance status 与更高的 incident hazard 相关，
+> 其中 `ECOG2` vs `ECOG0` 的对比最强（`HR = 2.579`, `95% CI 1.660 to 4.007`），
+> 该估计在 sex 调整后仍然存在。
+
+这类写法的共同点是：
+
+- 先写清 exposure contrast
+- 报 `HR`、`95% CI` 和模型层次
+- 结论保持保守，不过度外推
+
+# 进入 Step 2 之前应该带走什么
 
 做完这一步以后，你应该已经清楚：
 
-1. 生存分析数据框应该长什么样
-2. 协变量调整层次应当如何先定义
-3. `leo_cox()` 怎么跑
-4. 宽表和 tidy 表分别在什么场景下使用
+1. 生存分析数据框应该如何组织
+2. 为什么建模前要先看事件负担和 follow-up
+3. exposure 什么时候保持连续、什么时候转成分类
+4. 协变量调整层次为什么要先定义
+5. 主 Cox 结果怎样翻译成更接近论文语言的表达
 
-接下来的 Step 2 不再问“有没有主关联”，而是问：
+Step 2 接下来问的就不是“有没有主关联”，而是：
 
-> 这个 exposure 的效应，会不会在不同人群里不一样？
+> 这个 exposure 的效应，会不会在不同人群里不一样？又应该在哪个尺度上解释？
 
-这就进入亚组分析和交互效应的范畴了。
+那就是亚组分析和交互效应的范围了。
