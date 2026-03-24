@@ -1242,3 +1242,66 @@ test_that("leo_cox_mediation_plot returns a recorded plot for a fitted mediation
   expect_s3_class(p_en, "recordedplot")
   expect_s3_class(p_zh, "recordedplot")
 })
+
+test_that("leo_cox_mediation_plot can add or suppress tutorial-style notes", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_df()
+
+  res <- leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator",
+    x_cov = list("Model A" = "age", "Model B" = c("age", "bmi")),
+    verbose = FALSE
+  )
+  res$evaluation$pm_unstable[res$evaluation$model == "Model B"] <- TRUE
+
+  assign("captured_text", character(), envir = .GlobalEnv)
+  trace(
+    what = graphics:::text.default,
+    tracer = quote({
+      assign(
+        "captured_text",
+        c(get("captured_text", envir = .GlobalEnv), paste(labels, collapse = "\n")),
+        envir = .GlobalEnv
+      )
+    }),
+    print = FALSE
+  )
+  on.exit({
+    untrace(graphics:::text.default)
+    rm(captured_text, envir = .GlobalEnv)
+  }, add = TRUE)
+
+  leo_cox_mediation_plot(
+    x = res,
+    model = "Model B",
+    exposure_label = "Metabolic\nrisk",
+    mediator_label = "Inflammation",
+    outcome_label = "Incident\noutcome",
+    language = "en",
+    palette = "jama"
+  )
+  captured_with_note <- get("captured_text", envir = .GlobalEnv)
+
+  assign("captured_text", character(), envir = .GlobalEnv)
+  leo_cox_mediation_plot(
+    x = res,
+    model = "Model B",
+    exposure_label = "Metabolic\nrisk",
+    mediator_label = "Inflammation",
+    outcome_label = "Incident\noutcome",
+    language = "en",
+    palette = "jama",
+    add_note = FALSE
+  )
+  captured_without_note <- get("captured_text", envir = .GlobalEnv)
+
+  expect_true(any(grepl("Exposure contrast: No -> Yes", captured_with_note, fixed = TRUE)))
+  expect_true(any(grepl("CDE mediator reference: High", captured_with_note, fixed = TRUE)))
+  expect_true(any(grepl("TE 95% CI includes the null; interpret cautiously", captured_with_note, fixed = TRUE)))
+  expect_false(any(grepl("Exposure contrast: No -> Yes", captured_without_note, fixed = TRUE)))
+  expect_false(any(grepl("CDE mediator reference: High", captured_without_note, fixed = TRUE)))
+  expect_false(any(grepl("TE 95% CI includes the null; interpret cautiously", captured_without_note, fixed = TRUE)))
+})

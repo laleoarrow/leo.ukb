@@ -1953,6 +1953,9 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
 #' @param outcome_label Character label shown in the right box. Manual `\n` line breaks are respected.
 #' @param language One of `"en"` or `"zh"`.
 #' @param palette One of `"jama"`, `"jco"`, `"lancet"`, or `"nejm"`.
+#' @param add_note Logical; whether to show tutorial-style note text such as the
+#'   exposure contrast, CDE mediator reference, and a TE-null caution when
+#'   applicable.
 #' @param font_family Optional graphics font family. Use generic families such as
 #'   `"sans"`, `"serif"`, or `"mono"` for the most robust cross-device output.
 #'
@@ -1987,7 +1990,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
 #'     outcome_label = "Incident\noutcome"
 #'   )
 #' }
-leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure", mediator_label = "Mediator", outcome_label = "Outcome", language = c("en", "zh"), palette = c("jama", "jco", "lancet", "nejm"), font_family = NULL) {
+leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure", mediator_label = "Mediator", outcome_label = "Outcome", language = c("en", "zh"), palette = c("jama", "jco", "lancet", "nejm"), add_note = TRUE, font_family = NULL) {
   if (!inherits(x, "leo_cox_mediation")) stop("x must be a `leo_cox_mediation` object returned by leo_cox_mediation().", call. = FALSE)
   if (!is.data.frame(x$result)) stop("x$result is missing or malformed.", call. = FALSE)
   language <- match.arg(language)
@@ -2032,17 +2035,17 @@ leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure",
   if (language == "zh") {
     top_label <- sprintf("间接效应 (TNIE, %s): %.3f", scale_tag, tnie_row$Estimate)
     pm_label <- if (all(is.finite(pm_ci))) sprintf("中介比例: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]) else sprintf("中介比例: %.1f%%", 100 * pm_row$Estimate)
-    if (pm_unstable_flag) pm_label <- paste0(pm_label, "\n总效应 CI 跨空值，需谨慎解释")
+    if (add_note && pm_unstable_flag) pm_label <- paste0(pm_label, "\n总效应 CI 跨空值，需谨慎解释")
     direct_label <- sprintf("直接效应 (PNDE, %s): %.3f", scale_tag, pnde_row$Estimate)
     total_label <- sprintf("总效应 (TE, %s): %.3f", scale_tag, te_row$Estimate)
-    context_label <- sprintf("暴露对比: %s\nCDE 中介参考值: %s", exposure_contrast_label, mediator_reference_label)
+    context_label <- if (add_note) sprintf("暴露对比: %s\nCDE 中介参考值: %s", exposure_contrast_label, mediator_reference_label) else ""
   } else {
     top_label <- sprintf("Indirect effect (TNIE, %s): %.3f", scale_tag, tnie_row$Estimate)
     pm_label <- if (all(is.finite(pm_ci))) sprintf("Proportion mediated: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]) else sprintf("Proportion mediated: %.1f%%", 100 * pm_row$Estimate)
-    if (pm_unstable_flag) pm_label <- paste0(pm_label, "\nTE 95% CI includes the null; interpret cautiously")
+    if (add_note && pm_unstable_flag) pm_label <- paste0(pm_label, "\nTE 95% CI includes the null; interpret cautiously")
     direct_label <- sprintf("Direct effect (PNDE, %s): %.3f", scale_tag, pnde_row$Estimate)
     total_label <- sprintf("Total effect (TE, %s): %.3f", scale_tag, te_row$Estimate)
-    context_label <- sprintf("Exposure contrast: %s\nCDE mediator reference: %s", exposure_contrast_label, mediator_reference_label)
+    context_label <- if (add_note) sprintf("Exposure contrast: %s\nCDE mediator reference: %s", exposure_contrast_label, mediator_reference_label) else ""
   }
 
   label_cex <- if (language == "zh") 1.12 else 1.05
@@ -2130,7 +2133,7 @@ leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure",
   draw_text_safe(x_center, pm_y, pm_label, cex = body_cex, family = device_font_family)
   draw_text_safe(x_center, direct_y, direct_label, cex = top_cex, font = 2, family = device_font_family)
   draw_text_safe(x_center, total_y, total_label, cex = body_cex, family = device_font_family)
-  draw_text_safe(x_center, context_y, context_label, cex = body_cex * 0.86, family = device_font_family)
+  if (add_note && nzchar(context_label)) draw_text_safe(x_center, context_y, context_label, cex = body_cex * 0.86, family = device_font_family)
 
   out <- grDevices::recordPlot()
   return(invisible(out))

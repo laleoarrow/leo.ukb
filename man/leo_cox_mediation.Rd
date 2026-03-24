@@ -31,6 +31,7 @@ leo_cox_mediation_plot(
   outcome_label = "Outcome",
   language = c("en", "zh"),
   palette = c("jama", "jco", "lancet", "nejm"),
+  add_note = TRUE,
   font_family = NULL
 )
 }
@@ -93,6 +94,10 @@ i.e. \code{time ~ x_exp + x_med + x_exp:x_med + x_cov}.}
 \item{language}{One of \code{"en"} or \code{"zh"}.}
 
 \item{palette}{One of \code{"jama"}, \code{"jco"}, \code{"lancet"}, or \code{"nejm"}.}
+
+\item{add_note}{Logical; whether to show tutorial-style note text such as the
+exposure contrast, CDE mediator reference, and a TE-null caution when
+applicable.}
 
 \item{font_family}{Optional graphics font family. Use generic families such as
 \code{"sans"}, \code{"serif"}, or \code{"mono"} for the most robust cross-device output.}
