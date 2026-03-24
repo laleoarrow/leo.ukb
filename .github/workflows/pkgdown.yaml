@@ -10,6 +10,12 @@ on:
 
 name: pkgdown.yaml
 
+env:
+  # GitHub's official Node 20 deprecation guidance recommends forcing Node 24
+  # ahead of the June 2026 default switch when downstream actions have not yet
+  # published a new major tag.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: read
   pages: write
@@ -26,7 +32,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - uses: r-lib/actions/setup-pandoc@v2
 
@@ -64,7 +70,7 @@ jobs:
 
       - name: Upload Pages artifact
         if: github.event_name != 'pull_request'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: docs-site
 
