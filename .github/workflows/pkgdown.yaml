@@ -10,6 +10,12 @@ on:
 
 name: pkgdown.yaml
 
+env:
+  # GitHub's official Node 20 deprecation guidance recommends forcing Node 24
+  # ahead of the June 2026 default switch when downstream actions have not yet
+  # published a new major tag.
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 permissions:
   contents: read
   pages: write
@@ -23,75 +29,27 @@ jobs:
       group: pkgdown-${{ github.event_name != 'pull_request' || github.run_id }}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      RSPM: https://packagemanager.posit.co/cran/latest
-      R_LIBS_USER: ${{ github.workspace }}/.cache/R/site-library
-    outputs:
-      pages_artifact_id: ${{ steps.upload-pages.outputs.artifact-id }}
-      pages_artifact_url: ${{ steps.upload-pages.outputs.artifact-url }}
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v5
 
-      - name: Install R, Pandoc, fonts, and system libraries
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            ca-certificates \
-            dirmngr \
-            fonts-noto-cjk \
-            gnupg \
-            gfortran \
-            libcairo2-dev \
-            libcurl4-openssl-dev \
-            libfontconfig1-dev \
-            libfreetype6-dev \
-            libfribidi-dev \
-            libgit2-dev \
-            libharfbuzz-dev \
-            libicu-dev \
-            libjpeg-dev \
-            libpng-dev \
-            libssl-dev \
-            libtiff5-dev \
-            libxml2-dev \
-            make \
-            pandoc \
-            software-properties-common \
-            wget \
-            zlib1g-dev
-          wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | sudo tee /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc > /dev/null
-          sudo add-apt-repository -y "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/"
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends r-base r-base-dev
-          R --version
-          pandoc --version | head -n 1
+      - uses: r-lib/actions/setup-pandoc@v2
 
-      - name: Cache R packages
-        uses: actions/cache@v5
+      - uses: r-lib/actions/setup-r@v2
         with:
-          path: ${{ env.R_LIBS_USER }}
-          key: ${{ runner.os }}-pkgdown-r-${{ hashFiles('DESCRIPTION') }}
-          restore-keys: |
-            ${{ runner.os }}-pkgdown-r-
+          use-public-rspm: true
 
-      - name: Install R dependencies
+      - name: Install CJK fonts for vignette rendering
         run: |
-          lib <- Sys.getenv("R_LIBS_USER")
-          dir.create(lib, recursive = TRUE, showWarnings = FALSE)
-          # R only keeps library dirs that exist at startup, so prepend it here.
-          .libPaths(c(lib, .libPaths()))
-          options(repos = c(CRAN = Sys.getenv("RSPM")))
-          install.packages("pak", lib = lib, quiet = TRUE)
-          pak::pkg_install(
-            c("local::.", "remotes", "regmedint"),
-            lib = lib,
-            ask = FALSE,
-            upgrade = FALSE,
-            dependencies = TRUE
-          )
-        shell: Rscript {0}
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::devtools, any::remotes, any::regmedint, local::.
+          needs: website
+          dependencies: '"hard"'
 
       - name: Pin pkgdown version
         run: |
@@ -110,34 +68,16 @@ jobs:
         run: source("scripts/build_pkgdown_site.R")
         shell: Rscript {0}
 
-      - name: Package Pages artifact
-        if: github.event_name != 'pull_request'
-        run: |
-          tar \
-            --dereference --hard-dereference \
-            --directory docs-site \
-            -cvf "$RUNNER_TEMP/artifact.tar" \
-            --exclude=.git \
-            --exclude=.github \
-            --exclude=".[^/]*" \
-            .
-
       - name: Upload Pages artifact
-        id: upload-pages
         if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-pages-artifact@v4
         with:
-          name: github-pages
-          path: ${{ runner.temp }}/artifact.tar
-          retention-days: 1
-          if-no-files-found: error
+          path: docs-site
 
   deploy:
     if: github.event_name != 'pull_request'
     needs: pkgdown
     runs-on: ubuntu-latest
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -145,116 +85,6 @@ jobs:
       pages: write
       id-token: write
     steps:
-      - name: Request GitHub Pages OIDC token
-        id: oidc
-        run: |
-          response="$(curl -fsSL \
-            -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-            -H "Accept: application/json; api-version=2.0" \
-            "$ACTIONS_ID_TOKEN_REQUEST_URL")"
-          id_token="$(python -c 'import json,sys; print(json.load(sys.stdin)["value"])' <<< "$response")"
-          echo "::add-mask::$id_token"
-          printf 'id_token=%s\n' "$id_token" >> "$GITHUB_OUTPUT"
-
       - name: Deploy to GitHub Pages
         id: deployment
-        env:
-          ARTIFACT_ID: ${{ needs.pkgdown.outputs.pages_artifact_id }}
-          ARTIFACT_URL: ${{ needs.pkgdown.outputs.pages_artifact_url }}
-          ID_TOKEN: ${{ steps.oidc.outputs.id_token }}
-        run: |
-          python - <<'PY'
-          import json
-          import os
-          import sys
-          import time
-          import urllib.error
-          import urllib.request
-
-          api_url = os.environ.get("GITHUB_API_URL", "https://api.github.com")
-          repo = os.environ["GITHUB_REPOSITORY"]
-          github_token = os.environ["GH_TOKEN"]
-          artifact_id = os.environ["ARTIFACT_ID"]
-          artifact_url = os.environ["ARTIFACT_URL"]
-          id_token = os.environ["ID_TOKEN"]
-          github_output = os.environ["GITHUB_OUTPUT"]
-          sha = os.environ["GITHUB_SHA"]
-
-          headers = {
-              "Accept": "application/vnd.github+json",
-              "Authorization": f"Bearer {github_token}",
-              "Content-Type": "application/json",
-              "X-GitHub-Api-Version": "2026-03-10",
-          }
-
-          create_payload = json.dumps(
-              {
-                  "artifact_id": int(artifact_id),
-                  "pages_build_version": sha,
-                  "oidc_token": id_token,
-              }
-          ).encode()
-          create_request = urllib.request.Request(
-              f"{api_url}/repos/{repo}/pages/deployments",
-              data=create_payload,
-              headers=headers,
-              method="POST",
-          )
-
-          try:
-              with urllib.request.urlopen(create_request, timeout=30) as response:
-                  deployment = json.load(response)
-          except urllib.error.HTTPError as exc:
-              detail = exc.read().decode("utf-8", "ignore")
-              raise SystemExit(
-                  f"Failed to create Pages deployment for artifact {artifact_id} ({artifact_url}): "
-                  f"HTTP {exc.code} {detail}"
-              )
-
-          deployment_id = deployment.get("id")
-          if deployment_id is None and deployment.get("status_url"):
-              deployment_id = str(deployment["status_url"]).rstrip("/").split("/")[-1]
-          if deployment_id is None:
-              raise SystemExit(f"Pages deployment response did not include an ID: {deployment}")
-
-          page_url = deployment.get("page_url", "")
-          with open(github_output, "a", encoding="utf-8") as handle:
-              handle.write(f"deployment_id={deployment_id}\n")
-              handle.write(f"page_url={page_url}\n")
-
-          final_errors = {
-              "deployment_failed": "Deployment failed, try again later.",
-              "deployment_content_failed": "Artifact could not be deployed. Ensure docs-site contains only files/directories and no hard links or symlinks.",
-              "deployment_cancelled": "Deployment cancelled.",
-              "deployment_lost": "Deployment failed to report a final status.",
-          }
-
-          status_url = f"{api_url}/repos/{repo}/pages/deployments/{deployment_id}"
-          cancel_url = f"{status_url}/cancel"
-          deadline = time.time() + 600
-
-          while True:
-              status_request = urllib.request.Request(status_url, headers=headers)
-              with urllib.request.urlopen(status_request, timeout=30) as response:
-                  status_payload = json.load(response)
-
-              status = status_payload.get("status")
-              print(f"Current Pages deployment status: {status}")
-
-              if status == "succeed":
-                  break
-              if status in final_errors:
-                  raise SystemExit(final_errors[status])
-              if time.time() >= deadline:
-                  cancel_request = urllib.request.Request(cancel_url, data=b"", headers=headers, method="POST")
-                  try:
-                      urllib.request.urlopen(cancel_request, timeout=30).read()
-                  except urllib.error.HTTPError as exc:
-                      print(
-                          f"Timed out waiting for deployment and cancellation returned HTTP {exc.code}",
-                          file=sys.stderr,
-                      )
-                  raise SystemExit("Timed out waiting for GitHub Pages deployment.")
-
-              time.sleep(5)
-          PY
+        uses: actions/deploy-pages@v4
