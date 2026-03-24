@@ -48,6 +48,40 @@ case_summary_row <- function(res, scenario) {
     check.names = FALSE
   )
 }
+draw_mediation_map <- function(language = c("en", "zh")) {
+  language <- match.arg(language)
+  exposure_label <- if (language == "en") "Exposure (X)" else "暴露 (X)"
+  mediator_label <- if (language == "en") "Mediator (M)" else "中介 (M)"
+  outcome_label <- if (language == "en") "Outcome (Y)" else "结局 (Y)"
+  direct_label <- if (language == "en") "Direct path:\nPNDE / TNDE" else "直接路径：\nPNDE / TNDE"
+  indirect_label <- if (language == "en") "Indirect path:\nPNIE / TNIE" else "间接路径：\nPNIE / TNIE"
+  total_label <- if (language == "en") "Overall contrast:\nTE" else "总体比较：\nTE"
+  cde_label <- if (language == "en") {
+    "CDE: direct effect when M is fixed at x_med_cde"
+  } else {
+    "CDE：把 M 固定在 x_med_cde 时的直接效应"
+  }
+
+  graphics::plot.new()
+  graphics::plot.window(xlim = c(0, 10), ylim = c(0, 10))
+  graphics::rect(0.8, 4.4, 3.0, 6.6, col = "#DCEBFF", border = "#4A76A8", lwd = 1.3)
+  graphics::rect(3.9, 7.0, 6.1, 9.2, col = "#FDE6D8", border = "#C96E3D", lwd = 1.3)
+  graphics::rect(7.0, 4.4, 9.2, 6.6, col = "#E3F4E8", border = "#5B8A72", lwd = 1.3)
+  graphics::text(1.9, 5.5, exposure_label, cex = 1)
+  graphics::text(5.0, 8.1, mediator_label, cex = 1)
+  graphics::text(8.1, 5.5, outcome_label, cex = 1)
+  graphics::arrows(3.05, 5.5, 6.95, 5.5, length = 0.09, lwd = 2, col = "#4A76A8")
+  graphics::arrows(3.0, 6.3, 3.95, 7.7, length = 0.09, lwd = 2, col = "#C96E3D")
+  graphics::arrows(6.05, 7.7, 7.0, 6.3, length = 0.09, lwd = 2, col = "#C96E3D")
+  graphics::text(5.0, 4.65, direct_label, cex = 0.95)
+  graphics::text(5.0, 6.95, indirect_label, cex = 0.95)
+  graphics::text(5.0, 2.55, total_label, cex = 0.95)
+  graphics::segments(1.9, 3.3, 8.1, 3.3, lwd = 1.5, col = "#6B6B6B")
+  graphics::segments(1.9, 3.3, 1.9, 3.0, lwd = 1.5, col = "#6B6B6B")
+  graphics::segments(8.1, 3.3, 8.1, 3.0, lwd = 1.5, col = "#6B6B6B")
+  graphics::text(5.0, 1.55, cde_label, cex = 0.92)
+  graphics::box()
+}
 ```
 
 ## Why this article exists
@@ -202,6 +236,47 @@ In plain language, the CDE here asks:
 > if two otherwise similar 60-year-old never-smoking women differed only in
 > metabolic-risk status, but both were fixed at an inflammation score of
 > `r fmt_num(case1_eval$x_med_cde[1])`, how different would their outcome risk be?
+
+### Keep one simple map of the effect names in mind
+
+```{r, echo = FALSE}
+knitr::kable(
+  data.frame(
+    Code = c("TE", "TNIE", "PNDE", "PM", "CDE", "TNDE", "PNIE"),
+    `Full name` = c(
+      "Total Effect",
+      "Total Natural Indirect Effect",
+      "Pure Natural Direct Effect",
+      "Proportion Mediated",
+      "Controlled Direct Effect",
+      "Total Natural Direct Effect",
+      "Pure Natural Indirect Effect"
+    ),
+    `How to read it` = c(
+      "the overall association",
+      "the part that travels through the mediator",
+      "the part that does not travel through the mediator",
+      "the share of the total effect attributed to the mediator pathway",
+      "the direct effect when the mediator is fixed at x_med_cde",
+      "an alternative natural direct-effect definition",
+      "an alternative natural indirect-effect definition"
+    ),
+    check.names = FALSE
+  ),
+  align = c("l", "l", "l")
+)
+```
+
+For most papers, the first pass is usually `TE`, `TNIE`, `PNDE`, and `PM`.
+`CDE` becomes important when the scientific question is explicitly about fixing
+the mediator at a chosen level.
+
+That is also why `Mediator reference` appears only in the `cde` row: only the
+controlled direct effect needs a fixed mediator value.
+
+```{r, echo = FALSE, fig.width = 7.5, fig.height = 4.6}
+draw_mediation_map("en")
+```
 
 ### Visualize the biology before over-interpreting the decomposition
 
