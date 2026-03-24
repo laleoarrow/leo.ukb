@@ -26,6 +26,7 @@ leo_cox_add_interaction(
   x_cov = NULL,
   event_value = 1,
   min_followup_time = 0,
+  reference_group = c("auto", "double_negative"),
   verbose = TRUE
 )
 }
@@ -49,6 +50,11 @@ leo_cox_add_interaction(
 \item{x_inter_type}{Interaction-variable type handling for \code{x_inter}.}
 
 \item{verbose}{Logical; print progress messages.}
+
+\item{reference_group}{Reference-group strategy for additive interaction.
+Use \code{"auto"} to follow the preventive-exposure recode convention described
+by \code{interactionR}, or \code{"double_negative"} to keep the original
+double-negative group as the reference.}
 }
 \value{
 A \code{leo_cox_interaction} object containing a display table in \verb{$result},
@@ -74,9 +80,10 @@ nested Cox models with and without the interaction term using
 \code{leo_cox_add_interaction()} focuses on the binary-binary setting and reports
 additive interaction summaries from a Cox model, including \code{RERI}, \code{AP}, and
 \code{S}, together with the multiplicative interaction estimate. When the original
-binary coding does not use the lowest-incidence joint stratum as the
-reference group, \code{leo_cox_add_interaction()} recodes the two binary variables
-before handing the fitted interaction model to \code{interactionR}.
+binary coding does not follow the reference-group convention expected by
+\code{interactionR}, \code{leo_cox_add_interaction()} can either keep the original
+double-negative group as the reference or manually recode the two binary
+variables before handing the fitted interaction model to \code{interactionR}.
 }
 \examples{
 lung_df <- stats::na.omit(

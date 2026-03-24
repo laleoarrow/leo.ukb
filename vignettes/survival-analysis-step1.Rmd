@@ -1,6 +1,9 @@
 ---
 title: "Survival Analysis Step 1: Main Cox Analysis"
-output: rmarkdown::html_vignette
+description: "Fit and interpret the main Cox survival model for an incident outcome."
+output:
+  rmarkdown::html_vignette:
+    highlight: default
 vignette: >
   %\VignetteIndexEntry{Survival Analysis Step 1: Main Cox Analysis}
   %\VignetteEngine{knitr::rmarkdown}

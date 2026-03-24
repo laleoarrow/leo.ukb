@@ -13,9 +13,13 @@ articles:
       - survival-analysis-step1
       - survival-analysis-step2
       - survival-analysis-step3
+      - survival-analysis-step3-1
+  - title: 中文教程
+    contents:
       - survival-analysis-step1-zh
       - survival-analysis-step2-zh
       - survival-analysis-step3-zh
+      - survival-analysis-step3-1-zh
 
 reference:
   - title: Regression Analyses
@@ -121,8 +125,10 @@ navbar:
           href: articles/survival-analysis-step1.html
         - text: "Survival Analysis Step 2: Subgroup and Interaction"
           href: articles/survival-analysis-step2.html
-        - text: "Survival Analysis Step 3: Mediation Analysis"
+        - text: "Survival Analysis Step 3.0: Mediation Analysis"
           href: articles/survival-analysis-step3.html
+        - text: "Survival Analysis Step 3.1: Mediation Case Study"
+          href: articles/survival-analysis-step3-1.html
     tutorial_zh:
       text: 中文教程
       menu:
@@ -130,8 +136,10 @@ navbar:
           href: articles/survival-analysis-step1-zh.html
         - text: "生存分析 Step 2：亚组分析与交互效应"
           href: articles/survival-analysis-step2-zh.html
-        - text: "生存分析 Step 3：中介分析"
+        - text: "生存分析 Step 3.0：中介分析"
           href: articles/survival-analysis-step3-zh.html
+        - text: "生存分析 Step 3.1：中介分析案例教程"
+          href: articles/survival-analysis-step3-1-zh.html
     github:
       icon: fa-github
       aria-label: GitHub repository

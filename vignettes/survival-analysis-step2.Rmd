@@ -1,6 +1,9 @@
 ---
 title: "Survival Analysis Step 2: Subgroup and Interaction"
-output: rmarkdown::html_vignette
+description: "Run subgroup and interaction analyses for survival outcomes and interpret heterogeneity."
+output:
+  rmarkdown::html_vignette:
+    highlight: default
 vignette: >
   %\VignetteIndexEntry{Survival Analysis Step 2: Subgroup and Interaction}
   %\VignetteEngine{knitr::rmarkdown}
@@ -205,6 +208,6 @@ This step should leave you with three practical rules:
 With that logic in place, your survival-analysis reporting becomes much easier
 to defend scientifically.
 
-Step 3 then asks a new question:
+Step 3.0 then asks a new question:
 
 > could part of the exposure-outcome association operate through a mediator?

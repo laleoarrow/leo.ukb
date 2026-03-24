@@ -763,9 +763,10 @@ leo_cox_format <- function(x, style = "wide") {
 #' `leo_cox_add_interaction()` focuses on the binary-binary setting and reports
 #' additive interaction summaries from a Cox model, including `RERI`, `AP`, and
 #' `S`, together with the multiplicative interaction estimate. When the original
-#' binary coding does not use the lowest-incidence joint stratum as the
-#' reference group, `leo_cox_add_interaction()` recodes the two binary variables
-#' before handing the fitted interaction model to `interactionR`.
+#' binary coding does not follow the reference-group convention expected by
+#' `interactionR`, `leo_cox_add_interaction()` can either keep the original
+#' double-negative group as the reference or manually recode the two binary
+#' variables before handing the fitted interaction model to `interactionR`.
 #'
 #' @param df Data frame containing the outcome, follow-up time, exposure, interaction variable, and covariates.
 #' @param y_out Character vector of length 2 giving the event and follow-up time column names: `c(event, time)`.
@@ -774,6 +775,10 @@ leo_cox_format <- function(x, style = "wide") {
 #' @param x_cov `NULL`, a character vector of covariate column names, or a list of covariate column-name vectors.
 #' @param min_followup_time Numeric scalar; keep rows with `time > min_followup_time`.
 #' @param event_value Value in the event column that indicates incident events.
+#' @param reference_group Reference-group strategy for additive interaction.
+#'   Use `"auto"` to follow the preventive-exposure recode convention described
+#'   by `interactionR`, or `"double_negative"` to keep the original
+#'   double-negative group as the reference.
 #' @param x_exp_type Exposure type handling for `x_exp`.
 #' @param x_inter_type Interaction-variable type handling for `x_inter`.
 #' @param verbose Logical; print progress messages.
@@ -921,7 +926,7 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL,
 #'     x_exp = "smoking", x_inter = "sex", x_cov = model, verbose = FALSE
 #'   )$result
 #' }
-leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_value = 1, min_followup_time = 0, verbose = TRUE) {
+leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, event_value = 1, min_followup_time = 0, reference_group = c("auto", "double_negative"), verbose = TRUE) {
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Additive Interaction", col = "blue")
@@ -929,6 +934,7 @@ leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, eve
   if (!requireNamespace("interactionR", quietly = TRUE)) stop("leo_cox_add_interaction() requires package 'interactionR'. Please install it first.", call. = FALSE)
   if (!is.character(x_inter) || length(x_inter) != 1) stop("x_inter must be a single column name.", call. = FALSE)
   if (!x_inter %in% names(df)) stop("x_inter must exist in df.", call. = FALSE)
+  reference_strategy <- match.arg(reference_group)
 
   model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
   prep_models <- lapply(model_list, function(covariates) unique(c(if (is.null(covariates)) character(0) else covariates, x_inter)))
@@ -968,28 +974,6 @@ leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, eve
     joint_counts <- table(exposure_bin, interaction_bin)
     if (!all(dim(joint_counts) == c(2, 2)) || any(joint_counts == 0)) stop("All four joint exposure groups must be present after filtering for leo_cox_add_interaction().", call. = FALSE)
 
-    incidence_df <- dplyr::summarise(
-      dplyr::group_by(
-        data.frame(event = model_df$event, time = model_df$time, exposure_bin = exposure_bin, interaction_bin = interaction_bin),
-        exposure_bin,
-        interaction_bin
-      ),
-      case_n = sum(event),
-      person_year = sum(time),
-      .groups = "drop"
-    )
-    incidence_df$incidence_rate <- incidence_df$case_n / incidence_df$person_year
-    ref_idx <- which.min(incidence_df$incidence_rate)
-    recode_exposure <- incidence_df$exposure_bin[ref_idx] == 1
-    recode_interaction <- incidence_df$interaction_bin[ref_idx] == 1
-    if (recode_exposure) exposure_bin <- 1L - exposure_bin
-    if (recode_interaction) interaction_bin <- 1L - interaction_bin
-    reference_group <- paste0(
-      x_exp, "=", levels(exposure_factor)[if (recode_exposure) 2 else 1],
-      ", ",
-      x_inter, "=", levels(interaction_factor)[if (recode_interaction) 2 else 1]
-    )
-
     analysis_df <- data.frame(
       event = model_df$event,
       time = model_df$time,
@@ -1003,22 +987,79 @@ leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, eve
     rhs_inter <- unique(c(paste0("`", x_exp, "` * `", x_inter, "`"), if (length(covariates) > 0) paste0("`", covariates, "`") else character(0)))
     formula_main_fit <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_main, collapse = " + ")))
     formula_inter_fit <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_inter, collapse = " + ")))
-    fit_main[[model_name]] <- survival::coxph(formula = formula_main_fit, data = analysis_df)
-    fit_inter[[model_name]] <- survival::coxph(formula = formula_inter_fit, data = analysis_df)
+    fit_main_current <- survival::coxph(formula = formula_main_fit, data = analysis_df)
+    fit_inter_current <- survival::coxph(formula = formula_inter_fit, data = analysis_df)
+
+    recode_exposure <- FALSE
+    recode_interaction <- FALSE
+    if (reference_strategy == "auto") {
+      coef_names <- names(stats::coef(fit_inter_current))
+      beta1 <- coef_names[coef_names == x_exp]
+      beta2 <- coef_names[coef_names == x_inter]
+      beta3 <- coef_names[coef_names %in% c(paste0(x_exp, ":", x_inter), paste0(x_inter, ":", x_exp))]
+      if (length(beta1) != 1 || length(beta2) != 1 || length(beta3) != 1) {
+        stop("Failed to recover additive interaction coefficients from the fitted Cox model. Available coefficients: ", paste(coef_names, collapse = ", "), call. = FALSE)
+      }
+      b1 <- stats::coef(fit_inter_current)[beta1]
+      b2 <- stats::coef(fit_inter_current)[beta2]
+      b3 <- stats::coef(fit_inter_current)[beta3]
+      if ((exp(b1) < 1) || (exp(b2) < 1)) {
+        ref_cat <- stats::setNames(
+          c(unname(exp(b1)), unname(exp(b2)), unname(exp(b1 + b2 + b3))),
+          c("OR10", "OR01", "OR11")
+        )
+        ref_cat <- names(ref_cat)[which.min(ref_cat)]
+        recode_exposure <- ref_cat %in% c("OR10", "OR11")
+        recode_interaction <- ref_cat %in% c("OR01", "OR11")
+      }
+    }
+
+    if (recode_exposure) analysis_df[[x_exp]] <- 1L - analysis_df[[x_exp]]
+    if (recode_interaction) analysis_df[[x_inter]] <- 1L - analysis_df[[x_inter]]
+    if (recode_exposure || recode_interaction) {
+      fit_main_current <- survival::coxph(formula = formula_main_fit, data = analysis_df)
+      fit_inter_current <- survival::coxph(formula = formula_inter_fit, data = analysis_df)
+    }
+    fit_main[[model_name]] <- fit_main_current
+    fit_inter[[model_name]] <- fit_inter_current
     formula_main[[model_name]] <- Reduce(paste, deparse(formula_main_fit))
     formula_inter[[model_name]] <- Reduce(paste, deparse(formula_inter_fit))
+
+    reference_group_label <- paste0(
+      x_exp, "=", levels(exposure_factor)[if (recode_exposure) 2 else 1],
+      ", ",
+      x_inter, "=", levels(interaction_factor)[if (recode_interaction) 2 else 1]
+    )
+    if (reference_strategy == "double_negative") {
+      reference_group_label <- paste0(
+        x_exp, "=", levels(exposure_factor)[1],
+        ", ",
+        x_inter, "=", levels(interaction_factor)[1]
+      )
+    }
 
     anova_res <- stats::anova(fit_main[[model_name]], fit_inter[[model_name]], test = "Chisq")
     p_col <- grep("^P", names(anova_res), value = TRUE)[1]
     p_interaction <- if (is.na(p_col)) NA_real_ else unname(anova_res[2, p_col])
-    backend_obj <- suppressWarnings(interactionR::interactionR(
-      model = fit_inter[[model_name]],
-      exposure_names = c(x_exp, x_inter),
+    backend_df <- analysis_df
+    backend_exp_name <- "leo_exposure_internal"
+    backend_inter_name <- "leo_interaction_internal"
+    backend_df[[backend_exp_name]] <- backend_df[[x_exp]]
+    backend_df[[backend_inter_name]] <- backend_df[[x_inter]]
+    rhs_backend <- unique(c(
+      paste0("`", backend_exp_name, "` * `", backend_inter_name, "`"),
+      if (length(covariates) > 0) paste0("`", covariates, "`") else character(0)
+    ))
+    backend_formula_inter <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs_backend, collapse = " + ")))
+    backend_fit <- survival::coxph(formula = backend_formula_inter, data = backend_df)
+    backend_obj <- interactionR::interactionR(
+      model = backend_fit,
+      exposure_names = c(backend_exp_name, backend_inter_name),
       ci.type = "delta",
       ci.level = 0.95,
       em = FALSE,
       recode = FALSE
-    ))
+    )
     backend[[model_name]] <- backend_obj
     backend_df <- backend_obj$dframe
     mult_row <- backend_df[backend_df$Measures == "Multiplicative scale", , drop = FALSE]
@@ -1034,7 +1075,7 @@ leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, eve
       case_n = sum(analysis_df$event == 1, na.rm = TRUE),
       control_n = sum(analysis_df$event == 0, na.rm = TRUE),
       person_year = sum(analysis_df$time, na.rm = TRUE),
-      reference_group = reference_group,
+      reference_group = reference_group_label,
       recode_applied = recode_exposure || recode_interaction,
       mult = mult_row$Estimates[1],
       mult_l = mult_row$CI.ll[1],
@@ -1309,18 +1350,22 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #'
 #' `r lifecycle::badge('experimental')`
 #'
-#' `leo_cox_mediation()` performs regression-based causal mediation analysis for
-#' a survival outcome using `regmedint::regmedint()` with `yreg = "survCox"`.
-#' Because the official `regmedint` interface requires explicit evaluation
-#' settings, continuous exposures should usually be accompanied by `a0` and `a1`.
-#' Binary factor exposures and mediators are internally recoded to `0/1` for
-#' compatibility with `regmedint`, while the display table keeps human-readable
-#' exposure contrasts and mediator reference labels. For `yreg = "survCox"`,
-#' `regmedint` relies on the rare-event approximation, so non-rare outcomes
-#' should be interpreted with extra caution.
-#' The display table in `$result` reports both the standard mediation-effect
-#' codes (for example `cde`, `pnde`, and `pm`) and their full labels, together
-#' with the exposure contrast and mediator reference value used for evaluation.
+#' Performs causal mediation analysis for survival outcomes via
+#' `regmedint::regmedint()`. Two regression models are fit:
+#' - Mediator model (`mreg`): `x_med ~ x_exp + x_cov`
+#' - Outcome model (`yreg`): `time ~ x_exp + x_med + x_cov` (+ `x_exp:x_med` if `interaction = TRUE`)
+#'
+#' When `yreg = "auto"` (default), Cox model (`"survCox"`) is used for rare
+#' outcomes (event rate <= 10%), and Weibull AFT (`"survAFT_weibull"`) for
+#' non-rare outcomes. Cox estimates are hazard ratios; AFT estimates are time
+#' ratios (>1 = longer survival).
+#'
+#' The exposure contrast `x_exp_a0 -> x_exp_a1` defines the change in `x_exp`
+#' for which mediation effects are computed. For continuous `x_exp`, both
+#' `x_exp_a0` and `x_exp_a1` must be specified.
+#'
+#' Returns mediation effects (CDE, NDE, NIE, total effect, proportion mediated)
+#' in `$result`, plus fitted models in `$fit`.
 #'
 #' @param df Data frame containing the outcome, follow-up time, exposure, mediator, and covariates.
 #' @param y_out Character vector of length 2 giving the event and follow-up time column names: `c(event, time)`.
@@ -1329,36 +1374,62 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #' @param x_cov `NULL`, a character vector of covariate column names, or a list of covariate column-name vectors.
 #' @param min_followup_time Numeric scalar; keep rows with `time > min_followup_time`.
 #' @param event_value Value in the event column that indicates incident events.
-#' @param a0 Numeric scalar; reference exposure value used to define the
-#'   exposure contrast at which mediation effects are evaluated.
-#' @param a1 Numeric scalar; contrasted exposure value used to define the
-#'   exposure contrast at which mediation effects are evaluated.
-#' @param m_cde Numeric scalar; mediator value at which the controlled direct
-#'   effect is evaluated.
-#' @param c_cond Optional covariate profile at which mediation effects are
-#'   evaluated. Use a numeric vector when all covariates are numeric, or a
-#'   named list / named vector keyed by original covariate names when
-#'   non-numeric covariates are present. If `NULL`, medians are used for
-#'   numeric covariates.
-#' @param mediator_model One of `"auto"`, `"linear"`, or `"logistic"`. In
-#'   `"auto"` mode, binary mediators are treated as `"logistic"`, while
-#'   numeric mediators with more than two observed values are treated as
-#'   `"linear"`. Multi-level categorical mediators are not currently
-#'   supported.
-#' @param interaction Logical; whether to include exposure-mediator interaction in the outcome model.
+#' @param x_exp_a0 Reference value of `x_exp` used to define the exposure
+#'   contrast. For binary factor exposures, you may supply either `0`/`1` or
+#'   one of the original factor levels; for continuous exposures, supply a
+#'   numeric value. e.g., `x_exp: 0 -> 1`, `"Low risk" -> "High risk"`, or
+#'   `BMI: 25 -> 30`.
+#' @param x_exp_a1 Contrasted value of `x_exp` used to define the exposure
+#'   contrast. For binary factor exposures, you may supply either `0`/`1` or
+#'   one of the original factor levels; for continuous exposures, supply a
+#'   numeric value. e.g., `x_exp: 0 -> 1`, `"Low risk" -> "High risk"`, or
+#'   `BMI: 25 -> 30`.
+#' @param x_med_cde Value of `x_med` at which the controlled direct effect
+#'   (CDE) is evaluated. For binary factor mediators, you may supply either
+#'   `0`/`1` or one of the original factor levels; for continuous mediators, a
+#'   typical choice is the median. Conceptually, CDE asks: "What would be the
+#'   effect of `x_exp` on outcome if `x_med` were fixed at `x_med_cde`?"
+#' @param x_cov_cond Optional covariate profile at which mediation effects are
+#'   evaluated. This is the value of `x_cov` held constant when computing
+#'   effects. For a single numeric covariate, supply a scalar; for multiple
+#'   covariates or non-numeric covariates, supply a named list or named vector
+#'   keyed by covariate names. If `NULL`, medians are used for numeric
+#'   covariates. When `x_cov` contains factor covariates or binary numeric
+#'   covariates such as `0/1` indicators, `x_cov_cond` must be supplied
+#'   explicitly.
+#' @param mreg One of `"auto"`, `"linear"`, or `"logistic"`. This is the
+#'   mediator regression type for modeling `x_med` given `x_exp` and `x_cov`,
+#'   i.e. `x_med ~ x_exp + x_cov`. In `"auto"` mode, binary mediators are treated as
+#'   `"logistic"`, while numeric mediators with more than two observed values
+#'   are treated as `"linear"`. Multi-level categorical mediators are not
+#'   currently supported.
+#' @param yreg One of `"auto"`, `"survCox"`, `"survAFT_weibull"`, or
+#'   `"survAFT_exp"`. This is the outcome regression type for modeling the
+#'   survival outcome given `x_exp`, `x_med`, and `x_cov`, i.e.
+#'   `time ~ x_exp + x_med + x_cov`. When `interaction = TRUE`, the outcome
+#'   model becomes `time ~ x_exp + x_med + x_exp:x_med + x_cov`. In `"auto"` mode,
+#'   `leo_cox_mediation()` uses the observed event proportion after filtering
+#'   and complete-case selection: event proportion `<= 10%` selects
+#'   `"survCox"`, otherwise `"survAFT_weibull"`.
+#' @param interaction Logical; whether the outcome model includes the
+#'   `x_exp:x_med` interaction term, so that the survival outcome is fit as
+#'   `time ~ x_exp + x_med + x_exp:x_med + x_cov` rather than
+#'   `time ~ x_exp + x_med + x_cov`.
 #' @param verbose Logical; print progress messages.
 #'
 #' @return A `leo_cox_mediation` object containing a display table in `$result`,
 #'   a detailed mediation table in `$result_detail` (also available as the
 #'   backward-compatible alias `$result_tidy`), an evaluation summary in
-#'   `$evaluation`, and fitted `regmedint` objects in `$fit`.
+#'   `$evaluation` (including the actual `mreg`/`yreg` used and `pm` stability
+#'   flags), and fitted `regmedint` objects in `$fit`.
 #' @export
 #' @examples
+#' # Basic usage: binary exposure, continuous mediator, rare outcome
 #' if (requireNamespace("regmedint", quietly = TRUE)) {
 #'   set.seed(123)
 #'   n <- 200
 #'   med_df <- data.frame(
-#'     outcome = rbinom(n, 1, 0.4),
+#'     outcome = rbinom(n, 1, 0.08),
 #'     outcome_censor = rexp(n, rate = 0.1),
 #'     exposure = rbinom(n, 1, 0.5),
 #'     mediator = rnorm(n),
@@ -1367,49 +1438,98 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #'   res_med <- leo_cox_mediation(
 #'     df = med_df, y_out = c("outcome", "outcome_censor"),
 #'     x_exp = "exposure", x_med = "mediator", x_cov = "age",
-#'     a0 = 0, a1 = 1, verbose = FALSE
+#'     verbose = FALSE
 #'   )
 #'   res_med$result
+#'   res_med$evaluation[, c("mreg", "yreg", "interaction")]
 #' }
-leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value = 1, min_followup_time = 0, a0 = NULL, a1 = NULL, m_cde = NULL, c_cond = NULL, mediator_model = "auto", interaction = TRUE, verbose = TRUE) {
+#'
+#' # Continuous exposure: must specify x_exp_a0 and x_exp_a1
+#' if (requireNamespace("regmedint", quietly = TRUE)) {
+#'   set.seed(123)
+#'   n <- 200
+#'   cont_df <- data.frame(
+#'     outcome = rbinom(n, 1, 0.06),
+#'     outcome_censor = rexp(n, rate = 0.1),
+#'     exposure = rnorm(n, 0, 1),  # continuous exposure
+#'     mediator = rnorm(n),
+#'     age = rnorm(n, 60, 8)
+#'   )
+#'   res_cont <- leo_cox_mediation(
+#'     df = cont_df, y_out = c("outcome", "outcome_censor"),
+#'     x_exp = "exposure", x_med = "mediator", x_cov = "age",
+#'     x_exp_a0 = -1, x_exp_a1 = 1,  # contrast: -1 SD vs +1 SD
+#'     mreg = "linear",
+#'     verbose = FALSE
+#'   )
+#'   res_cont$result
+#'   res_cont$evaluation[, c("mreg", "yreg")]
+#' }
+leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
+                              event_value = 1, min_followup_time = 0,
+                              x_exp_a0 = NULL, x_exp_a1 = NULL,
+                              x_med_cde = NULL, x_cov_cond = NULL,
+                              mreg = c("auto", "linear", "logistic"), 
+                              yreg = c("auto", "survCox", "survAFT_weibull", "survAFT_exp"), 
+                              interaction = TRUE, verbose = TRUE) {
+
+  # initialization and validation ----
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Mediation", col = "blue")
   if (!requireNamespace("regmedint", quietly = TRUE)) stop("leo_cox_mediation() requires package 'regmedint'. Please install it first.", call. = FALSE)
   if (!is.character(x_med) || length(x_med) != 1) stop("x_med must be a single column name.", call. = FALSE)
   if (!x_med %in% names(df)) stop("x_med must exist in df.", call. = FALSE)
-  mediator_model <- match.arg(mediator_model, c("auto", "linear", "logistic"))
+  mreg <- match.arg(mreg, c("auto", "linear", "logistic"))
+  yreg <- match.arg(yreg)
+
+  # helper functions ----
   format_num <- function(x) sprintf("%.3f", round(x, 3))
-  build_cvar_matrix <- function(cov_df, covariates, c_cond) {
+  build_cvar_matrix <- function(cov_df, covariates, x_cov_cond) {
     if (length(covariates) == 0) return(list(covariate_df = NULL, cvar_use = NULL, c_cond_use = NULL, c_cond_label = NA_character_))
     cov_model_df <- cov_df
+    binary_numeric_covariates <- covariates[vapply(cov_df, function(x) {
+      if (!(is.numeric(x) || is.integer(x))) return(FALSE)
+      x_num <- suppressWarnings(as.numeric(x))
+      x_num <- sort(unique(stats::na.omit(x_num[is.finite(x_num)])))
+      if (length(x_num) != 2) return(FALSE)
+      all(abs(x_num - round(x_num)) < 1e-8)
+    }, logical(1))]
     for (covariate in covariates) {
       if (is.character(cov_model_df[[covariate]]) || is.logical(cov_model_df[[covariate]])) cov_model_df[[covariate]] <- factor(cov_model_df[[covariate]])
     }
     cov_formula <- stats::reformulate(covariates)
     cov_matrix <- stats::model.matrix(cov_formula, data = cov_model_df)
     cov_matrix <- cov_matrix[, colnames(cov_matrix) != "(Intercept)", drop = FALSE]
-    if (is.null(c_cond)) {
+    if (is.null(x_cov_cond)) {
       if (!all(vapply(cov_df, function(x) is.numeric(x) || is.integer(x), logical(1)))) {
-        stop("Please supply c_cond explicitly when x_cov contains non-numeric covariates for leo_cox_mediation().", call. = FALSE)
+        stop("Please supply x_cov_cond explicitly when x_cov contains non-numeric covariates for leo_cox_mediation().", call. = FALSE)
+      }
+      if (length(binary_numeric_covariates) > 0) {
+        stop(
+          "Please supply x_cov_cond explicitly when x_cov contains binary numeric covariates (",
+          paste(binary_numeric_covariates, collapse = ", "),
+          "), because the default median can create impossible evaluation values such as 0.5.",
+          call. = FALSE
+        )
       }
       c_cond_model_df <- as.data.frame(as.list(vapply(cov_df, stats::median, numeric(1), na.rm = TRUE)), stringsAsFactors = FALSE)
       c_cond_label <- paste(paste0(covariates, "=", format_num(unlist(c_cond_model_df[1, covariates, drop = FALSE]))), collapse = "; ")
-    } else if (is.numeric(c_cond) && is.null(names(c_cond))) {
+    } else if (is.numeric(x_cov_cond) && is.null(names(x_cov_cond))) {
       if (!all(vapply(cov_df, function(x) is.numeric(x) || is.integer(x), logical(1)))) {
-        stop("For non-numeric covariates, c_cond must be a named list or named vector using original covariate values.", call. = FALSE)
+        stop("For non-numeric covariates, x_cov_cond must be a named list or named vector using original covariate values.", call. = FALSE)
       }
-      if (length(c_cond) != length(covariates)) stop("c_cond must have the same length as the selected covariates.", call. = FALSE)
-      c_cond_model_df <- as.data.frame(as.list(as.numeric(c_cond)), stringsAsFactors = FALSE)
+      if (length(x_cov_cond) != length(covariates)) stop("x_cov_cond must have the same length as the selected covariates.", call. = FALSE)
+      c_cond_model_df <- as.data.frame(as.list(as.numeric(x_cov_cond)), stringsAsFactors = FALSE)
       names(c_cond_model_df) <- covariates
-      c_cond_label <- paste(paste0(covariates, "=", format_num(as.numeric(c_cond))), collapse = "; ")
+      c_cond_label <- paste(paste0(covariates, "=", format_num(as.numeric(x_cov_cond))), collapse = "; ")
     } else {
-      c_cond_list <- if (is.list(c_cond)) c_cond else as.list(c_cond)
+      c_cond_list <- if (is.list(x_cov_cond)) x_cov_cond else as.list(x_cov_cond)
       if (is.null(names(c_cond_list)) || any(names(c_cond_list) == "")) {
-        stop("Named c_cond values are required when supplying covariate-specific evaluation settings.", call. = FALSE)
+        stop("Named x_cov_cond values are required when supplying covariate-specific evaluation settings.", call. = FALSE)
       }
       if (!all(covariates %in% names(c_cond_list))) {
-        stop("Named c_cond must include every selected covariate.", call. = FALSE)
+        stop("Named x_cov_cond must include every selected covariate.", call. = FALSE)
       }
       c_cond_model_df <- cov_model_df[1, covariates, drop = FALSE]
       c_cond_label_parts <- character(0)
@@ -1418,13 +1538,13 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
         if (is.factor(cov_model_df[[covariate]])) {
           value_chr <- as.character(value)
           if (!value_chr %in% levels(cov_model_df[[covariate]])) {
-            stop("c_cond value for ", covariate, " must match one of the observed factor levels.", call. = FALSE)
+            stop("x_cov_cond value for ", covariate, " must match one of the observed factor levels.", call. = FALSE)
           }
           c_cond_model_df[[covariate]] <- factor(value_chr, levels = levels(cov_model_df[[covariate]]))
           c_cond_label_parts <- c(c_cond_label_parts, paste0(covariate, "=", value_chr))
         } else {
           value_num <- suppressWarnings(as.numeric(value))
-          if (length(value_num) != 1 || is.na(value_num)) stop("c_cond value for ", covariate, " must be numeric.", call. = FALSE)
+          if (length(value_num) != 1 || is.na(value_num)) stop("x_cov_cond value for ", covariate, " must be numeric.", call. = FALSE)
           c_cond_model_df[[covariate]] <- value_num
           c_cond_label_parts <- c(c_cond_label_parts, paste0(covariate, "=", format_num(value_num)))
         }
@@ -1444,50 +1564,83 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     ))
   }
 
+  # data preparation and yreg selection ----
   model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
-  prep_models <- lapply(model_list, function(covariates) unique(c(if (is.null(covariates)) character(0) else covariates, x_med)))
-  prep <- .prepare_cox_regression_data(
-    df = df,
-    y_out = y_out,
-    x_exp = x_exp,
-    x_cov = prep_models,
-    min_followup_time = min_followup_time,
-    event_value = event_value,
-    verbose = verbose
-  )
-  if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering.", call. = FALSE)
-  if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
-  if (prep$n_removed_complete_case > 0) {
-    leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before Cox mediation analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox_mediation(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
-  }
-  event_rate <- sum(prep$data$event == 1, na.rm = TRUE) / nrow(prep$data)
-  if (is.finite(event_rate) && event_rate > 0.1) {
-    leo.basic::leo_log("Observed event proportion is {format_num(100 * event_rate)}%. `regmedint` with `yreg = 'survCox'` relies on the rare-event approximation, so interpret the mediation estimates with caution when the outcome is not rare.", level = "warning", verbose = verbose)
-  }
 
+  # main loop ----
   result_rows <- list()
   fit_results <- list()
   evaluation_rows <- list()
   for (model_name in names(model_list)) {
     covariates <- if (is.null(model_list[[model_name]])) character(0) else model_list[[model_name]]
+    prep_covariates <- unique(c(covariates, x_med))
+    prep <- .prepare_cox_regression_data(
+      df = df,
+      y_out = y_out,
+      x_exp = x_exp,
+      x_cov = prep_covariates,
+      min_followup_time = min_followup_time,
+      event_value = event_value,
+      verbose = verbose
+    )
+    if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering for ", model_name, ".", call. = FALSE)
+    if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering for ", model_name, ".", call. = FALSE)
+    if (prep$n_removed_complete_case > 0) {
+      leo.basic::leo_log(
+        "For {model_name}, if you want to keep more rows, consider imputing missing values before Cox mediation analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox_mediation(df = {df_name}_imputed, ...)`.",
+        level = "warning",
+        verbose = verbose
+      )
+    }
     model_df <- prep$data[, c("event", "time", "exposure", x_med, covariates), drop = FALSE]
-    a0_use <- a0
-    a1_use <- a1
-    m_cde_use <- m_cde
+    event_rate <- sum(model_df$event == 1, na.rm = TRUE) / nrow(model_df)
+    yreg_use <- if (yreg == "auto") {
+      if (is.finite(event_rate) && event_rate <= 0.1) "survCox" else "survAFT_weibull"
+    } else {
+      yreg
+    }
+    if (yreg == "auto") {
+      leo.basic::leo_log(
+        "In {model_name}, observed event proportion is {format_num(100 * event_rate)}%; auto-selecting `yreg = '{yreg_use}'` for leo_cox_mediation().",
+        verbose = verbose
+      )
+    }
+    if (identical(yreg_use, "survCox") && is.finite(event_rate) && event_rate > 0.1) {
+      warning(
+        "Observed event proportion is ", format_num(100 * event_rate),
+        "% in ", model_name,
+        ". `regmedint` with `yreg = 'survCox'` relies on the rare-event approximation, so interpret the mediation estimates with caution when the outcome is not rare.",
+        call. = FALSE
+      )
+    }
+    a0_use <- x_exp_a0
+    a1_use <- x_exp_a1
+    m_cde_use <- x_med_cde
     exposure_contrast_display <- NULL
     mediator_reference_display <- NULL
 
+    ## exposure processing ----
     exposure_raw <- model_df$exposure
     if (is.factor(exposure_raw) || is.character(exposure_raw) || is.logical(exposure_raw)) {
       exposure_factor <- droplevels(factor(exposure_raw))
       if (nlevels(exposure_factor) != 2) stop("leo_cox_mediation() currently supports binary factor exposures or numeric exposures.", call. = FALSE)
       model_df$exposure <- as.integer(exposure_factor == levels(exposure_factor)[2])
+      exposure_levels <- levels(exposure_factor)
+      map_exposure_level <- function(value, arg_name) {
+        if (is.numeric(value) && length(value) == 1 && !is.na(value) && value %in% c(0, 1)) return(as.numeric(value))
+        value_chr <- as.character(value)[1]
+        if (value_chr %in% exposure_levels) return(match(value_chr, exposure_levels) - 1L)
+        stop(
+          "For binary factor exposures, ", arg_name,
+          " must be coded as 0/1 or match one of the observed exposure levels: ",
+          paste(exposure_levels, collapse = ", "), ".",
+          call. = FALSE
+        )
+      }
       if (is.null(a0_use)) a0_use <- 0
       if (is.null(a1_use)) a1_use <- 1
-      if (!a0_use %in% c(0, 1) || !a1_use %in% c(0, 1)) {
-        stop("For binary factor exposures, a0 and a1 must be coded as 0 or 1.", call. = FALSE)
-      }
-      exposure_levels <- levels(exposure_factor)
+      a0_use <- map_exposure_level(a0_use, "x_exp_a0")
+      a1_use <- map_exposure_level(a1_use, "x_exp_a1")
       exposure_contrast_display <- paste0(exposure_levels[a0_use + 1], " -> ", exposure_levels[a1_use + 1])
     } else {
       model_df$exposure <- suppressWarnings(as.numeric(exposure_raw))
@@ -1497,15 +1650,16 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
         a0_use <- unique_exposure[1]
         a1_use <- unique_exposure[2]
       }
-      if (is.null(a0_use) || is.null(a1_use)) stop("Please provide both a0 and a1 for Cox mediation when x_exp is not a binary factor.", call. = FALSE)
+      if (is.null(a0_use) || is.null(a1_use)) stop("Please provide both x_exp_a0 and x_exp_a1 for Cox mediation when x_exp is not a binary factor.", call. = FALSE)
       exposure_contrast_display <- paste0(format_num(a0_use), " -> ", format_num(a1_use))
     }
-    if (!is.numeric(a0_use) || length(a0_use) != 1 || is.na(a0_use)) stop("a0 must be a single numeric value.", call. = FALSE)
-    if (!is.numeric(a1_use) || length(a1_use) != 1 || is.na(a1_use)) stop("a1 must be a single numeric value.", call. = FALSE)
-    if (isTRUE(all.equal(a0_use, a1_use))) stop("a0 and a1 must be different for Cox mediation analysis.", call. = FALSE)
+    if (!is.numeric(a0_use) || length(a0_use) != 1 || is.na(a0_use)) stop("x_exp_a0 must be a single numeric value.", call. = FALSE)
+    if (!is.numeric(a1_use) || length(a1_use) != 1 || is.na(a1_use)) stop("x_exp_a1 must be a single numeric value.", call. = FALSE)
+    if (isTRUE(all.equal(a0_use, a1_use))) stop("x_exp_a0 and x_exp_a1 must be different for Cox mediation analysis.", call. = FALSE)
 
+    ## mediator processing ----
     mediator_raw <- model_df[[x_med]]
-    mediator_mode_use <- mediator_model
+    mediator_mode_use <- mreg
     if (mediator_mode_use == "auto") {
       if (is.factor(mediator_raw) || is.character(mediator_raw) || is.logical(mediator_raw)) {
         mediator_levels <- levels(droplevels(factor(mediator_raw)))
@@ -1513,7 +1667,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
           stop(
             "Automatic mediator detection currently supports binary factors or numeric mediators. ",
             "For multi-level categorical mediators, please recode x_med to a scientifically justified binary mediator, ",
-            "or keep an ordered score as numeric and set mediator_model = 'linear'.",
+            "or keep an ordered score as numeric and set mreg = 'linear'.",
             call. = FALSE
           )
         }
@@ -1528,7 +1682,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
           if (length(unique_mediator) >= 3 && length(unique_mediator) <= 10) {
             leo.basic::leo_log(
               "Mediator '{x_med}' has only {length(unique_mediator)} unique numeric values ({paste(unique_mediator, collapse = ', ')}). ",
-              "In `mediator_model = 'auto'`, it will be treated as a continuous mediator and fit with `linear`. ",
+              "In `mreg = 'auto'`, it will be treated as a continuous mediator and fit with `linear`. ",
               "Please confirm this is scientifically intended and ignore this warning if expected.",
               level = "warning",
               verbose = verbose
@@ -1542,36 +1696,47 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
       mediator_factor <- droplevels(factor(mediator_raw))
       if (nlevels(mediator_factor) != 2) {
         stop(
-          "Mediator must have exactly 2 levels when mediator_model = 'logistic'. ",
-          "For ordered score-like mediators such as integer severity indices, keep x_med numeric and use mediator_model = 'linear'.",
+          "Mediator must have exactly 2 levels when mreg = 'logistic'. ",
+          "For ordered score-like mediators such as integer severity indices, keep x_med numeric and use mreg = 'linear'.",
           call. = FALSE
         )
       }
       model_df[[x_med]] <- as.integer(mediator_factor == levels(mediator_factor)[2])
-      if (is.null(m_cde_use)) m_cde_use <- 1
-      if (!is.numeric(m_cde_use) || length(m_cde_use) != 1 || is.na(m_cde_use) || !m_cde_use %in% c(0, 1)) {
-        stop("m_cde must be 0 or 1 when mediator_model = 'logistic'.", call. = FALSE)
+      mediator_levels <- levels(mediator_factor)
+      map_mediator_level <- function(value) {
+        if (is.numeric(value) && length(value) == 1 && !is.na(value) && value %in% c(0, 1)) return(as.numeric(value))
+        value_chr <- as.character(value)[1]
+        if (value_chr %in% mediator_levels) return(match(value_chr, mediator_levels) - 1L)
+        stop(
+          "x_med_cde must be 0/1 or match one of the observed mediator levels when mreg = 'logistic': ",
+          paste(mediator_levels, collapse = ", "), ".",
+          call. = FALSE
+        )
       }
-      mediator_reference_display <- levels(mediator_factor)[m_cde_use + 1]
+      if (is.null(m_cde_use)) m_cde_use <- 1
+      m_cde_use <- map_mediator_level(m_cde_use)
+      mediator_reference_display <- mediator_levels[m_cde_use + 1]
     } else {
       if (is.factor(mediator_raw) || is.character(mediator_raw) || is.logical(mediator_raw)) {
         stop(
-          "Mediator must be truly numeric when mediator_model = 'linear'. ",
-          "If x_med is binary, use mediator_model = 'auto' or 'logistic'; if it is a multi-level categorical mediator, recode it to a justified binary mediator before using the current function.",
+          "Mediator must be truly numeric when mreg = 'linear'. ",
+          "If x_med is binary, use mreg = 'auto' or 'logistic'; if it is a multi-level categorical mediator, recode it to a justified binary mediator before using the current function.",
           call. = FALSE
         )
       }
       model_df[[x_med]] <- suppressWarnings(as.numeric(mediator_raw))
-      if (anyNA(model_df[[x_med]])) stop("Mediator must be numeric when mediator_model = 'linear'.", call. = FALSE)
+      if (anyNA(model_df[[x_med]])) stop("Mediator must be numeric when mreg = 'linear'.", call. = FALSE)
       if (is.null(m_cde_use)) m_cde_use <- stats::median(model_df[[x_med]], na.rm = TRUE)
-      if (!is.numeric(m_cde_use) || length(m_cde_use) != 1 || is.na(m_cde_use)) stop("m_cde must be a single numeric value.", call. = FALSE)
+      if (!is.numeric(m_cde_use) || length(m_cde_use) != 1 || is.na(m_cde_use)) stop("x_med_cde must be a single numeric value.", call. = FALSE)
       mediator_reference_display <- format_num(m_cde_use)
     }
 
-    cov_build <- build_cvar_matrix(model_df[, covariates, drop = FALSE], covariates, c_cond)
+    ## covariate matrix ----
+    cov_build <- build_cvar_matrix(model_df[, covariates, drop = FALSE], covariates, x_cov_cond)
     reg_df <- model_df[, c("event", "time", "exposure", x_med), drop = FALSE]
     if (!is.null(cov_build$covariate_df)) reg_df <- cbind(reg_df, cov_build$covariate_df)
 
+    ## regmedint fitting ----
     leo.basic::leo_log("Fitting mediation {model_name} with mediator {x_med}{if (length(covariates) > 0) paste0(' adjusted for ', paste(covariates, collapse = ', ')) else ''}.", verbose = verbose)
     fit_results[[model_name]] <- regmedint::regmedint(
       data = reg_df,
@@ -1585,11 +1750,13 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
       m_cde = m_cde_use,
       c_cond = cov_build$c_cond_use,
       mreg = mediator_mode_use,
-      yreg = "survCox",
+      yreg = yreg_use,
       interaction = interaction,
       casecontrol = FALSE,
       na_omit = FALSE
     )
+
+    ## result extraction and pm stability ----
     med_summary <- summary(fit_results[[model_name]], exponentiate = TRUE)
     med_coef <- as.data.frame(coef(med_summary))
     names(med_coef) <- gsub("\\(", ".", gsub("\\)", "", names(med_coef)))
@@ -1603,14 +1770,38 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     med_coef$case_n <- sum(model_df$event == 1, na.rm = TRUE)
     med_coef$control_n <- sum(model_df$event == 0, na.rm = TRUE)
     med_coef$person_year <- sum(model_df$time, na.rm = TRUE)
-    med_coef$mediator_model <- mediator_mode_use
-    med_coef$a0 <- a0_use
-    med_coef$a1 <- a1_use
-    med_coef$m_cde <- m_cde_use
+    med_coef$non_event_n <- med_coef$control_n
+    med_coef$followup_total <- med_coef$person_year
+    med_coef$mreg <- mediator_mode_use
+    med_coef$yreg <- yreg_use
+    med_coef$x_exp_a0 <- a0_use
+    med_coef$x_exp_a1 <- a1_use
+    med_coef$x_med_cde <- m_cde_use
     med_coef$exposure_contrast_label <- exposure_contrast_display
     med_coef$mediator_reference_label <- mediator_reference_display
-    med_coef$c_cond_label <- cov_build$c_cond_label
+    med_coef$x_cov_cond <- cov_build$c_cond_label
+    te_row <- med_coef$effect == "te"
+    te_ci_includes_null <- FALSE
+    pm_note <- NA_character_
+    if (sum(te_row, na.rm = TRUE) == 1L) {
+      te_ci_includes_null <- is.finite(med_coef$lower[te_row]) &&
+        is.finite(med_coef$upper[te_row]) &&
+        med_coef$lower[te_row] <= 0 &&
+        med_coef$upper[te_row] >= 0
+      if (te_ci_includes_null) {
+        pm_note <- "Total effect 95% CI includes the null value; proportion mediated (pm) may be unstable and should be interpreted cautiously."
+        leo.basic::leo_log(
+          "Total effect 95% CI includes the null value in {model_name}; proportion mediated (`pm`) may be unstable and should be interpreted cautiously.",
+          level = "warning",
+          verbose = verbose
+        )
+      }
+    }
+    med_coef$pm_unstable <- te_ci_includes_null
+    med_coef$pm_note <- pm_note
     result_rows[[model_name]] <- med_coef
+
+    ## evaluation summary ----
     evaluation_rows[[model_name]] <- data.frame(
       model = model_name,
       exposure = x_exp,
@@ -1618,21 +1809,27 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
       outcome = y_out[1],
       n = nrow(model_df),
       case_n = sum(model_df$event == 1, na.rm = TRUE),
-      control_n = sum(model_df$event == 0, na.rm = TRUE),
-      person_year = sum(model_df$time, na.rm = TRUE),
+      non_event_n = sum(model_df$event == 0, na.rm = TRUE),
+      followup_total = sum(model_df$time, na.rm = TRUE),
       event_rate = sum(model_df$event == 1, na.rm = TRUE) / nrow(model_df),
       exposure_contrast = exposure_contrast_display,
       exposure_contrast_value = paste0(format_num(a0_use), " -> ", format_num(a1_use)),
+      x_exp_a0 = a0_use,
+      x_exp_a1 = a1_use,
       mediator_reference = mediator_reference_display,
-      mediator_reference_value = format_num(m_cde_use),
-      mediator_model = mediator_mode_use,
+      x_med_cde = m_cde_use,
+      mreg = mediator_mode_use,
+      yreg = yreg_use,
+      pm_unstable = te_ci_includes_null,
+      pm_note = pm_note,
       interaction = interaction,
       covariates = if (length(covariates) > 0) paste(covariates, collapse = ", ") else NA_character_,
-      c_cond = cov_build$c_cond_label,
+      x_cov_cond = cov_build$c_cond_label,
       stringsAsFactors = FALSE
     )
   }
 
+  # result assembly ----
   result_detail <- do.call(rbind, result_rows)
   rownames(result_detail) <- NULL
   effect_labels <- c(
@@ -1645,10 +1842,18 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     pm = "Proportion mediated"
   )
   result_detail$effect_label <- unname(effect_labels[result_detail$effect])
-  result_detail$effect_scale <- ifelse(result_detail$effect == "pm", "Proportion", "Hazard ratio")
-  result_detail$exposure_contrast <- ifelse(is.na(result_detail$exposure_contrast_label), paste0(result_detail$a0, " -> ", result_detail$a1), result_detail$exposure_contrast_label)
-  result_detail$mediator_reference <- ifelse(is.na(result_detail$mediator_reference_label), format_num(result_detail$m_cde), result_detail$mediator_reference_label)
-  result <- result_detail[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "control_n", "person_year", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mediator_model"), drop = FALSE]
+  result_detail$effect_scale <- ifelse(
+    result_detail$effect == "pm",
+    "Proportion",
+    ifelse(result_detail$yreg == "survCox", "Hazard ratio", "Time ratio")
+  )
+  result_detail$exposure_contrast <- ifelse(is.na(result_detail$exposure_contrast_label), paste0(result_detail$x_exp_a0, " -> ", result_detail$x_exp_a1), result_detail$exposure_contrast_label)
+  result_detail$mediator_reference <- ifelse(is.na(result_detail$mediator_reference_label), format_num(result_detail$x_med_cde), result_detail$mediator_reference_label)
+  result_detail$exposure_contrast_label <- NULL
+  result_detail$mediator_reference_label <- NULL
+  result_detail$control_n <- NULL
+  result_detail$person_year <- NULL
+  result <- result_detail[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "non_event_n", "followup_total", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mreg", "yreg"), drop = FALSE]
   result$Estimate <- ifelse(result$effect == "pm", round(result$est, 3), round(result$exp.est, 3))
   result$`95% CI` <- ifelse(
     result$effect == "pm",
@@ -1656,8 +1861,8 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL, event_value
     paste0(sprintf("%.3f", round(result$exp.lower, 3)), ", ", sprintf("%.3f", round(result$exp.upper, 3)))
   )
   result$`P value` <- vapply(result$p, .format_p_value, character(1))
-  result <- result[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "control_n", "person_year", "Estimate", "95% CI", "P value", "mediator_model"), drop = FALSE]
-  names(result) <- c("Model", "Effect code", "Effect", "Scale", "Exposure", "Mediator", "Outcome", "Exposure contrast", "Mediator reference", "N", "Case N", "Control N", "Person-years", "Estimate", "95% CI", "P value", "Mediator model")
+  result <- result[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "non_event_n", "followup_total", "Estimate", "95% CI", "P value", "mreg", "yreg"), drop = FALSE]
+  names(result) <- c("Model", "Effect code", "Effect", "Scale", "Exposure", "Mediator", "Outcome", "Exposure contrast", "Mediator reference", "N", "Case N", "Non-event N", "Total follow-up", "Estimate", "95% CI", "P value", "Mediator model", "Outcome model")
   evaluation <- do.call(rbind, evaluation_rows)
   rownames(evaluation) <- NULL
   out <- structure(list(result = result, result_detail = result_detail, result_tidy = result_detail, evaluation = evaluation, fit = fit_results), class = "leo_cox_mediation")
@@ -1775,10 +1980,33 @@ leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure",
   graphics::plot.window(xlim = xlim, ylim = ylim)
 
   label_lines <- strsplit(c(exposure_label, mediator_label, outcome_label), "\n", fixed = TRUE)
-  max_line_width <- max(vapply(label_lines, function(lines) max(graphics::strwidth(lines, cex = label_cex, units = "user")), numeric(1)))
+  safe_strwidth <- function(text, cex) {
+    tryCatch(
+      graphics::strwidth(text, cex = cex, units = "user"),
+      error = function(e) plot_width * 0.018 * max(nchar(enc2utf8(text), type = "width"), 1) * cex
+    )
+  }
+  safe_strheight <- function(text, cex) {
+    tryCatch(
+      graphics::strheight(text, cex = cex, units = "user"),
+      error = function(e) plot_height * 0.045 * cex
+    )
+  }
+  draw_text_safe <- function(x, y, labels, cex, col = "black", font = 1, family = device_font_family, adj = NULL) {
+    text_args <- list(x = x, y = y, labels = labels, cex = cex, col = col, font = font, family = family)
+    if (!is.null(adj)) text_args$adj <- adj
+    tryCatch(
+      suppressWarnings(do.call(graphics::text, text_args)),
+      error = function(e) {
+        text_args$labels <- iconv(labels, from = "", to = "ASCII//TRANSLIT", sub = "?")
+        suppressWarnings(do.call(graphics::text, text_args))
+      }
+    )
+  }
+  max_line_width <- max(vapply(label_lines, function(lines) max(vapply(lines, safe_strwidth, numeric(1), cex = label_cex)), numeric(1)))
   max_nline <- max(vapply(label_lines, length, integer(1)))
   box_width <- max_line_width + 2 * pad_x
-  box_height <- max_nline * graphics::strheight("M", cex = label_cex, units = "user") * 1.15 + 2 * pad_y
+  box_height <- max_nline * safe_strheight("M", cex = label_cex) * 1.15 + 2 * pad_y
   x_center <- mean(xlim)
   side_x_pad <- max(box_width * 0.35, plot_width * 0.085)
   left_x <- xlim[1] + box_width / 2 + side_x_pad
@@ -1796,7 +2024,7 @@ leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure",
     ybottom <- y - box_height / 2
     ytop <- y + box_height / 2
     graphics::rect(xleft, ybottom, xright, ytop, col = fill, border = fill, lwd = 1.8)
-    suppressWarnings(graphics::text(x, y, labels = label, cex = label_cex, col = text_col, font = 2, family = device_font_family, adj = c(0.5, 0.5)))
+    draw_text_safe(x, y, labels = label, cex = label_cex, col = text_col, font = 2, family = device_font_family, adj = c(0.5, 0.5))
     list(x = x, y = y, xleft = xleft, xright = xright, ybottom = ybottom, ytop = ytop)
   }
 
@@ -1812,10 +2040,10 @@ leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure",
   graphics::arrows(mid_box$xright, mid_box$ybottom + 0.06, right_box$xleft, side_y + 0.05, length = 0.085, lwd = 2.1, col = edge_col)
   graphics::arrows(left_box$xright, side_y, right_box$xleft, side_y, length = 0.085, lwd = 2.1, col = edge_col)
 
-  suppressWarnings(graphics::text(x_center, top_y, top_label, cex = top_cex, font = 2, family = device_font_family))
-  suppressWarnings(graphics::text(x_center, pm_y, pm_label, cex = body_cex, family = device_font_family))
-  suppressWarnings(graphics::text(x_center, direct_y, direct_label, cex = top_cex, font = 2, family = device_font_family))
-  suppressWarnings(graphics::text(x_center, total_y, total_label, cex = body_cex, family = device_font_family))
+  draw_text_safe(x_center, top_y, top_label, cex = top_cex, font = 2, family = device_font_family)
+  draw_text_safe(x_center, pm_y, pm_label, cex = body_cex, family = device_font_family)
+  draw_text_safe(x_center, direct_y, direct_label, cex = top_cex, font = 2, family = device_font_family)
+  draw_text_safe(x_center, total_y, total_label, cex = body_cex, family = device_font_family)
 
   out <- grDevices::recordPlot()
   return(invisible(out))

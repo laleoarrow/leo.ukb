@@ -1,6 +1,9 @@
 ---
 title: "生存分析 Step 1：主 Cox 分析"
-output: rmarkdown::html_vignette
+description: "学习 incident outcome 主 Cox 模型的建模、输出与解释。"
+output:
+  rmarkdown::html_vignette:
+    highlight: default
 vignette: >
   %\VignetteIndexEntry{生存分析 Step 1：主 Cox 分析}
   %\VignetteEngine{knitr::rmarkdown}
