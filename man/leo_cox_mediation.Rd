@@ -35,69 +35,44 @@ leo_cox_mediation_plot(
 )
 }
 \arguments{
-\item{df}{Data frame containing the outcome, follow-up time, exposure, mediator, and covariates.}
+\item{df}{Data frame with outcome, time, exposure, mediator, and covariates.}
 
-\item{y_out}{Character vector of length 2 giving the event and follow-up time column names: \code{c(event, time)}.}
+\item{y_out}{\code{c(event, time)} column names.}
 
-\item{x_exp}{Character scalar giving the exposure column name.}
+\item{x_exp}{Exposure column name.}
 
-\item{x_med}{Character scalar giving the mediator column name.}
+\item{x_med}{Mediator column name.}
 
-\item{x_cov}{\code{NULL}, a character vector of covariate column names, or a list of covariate column-name vectors.}
+\item{x_cov}{Covariate column names, or \code{NULL}.}
 
-\item{event_value}{Value in the event column that indicates incident events.}
+\item{event_value}{Value indicating an event.}
 
-\item{min_followup_time}{Numeric scalar; keep rows with \code{time > min_followup_time}.}
+\item{min_followup_time}{Minimum follow-up time filter.}
 
-\item{x_exp_a0}{Reference value of \code{x_exp} used to define the exposure
-contrast. For binary factor exposures, you may supply either \code{0}/\code{1} or
-one of the original factor levels; for continuous exposures, supply a
-numeric value. e.g., \code{x_exp: 0 -> 1}, \code{"Low risk" -> "High risk"}, or
-\code{BMI: 25 -> 30}.}
+\item{x_exp_a0}{Reference value of \code{x_exp}. Defaults to first factor level;
+\strong{required if x_exp is character (not factor) or numeric}. For a binary
+factor exposure, either use the default contrast or supply \code{x_exp_a0} and
+\code{x_exp_a1} together.}
 
-\item{x_exp_a1}{Contrasted value of \code{x_exp} used to define the exposure
-contrast. For binary factor exposures, you may supply either \code{0}/\code{1} or
-one of the original factor levels; for continuous exposures, supply a
-numeric value. e.g., \code{x_exp: 0 -> 1}, \code{"Low risk" -> "High risk"}, or
-\code{BMI: 25 -> 30}.}
+\item{x_exp_a1}{Contrasted value of \code{x_exp}. Defaults to second factor level;
+\strong{required if x_exp is character (not factor) or numeric}. For a binary
+factor exposure, either use the default contrast or supply \code{x_exp_a0} and
+\code{x_exp_a1} together.}
 
-\item{x_med_cde}{Value of \code{x_med} at which the controlled direct effect
-(CDE) is evaluated. For binary factor mediators, you may supply either
-\code{0}/\code{1} or one of the original factor levels; for continuous mediators, a
-typical choice is the median. Conceptually, CDE asks: "What would be the
-effect of \code{x_exp} on outcome if \code{x_med} were fixed at \code{x_med_cde}?"}
+\item{x_med_cde}{Value of \code{x_med} for CDE evaluation. Defaults to second factor
+level (binary) or median (continuous); \strong{required if x_med is character (not factor)}.}
 
-\item{x_cov_cond}{Optional covariate profile at which mediation effects are
-evaluated. This is the value of \code{x_cov} held constant when computing
-effects. For a single numeric covariate, supply a scalar; for multiple
-covariates or non-numeric covariates, supply a named list or named vector
-keyed by covariate names. If \code{NULL}, medians are used for numeric
-covariates. When \code{x_cov} contains factor covariates or binary numeric
-covariates such as \code{0/1} indicators, \code{x_cov_cond} must be supplied
-explicitly.}
+\item{x_cov_cond}{Covariate values for effect evaluation. Named list/vector for
+non-numeric covariates; defaults to medians. Required for factor/binary covariates.}
 
-\item{mreg}{One of \code{"auto"}, \code{"linear"}, or \code{"logistic"}. This is the
-mediator regression type for modeling \code{x_med} given \code{x_exp} and \code{x_cov},
-i.e. \code{x_med ~ x_exp + x_cov}. In \code{"auto"} mode, binary mediators are treated as
-\code{"logistic"}, while numeric mediators with more than two observed values
-are treated as \code{"linear"}. Multi-level categorical mediators are not
-currently supported.}
+\item{mreg}{Mediator model: \code{"auto"}, \code{"linear"}, or \code{"logistic"}.}
 
-\item{yreg}{One of \code{"auto"}, \code{"survCox"}, \code{"survAFT_weibull"}, or
-\code{"survAFT_exp"}. This is the outcome regression type for modeling the
-survival outcome given \code{x_exp}, \code{x_med}, and \code{x_cov}, i.e.
-\code{time ~ x_exp + x_med + x_cov}. When \code{interaction = TRUE}, the outcome
-model becomes \code{time ~ x_exp + x_med + x_exp:x_med + x_cov}. In \code{"auto"} mode,
-\code{leo_cox_mediation()} uses the observed event proportion after filtering
-and complete-case selection: event proportion \verb{<= 10\%} selects
-\code{"survCox"}, otherwise \code{"survAFT_weibull"}.}
+\item{yreg}{Outcome model: \code{"auto"}, \code{"survCox"}, \code{"survAFT_weibull"}, or \code{"survAFT_exp"}.}
 
-\item{interaction}{Logical; whether the outcome model includes the
-\code{x_exp:x_med} interaction term, so that the survival outcome is fit as
-\code{time ~ x_exp + x_med + x_exp:x_med + x_cov} rather than
-\code{time ~ x_exp + x_med + x_cov}.}
+\item{interaction}{Include \code{x_exp:x_med} interaction? If \code{TRUE}, the outcome model adds \code{x_exp:x_med},
+i.e. \code{time ~ x_exp + x_med + x_exp:x_med + x_cov}.}
 
-\item{verbose}{Logical; print progress messages.}
+\item{verbose}{Print progress messages.}
 
 \item{x}{A \code{leo_cox_mediation} object returned by \code{\link[=leo_cox_mediation]{leo_cox_mediation()}}.}
 
@@ -117,11 +92,7 @@ and complete-case selection: event proportion \verb{<= 10\%} selects
 \code{"sans"}, \code{"serif"}, or \code{"mono"} for the most robust cross-device output.}
 }
 \value{
-A \code{leo_cox_mediation} object containing a display table in \verb{$result},
-a detailed mediation table in \verb{$result_detail} (also available as the
-backward-compatible alias \verb{$result_tidy}), an evaluation summary in
-\verb{$evaluation} (including the actual \code{mreg}/\code{yreg} used and \code{pm} stability
-flags), and fitted \code{regmedint} objects in \verb{$fit}.
+\code{leo_cox_mediation} object with \verb{$result}, \verb{$result_detail}, \verb{$evaluation}, \verb{$fit}.
 
 For \code{leo_cox_mediation()}, a \code{leo_cox_mediation} object containing a display table in \verb{$result}, a detailed mediation table in \verb{$result_detail}, an evaluation summary in \verb{$evaluation}, and fitted \code{regmedint} objects in \verb{$fit}. For \code{leo_cox_mediation_plot()}, an invisible \code{recordedplot} object after drawing the pathway figure on the active graphics device.
 }
@@ -131,24 +102,13 @@ For \code{leo_cox_mediation()}, a \code{leo_cox_mediation} object containing a d
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
 }
 \details{
-Performs causal mediation analysis for survival outcomes via
-\code{regmedint::regmedint()}. Two regression models are fit:
-\itemize{
-\item Mediator model (\code{mreg}): \code{x_med ~ x_exp + x_cov}
-\item Outcome model (\code{yreg}): \code{time ~ x_exp + x_med + x_cov} (+ \code{x_exp:x_med} if \code{interaction = TRUE})
-}
+Performs causal mediation analysis for survival outcomes via \code{regmedint::regmedint()}.
+Fits mediator model \code{x_med ~ x_exp + x_cov} and outcome model
+\code{time ~ x_exp + x_med + x_cov} (with optional \code{x_exp:x_med} interaction).
 
-When \code{yreg = "auto"} (default), Cox model (\code{"survCox"}) is used for rare
-outcomes (event rate <= 10\%), and Weibull AFT (\code{"survAFT_weibull"}) for
-non-rare outcomes. Cox estimates are hazard ratios; AFT estimates are time
-ratios (>1 = longer survival).
-
-The exposure contrast \code{x_exp_a0 -> x_exp_a1} defines the change in \code{x_exp}
-for which mediation effects are computed. For continuous \code{x_exp}, both
-\code{x_exp_a0} and \code{x_exp_a1} must be specified.
-
-Returns mediation effects (CDE, NDE, NIE, total effect, proportion mediated)
-in \verb{$result}, plus fitted models in \verb{$fit}.
+\code{yreg = "auto"} uses the observed event proportion in the post-filter,
+complete-case analysis set: Cox for rare outcomes (<=10\% events), AFT otherwise.
+This 10\% threshold is an empirical rare-event approximation rule.
 
 \code{leo_cox_mediation_plot()} turns a \code{leo_cox_mediation} result into a compact
 pathway figure for a selected model. The plot keeps all annotation text on a
@@ -156,16 +116,18 @@ shared vertical center axis, uses equal-sized boxes, and draws only straight
 arrows between the exposure, mediator, and outcome nodes.
 }
 \examples{
-# Basic usage: binary exposure, continuous mediator, rare outcome
 if (requireNamespace("regmedint", quietly = TRUE)) {
   set.seed(123)
   n <- 200
+  age <- rnorm(n, 60, 8)
+  exposure <- rbinom(n, 1, 0.5)
+  mediator <- rnorm(n, 0.6 * exposure + 0.02 * (age - 60), 1)
+  time_event <- rexp(n, rate = exp(-5.8 + 0.55 * exposure + 0.20 * mediator + 0.02 * (age - 60)))
+  time_censor <- rexp(n, rate = 0.08)
   med_df <- data.frame(
-    outcome = rbinom(n, 1, 0.08),
-    outcome_censor = rexp(n, rate = 0.1),
-    exposure = rbinom(n, 1, 0.5),
-    mediator = rnorm(n),
-    age = rnorm(n, 60, 8)
+    outcome = as.integer(time_event <= time_censor),
+    outcome_censor = pmax(pmin(time_event, time_censor), 0.1),
+    exposure = exposure, mediator = mediator, age = age
   )
   res_med <- leo_cox_mediation(
     df = med_df, y_out = c("outcome", "outcome_censor"),
@@ -173,39 +135,38 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
     verbose = FALSE
   )
   res_med$result
-  res_med$evaluation[, c("mreg", "yreg", "interaction")]
 }
 
-# Continuous exposure: must specify x_exp_a0 and x_exp_a1
+# Continuous exposure requires x_exp_a0 and x_exp_a1
 if (requireNamespace("regmedint", quietly = TRUE)) {
   set.seed(123)
   n <- 200
   cont_df <- data.frame(
     outcome = rbinom(n, 1, 0.06),
-    outcome_censor = rexp(n, rate = 0.1),
-    exposure = rnorm(n, 0, 1),  # continuous exposure
-    mediator = rnorm(n),
-    age = rnorm(n, 60, 8)
+    outcome_censor = rexp(n, 0.1),
+    exposure = rnorm(n), mediator = rnorm(n), age = rnorm(n, 60, 8)
   )
   res_cont <- leo_cox_mediation(
     df = cont_df, y_out = c("outcome", "outcome_censor"),
     x_exp = "exposure", x_med = "mediator", x_cov = "age",
-    x_exp_a0 = -1, x_exp_a1 = 1,  # contrast: -1 SD vs +1 SD
-    mreg = "linear",
-    verbose = FALSE
+    x_exp_a0 = -1, x_exp_a1 = 1, verbose = FALSE
   )
   res_cont$result
-  res_cont$evaluation[, c("mreg", "yreg")]
 }
 if (requireNamespace("regmedint", quietly = TRUE)) {
   set.seed(123)
   n <- 200
+  age <- rnorm(n, 60, 8)
+  exposure_num <- rbinom(n, 1, 0.5)
+  mediator_num <- rbinom(n, 1, plogis(-0.4 + 0.9 * exposure_num + 0.02 * (age - 60)))
+  time_event <- rexp(n, rate = exp(-5.8 + 0.55 * exposure_num + 0.45 * mediator_num + 0.02 * (age - 60)))
+  time_censor <- rexp(n, rate = 0.08)
   med_df <- data.frame(
-    outcome = rbinom(n, 1, 0.08),
-    outcome_censor = rexp(n, rate = 0.1),
-    exposure = factor(rbinom(n, 1, 0.5), levels = c(0, 1), labels = c("Low risk", "High risk")),
-    mediator = factor(rbinom(n, 1, 0.4), levels = c(0, 1), labels = c("Low inflammation", "High inflammation")),
-    age = rnorm(n, 60, 8)
+    outcome = as.integer(time_event <= time_censor),
+    outcome_censor = pmax(pmin(time_event, time_censor), 0.1),
+    exposure = factor(exposure_num, levels = c(0, 1), labels = c("Low risk", "High risk")),
+    mediator = factor(mediator_num, levels = c(0, 1), labels = c("Low inflammation", "High inflammation")),
+    age = age
   )
   res_med <- leo_cox_mediation(
     df = med_df, y_out = c("outcome", "outcome_censor"),

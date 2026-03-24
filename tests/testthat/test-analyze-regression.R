@@ -111,6 +111,29 @@ make_mediation_pm_unstable_df <- function() {
   )
 }
 
+make_mediation_character_df <- function() {
+  set.seed(20260331)
+  n <- 320
+  age <- rnorm(n, 60, 8)
+  exposure_chr <- rep(c("Unexposed", "Exposed"), length.out = n)
+  exposure_num <- as.integer(exposure_chr == "Exposed")
+  mediator_chr <- ifelse(
+    rbinom(n, 1, plogis(-0.6 + 1.0 * exposure_num + 0.02 * (age - 60))) == 1,
+    "High",
+    "Low"
+  )
+  hazard_rate <- exp(-5.7 + 0.8 * exposure_num + 0.7 * (mediator_chr == "High") + 0.015 * (age - 60))
+  event_time <- rexp(n, rate = hazard_rate)
+  censor_time <- rexp(n, rate = 0.08)
+  data.frame(
+    outcome = as.integer(event_time <= censor_time),
+    outcome_censor = pmax(pmin(event_time, censor_time), 0.1),
+    exposure = exposure_chr,
+    mediator = mediator_chr,
+    age = age
+  )
+}
+
 make_add_interaction_df <- function() {
   set.seed(20260323)
   n <- 400
@@ -400,6 +423,66 @@ test_that("leo_cox_subgroup propagates custom event_value into nested subgroup f
   expect_false("P for heterogeneity" %in% names(res$result))
 })
 
+test_that(".prepare_cox_regression_data parses factor follow-up times by their displayed numeric values", {
+  df <- data.frame(
+    outcome = c(1, 0, 1, 0),
+    outcome_censor = factor(c("10", "20", "30", "40")),
+    exposure = c(0.3, -0.2, 0.8, -0.4)
+  )
+
+  prep <- leo.ukb:::.prepare_cox_regression_data(
+    df = df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    verbose = FALSE
+  )
+
+  expect_equal(prep$data$time, c(10, 20, 30, 40))
+})
+
+test_that(".prepare_cox_regression_data maps logical events to TRUE/FALSE by default and rejects unmatched factor labels", {
+  logical_df <- data.frame(
+    outcome = c(TRUE, FALSE, TRUE, FALSE),
+    outcome_censor = c(5, 7, 9, 11),
+    exposure = c(0.2, -0.1, 0.4, -0.3)
+  )
+
+  logical_prep <- leo.ukb:::.prepare_cox_regression_data(
+    df = logical_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    verbose = FALSE
+  )
+
+  expect_equal(logical_prep$data$event, c(1L, 0L, 1L, 0L))
+
+  factor_df <- data.frame(
+    outcome = factor(c("Case", "Control", "Case", "Control")),
+    outcome_censor = c(5, 7, 9, 11),
+    exposure = c(0.2, -0.1, 0.4, -0.3)
+  )
+
+  expect_error(
+    leo.ukb:::.prepare_cox_regression_data(
+      df = factor_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      verbose = FALSE
+    ),
+    "Please set event_value explicitly"
+  )
+
+  factor_prep <- leo.ukb:::.prepare_cox_regression_data(
+    df = factor_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    event_value = "Case",
+    verbose = FALSE
+  )
+
+  expect_equal(factor_prep$data$event, c(1L, 0L, 1L, 0L))
+})
+
 test_that("leo_cox_subgroup supports multiple subgroup variables and retains interaction output", {
   lung_df <- make_lung_cox_df()
   model <- list("Crude" = NULL, "Model A" = c("ecog_group"))
@@ -603,7 +686,7 @@ test_that("leo_cox_mediation requests explicit x_cov_cond for non-numeric covari
 
   expect_error(
     leo_cox_mediation(
-      df = med_df,
+      df = make_mediation_df(),
       y_out = c("outcome", "outcome_censor"),
       x_exp = "exposure",
       x_med = "mediator",
@@ -645,7 +728,8 @@ test_that("leo_cox_mediation keeps readable labels and detailed outputs", {
   )
 
   expect_true(all(res$result$`Exposure contrast` == "No -> Yes"))
-  expect_true(all(res$result$`Mediator reference` == "High"))
+  expect_identical(unique(stats::na.omit(res$result$`Mediator reference`)), "High")
+  expect_true(all(is.na(res$result$`Mediator reference`[res$result$`Effect code` != "cde"])))
   expect_true(all(c("result", "result_detail", "result_tidy", "evaluation", "fit") %in% names(res)))
   expect_identical(res$result_detail, res$result_tidy)
   expect_true(all(c("exposure_contrast", "mediator_reference", "x_exp_a0", "x_exp_a1", "x_med_cde", "x_cov_cond") %in% names(res$evaluation)))
@@ -707,7 +791,130 @@ test_that("leo_cox_mediation accepts factor-level inputs for x_exp_a0, x_exp_a1,
   )
 
   expect_true(all(res$result$`Exposure contrast` == "No -> Yes"))
-  expect_true(all(res$result$`Mediator reference` == "High"))
+  expect_identical(unique(stats::na.omit(res$result$`Mediator reference`)), "High")
+  expect_true(all(is.na(res$result$`Mediator reference`[res$result$`Effect code` != "cde"])))
+  expect_true(all(res$result_detail$x_exp_a0 == 0))
+  expect_true(all(res$result_detail$x_exp_a1 == 1))
+  expect_true(all(res$result_detail$x_med_cde == 1))
+})
+
+test_that("leo_cox_mediation requires both x_exp_a0 and x_exp_a1 when overriding a binary factor exposure contrast", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_rare_df()
+
+  expect_error(
+    leo_cox_mediation(
+      df = med_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      x_med = "mediator",
+      x_cov = "age",
+      x_exp_a0 = "No",
+      verbose = FALSE
+    ),
+    "Please provide both x_exp_a0 and x_exp_a1 together"
+  )
+})
+
+test_that("leo_cox_mediation keeps numeric binary mediator ordering stable under auto logistic detection", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_rare_df()
+  med_df$mediator_num <- ifelse(med_df$mediator == "High", 1, 0)
+  med_df <- med_df[order(-med_df$mediator_num), , drop = FALSE]
+
+  res <- leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator_num",
+    x_cov = "age",
+    verbose = FALSE
+  )
+
+  expect_identical(unique(stats::na.omit(res$result$`Mediator reference`)), "1")
+  expect_identical(unique(res$result$`Mediator model`), "logistic")
+})
+
+test_that("leo_cox_mediation rejects multi-value evaluation settings instead of silently truncating them", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_rare_df()
+
+  expect_error(
+    leo_cox_mediation(
+      df = med_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      x_med = "mediator",
+      x_cov = "age",
+      x_exp_a0 = c("No", "Yes"),
+      x_exp_a1 = "Yes",
+      verbose = FALSE
+    ),
+    "x_exp_a0 must be a single non-missing value"
+  )
+
+  expect_error(
+    leo_cox_mediation(
+      df = med_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      x_med = "mediator",
+      x_cov = "age",
+      x_med_cde = c("High", "Low"),
+      verbose = FALSE
+    ),
+    "x_med_cde must be a single non-missing value"
+  )
+
+  expect_error(
+    leo_cox_mediation(
+      df = make_mediation_df(),
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      x_med = "mediator",
+      x_cov = "smoking",
+      x_cov_cond = list(smoking = c("Never", "Ever")),
+      verbose = FALSE
+    ),
+    "x_cov_cond value for smoking must be a single non-missing value"
+  )
+})
+
+test_that("leo_cox_mediation requires explicit evaluation values for binary character exposure and mediator inputs", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_character_df()
+
+  expect_error(
+    leo_cox_mediation(
+      df = med_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      x_med = "mediator",
+      x_cov = "age",
+      verbose = FALSE
+    ),
+    "Please explicitly specify x_exp_a0"
+  )
+})
+
+test_that("leo_cox_mediation accepts explicit character evaluation values when x_exp and x_med are character", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_character_df()
+
+  res <- leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator",
+    x_cov = "age",
+    x_exp_a0 = "Unexposed",
+    x_exp_a1 = "Exposed",
+    x_med_cde = "High",
+    verbose = FALSE
+  )
+
+  expect_identical(res$evaluation$exposure_contrast, "Unexposed -> Exposed")
+  expect_identical(res$evaluation$mediator_reference, "High")
   expect_true(all(res$result_detail$x_exp_a0 == 0))
   expect_true(all(res$result_detail$x_exp_a1 == 1))
   expect_true(all(res$result_detail$x_med_cde == 1))
@@ -893,6 +1100,37 @@ test_that("pkgdown build script checks the current Step 3.0 and Step 3.1 article
   expect_match(script_text, "survival-analysis-step3-1-zh\\.html")
   expect_false(grepl("Survival Analysis Step 3: Mediation Analysis", script_text, fixed = TRUE))
   expect_false(grepl("生存分析 Step 3：中介分析", script_text, fixed = TRUE))
+})
+
+test_that("Step 3.0 tutorials use event-time simulation and inline-derived interpretation", {
+  vignette_en <- testthat::test_path("..", "..", "vignettes", "survival-analysis-step3.Rmd")
+  vignette_zh <- testthat::test_path("..", "..", "vignettes", "survival-analysis-step3-zh.Rmd")
+  if (!file.exists(vignette_en) || !file.exists(vignette_zh)) testthat::skip("Step 3.0 vignette sources are not installed in the built package.")
+  text_en <- paste(readLines(vignette_en, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+  text_zh <- paste(readLines(vignette_zh, warn = FALSE, encoding = "UTF-8"), collapse = "\n")
+
+  expect_match(text_en, "hazard_rate <- exp\\(")
+  expect_match(text_en, "event_time <- rexp\\(")
+  expect_match(text_en, "outcome = as.integer\\(event_time <= censor_time\\)")
+  expect_false(grepl("outcome = rbinom", text_en, fixed = TRUE))
+  expect_false(grepl("te = 1.234", text_en, fixed = TRUE))
+  expect_false(grepl("tnie = 1.019", text_en, fixed = TRUE))
+  expect_false(grepl("9.7%", text_en, fixed = TRUE))
+
+  expect_match(text_zh, "hazard_rate <- exp\\(")
+  expect_match(text_zh, "event_time <- rexp\\(")
+  expect_match(text_zh, "outcome = as.integer\\(event_time <= censor_time\\)")
+  expect_false(grepl("outcome = rbinom", text_zh, fixed = TRUE))
+  expect_false(grepl("te = 1.234", text_zh, fixed = TRUE))
+  expect_false(grepl("tnie = 1.019", text_zh, fixed = TRUE))
+  expect_false(grepl("9.7%", text_zh, fixed = TRUE))
+
+  expect_true(grepl("Compare the built-in journal palettes", text_en, fixed = TRUE))
+  expect_true(grepl("内置期刊风格配色示例", text_zh, fixed = TRUE))
+  for (pal in c("jama", "jco", "lancet", "nejm")) {
+    expect_true(grepl(paste0("\"", pal, "\""), text_en, fixed = TRUE))
+    expect_true(grepl(paste0("\"", pal, "\""), text_zh, fixed = TRUE))
+  }
 })
 
 test_that("leo_cox_mediation auto mode still rejects multi-level categorical mediators", {

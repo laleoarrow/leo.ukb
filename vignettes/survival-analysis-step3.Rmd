@@ -67,8 +67,9 @@ settings parallel:
 - `yreg` controls the outcome model, i.e. `time ~ x_exp + x_med + x_cov`
 - when `interaction = TRUE`, the outcome model becomes `time ~ x_exp + x_med + x_exp:x_med + x_cov`
 
-By default, `yreg = "auto"` chooses `survCox` when the observed event
-proportion is at most 10%, and `survAFT_weibull` otherwise.
+By default, `yreg = "auto"` uses the observed event proportion in the
+post-filter, complete-case analysis set: `survCox` when that rate is at most
+10%, and `survAFT_weibull` otherwise.
 
 The current package workflow is most appropriate when:
 
@@ -99,11 +100,13 @@ bmi <- rnorm(n, 26, 4)
 smoking <- factor(sample(c("Never", "Ever"), n, replace = TRUE))
 exposure_num <- rbinom(n, 1, plogis(-0.2 + 0.02 * (age - 60)))
 mediator_num <- rbinom(n, 1, plogis(-0.5 + 0.9 * exposure_num + 0.02 * (bmi - 26)))
-event_prob <- plogis(-3.1 + 0.55 * exposure_num + 0.40 * mediator_num + 0.02 * (age - 60))
+hazard_rate <- exp(-5.8 + 0.55 * exposure_num + 0.40 * mediator_num + 0.02 * (age - 60) + 0.03 * (bmi - 26) + 0.20 * (smoking == "Ever"))
+event_time <- rexp(n, rate = hazard_rate)
+censor_time <- rexp(n, rate = 0.08)
 
 med_df <- data.frame(
-  outcome = rbinom(n, 1, event_prob),
-  outcome_censor = rexp(n, rate = 0.08) + 0.2,
+  outcome = as.integer(event_time <= censor_time),
+  outcome_censor = pmax(pmin(event_time, censor_time), 0.2),
   exposure = factor(exposure_num, levels = c(0, 1), labels = c("Low risk", "High risk")),
   mediator = factor(mediator_num, levels = c(0, 1), labels = c("Low inflammation", "High inflammation")),
   age = age,
@@ -134,8 +137,8 @@ data.frame(
 
 This quick check already tells us three useful things:
 
-- the sample size is 500, with 46 observed events
-- the event rate is 9.2%, so `yreg = "auto"` will keep this teaching example
+- the sample size is `r nrow(med_df)`, with `r sum(med_df$outcome)` observed events
+- the event rate is `r sprintf("%.1f%%", 100 * mean(med_df$outcome))`, so `yreg = "auto"` will keep this teaching example
   on the `survCox` path
 - the `High risk` group has more participants in the `High inflammation`
   category, which is exactly the kind of pathway pattern mediation analysis is
@@ -172,8 +175,9 @@ The mediation output is already organized in a paper-friendly way.
 - `Effect` gives the full label
 - `Scale` reminds you that `pm` is a proportion, while the other mediation
   effects are reported as hazard ratios for `survCox` or time ratios for AFT
-- `Exposure contrast` and `Mediator reference` show exactly where the effects
-  were evaluated
+- `Exposure contrast` shows the `x_exp_a0 -> x_exp_a1` comparison used for all
+  rows, while `Mediator reference` is populated for the `cde` row and echoed in
+  `$evaluation` for audit
 - `Mediator model` and `Outcome model` show the final `mreg` and `yreg` used
 
 This last point is important: mediation estimates are conditional on the chosen
@@ -198,6 +202,15 @@ In other words, `x_exp_a0`, `x_exp_a1`, `x_med_cde`, and `x_cov_cond` define
 **where** the direct and indirect effects are evaluated, while `mreg`, `yreg`, and `interaction`
 define **which models** are used to obtain that decomposition.
 
+For a binary factor exposure, either keep the default `x_exp_a0 -> x_exp_a1`
+contrast implied by the factor levels, or specify `x_exp_a0` and `x_exp_a1`
+together. Overriding only one side of the contrast is not allowed.
+
+For accuracy, if `x_exp` or a binary `x_med` is stored as plain character
+rather than factor, do not rely on implicit ordering. Supply
+`x_exp_a0`/`x_exp_a1` and `x_med_cde` explicitly, or convert the variable to a
+factor with scientifically chosen levels first.
+
 The `interaction` argument is about the `x_exp:x_med` term inside the outcome
 model. It is not a subgroup analysis. It asks whether the effect of `x_exp` on
 the outcome changes across levels of `x_med`, or equivalently whether the effect
@@ -208,8 +221,8 @@ of `x_med` on the outcome changes across `x_exp`.
 The current `leo.ukb` rule is:
 
 - binary factor / character / logical mediator -> `logistic`
-- two-valued numeric mediator -> `logistic`
-- numeric mediator with more than two observed values -> `linear`
+- two-valued integer-like numeric mediator such as `0/1` -> `logistic`
+- numeric mediator with more than two observed values, or with non-integer two-value coding such as `0.2/0.8` -> `linear`
 - multi-level categorical mediator stored as factor -> not currently supported
 
 This is usually the safest workflow for applied cohort studies:
@@ -269,12 +282,16 @@ te_row <- dplyr::filter(key_rows, `Effect code` == "te")
 tnie_row <- dplyr::filter(key_rows, `Effect code` == "tnie")
 pm_row <- dplyr::filter(key_rows, `Effect code` == "pm")
 pm_ci <- as.numeric(trimws(strsplit(pm_row$`95% CI`, ",", fixed = TRUE)[[1]]))
+ratio_label <- if (te_row$`Outcome model` == "survCox") "HR" else "TR"
+ratio_noun <- if (te_row$`Outcome model` == "survCox") "hazard" else "time"
+te_pct <- 100 * (te_row$Estimate - 1)
+pm_pct <- 100 * pm_row$Estimate
 
 data.frame(
   Quantity = c("Total effect", "Indirect effect through inflammation", "Proportion mediated"),
   `Model B summary` = c(
-    sprintf("HR %.3f (%s)", te_row$Estimate, te_row$`95% CI`),
-    sprintf("HR %.3f (%s)", tnie_row$Estimate, tnie_row$`95% CI`),
+    sprintf("%s %.3f (%s)", ratio_label, te_row$Estimate, te_row$`95% CI`),
+    sprintf("%s %.3f (%s)", ratio_label, tnie_row$Estimate, tnie_row$`95% CI`),
     sprintf("%.1f%% (%.1f%% to %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2])
   )
 )
@@ -287,13 +304,15 @@ high-event-rate example, the same table would instead show time ratios.
 In this synthetic example, a paper-style reading would be:
 
 - after adjustment for age and BMI, the `High risk` group shows an overall
-  hazard that is about 23.4% higher than the `Low risk` group (`te = 1.234`)
+  `r ratio_noun` ratio that is about `r sprintf("%.1f", te_pct)`%
+  `r if (te_pct >= 0) "higher" else "lower"` than the `Low risk` group
+  (`te = `r sprintf("%.3f", te_row$Estimate)``)
 - the inflammation pathway contributes only a modest indirect effect
-  (`tnie = 1.019`), corresponding to a small upward shift on the hazard-ratio
-  scale
-- the point estimate for the proportion mediated is 9.7%, which suggests that
-  roughly one tenth of the total association could be operating through the
-  inflammation pathway in this toy example
+  (`tnie = `r sprintf("%.3f", tnie_row$Estimate)``), corresponding to only a
+  small shift on the `r ratio_label` scale
+- the point estimate for the proportion mediated is `r sprintf("%.1f%%", pm_pct)`,
+  which suggests that part of the total association could be operating through
+  the inflammation pathway in this toy example
 
 The uncertainty, however, is still substantial. Because the confidence interval
 for `pm` is wide and crosses zero, the scientifically careful interpretation is
@@ -306,10 +325,11 @@ If you wanted to write this as a concise Results-style sentence, one reasonable
 version would be:
 
 > After adjustment for age and BMI, `High risk` was associated with a higher
-> incident hazard (`te = 1.234`), while the indirect pathway through
-> inflammation was modest (`tnie = 1.019`). The estimated proportion mediated
-> was 9.7%, suggesting possible but uncertain partial mediation through
-> inflammation.
+> incident `r ratio_noun` ratio (`te = `r sprintf("%.3f", te_row$Estimate)``),
+> while the indirect pathway through inflammation was modest
+> (`tnie = `r sprintf("%.3f", tnie_row$Estimate)``). The estimated proportion
+> mediated was `r sprintf("%.1f%%", pm_pct)`, suggesting possible but uncertain
+> partial mediation through inflammation.
 
 # Add a paper-style pathway figure
 
@@ -344,6 +364,25 @@ One subtle but important point is that the mediated pathway here is the full
 coefficient because `regmedint` reports causal decomposition quantities such as
 `tnie`, `pnde`, and `te`, rather than a simple product of two regression
 coefficients.
+
+# Compare the built-in journal palettes
+
+The same fitted result can be displayed with several built-in journal-style
+palettes.
+
+```{r, fig.width = 10, fig.height = 9, fig.show = "hold", out.width = "49%", dev.args = list(bg = "white")}
+for (pal in c("jama", "jco", "lancet", "nejm")) {
+  leo_cox_mediation_plot(
+    x = res_med,
+    model = "Model B",
+    exposure_label = "Metabolic\nrisk",
+    mediator_label = "Inflammation",
+    outcome_label = "Incident\noutcome",
+    language = "en",
+    palette = pal
+  )
+}
+```
 
 # Inspect the evaluation settings directly
 
@@ -422,8 +461,8 @@ res_med_cont <- leo_cox_mediation(
 res_med_cont$result
 ```
 
-For a continuous mediator, the reference value in the table is numeric because
-the controlled direct effect is evaluated at `x_med_cde`.
+For a continuous mediator, the `cde` row shows a numeric mediator reference
+because the controlled direct effect is evaluated at `x_med_cde`.
 
 This is also the pattern we would usually recommend for an ordered score-like
 mediator. For example, if a low-grade inflammation index ranges from `-7` to

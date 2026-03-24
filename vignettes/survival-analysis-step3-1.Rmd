@@ -143,9 +143,10 @@ data.frame(
 )
 ```
 
-The rare-outcome case will let `yreg = "auto"` stay on `survCox`. The
-common-outcome case is deliberately built to push the same scientific question
-onto the AFT path.
+The rare-outcome case will let `yreg = "auto"` stay on `survCox`, because the
+post-filter, complete-case analysis set still has an event rate at or below
+10%. The common-outcome case is deliberately built to push the same scientific
+question onto the AFT path.
 
 ## Case 1. A graded biomarker mediator in a rare-outcome setting
 
@@ -278,6 +279,10 @@ In this fitted example:
 - the total effect was `r fmt_num(case1_te$Estimate[1])` (`r case1_te_ci`), meaning the higher-risk group had a substantially higher incident hazard overall
 - the indirect pathway through the continuous inflammation score was `r fmt_num(case1_tnie$Estimate[1])` (`r case1_tnie_ci`), so the mediator pathway itself still points in the same harmful direction
 - the estimated proportion mediated was `r fmt_pct(case1_pm$Estimate[1])` (`r case1_pm_ci`), suggesting that inflammation may explain a sizeable share of the total association in this synthetic cohort
+
+Here the `pm` confidence interval stays above `0`, so this particular simulated
+example is more consistent with a positive mediated share than with a null
+mediated contribution.
 
 Scientifically, that is the pattern we would describe as:
 

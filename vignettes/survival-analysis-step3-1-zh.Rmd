@@ -141,8 +141,9 @@ data.frame(
 )
 ```
 
-其中稀有结局场景会让 `yreg = "auto"` 继续走 `survCox`；常见结局
-场景则是故意让同一条科学问题切换到 AFT 路线。
+其中稀有结局场景会让 `yreg = "auto"` 继续走 `survCox`，因为过滤并完成
+complete-case 之后的分析集事件率仍不超过 10%；常见结局场景则是故意让
+同一条科学问题切换到 AFT 路线。
 
 ## 案例 1：把炎症当作连续生物标志物
 
@@ -261,13 +262,15 @@ ggplot2::ggplot(
 dplyr::filter(res_case1$result, `Effect code` %in% c("te", "tnie", "pm"))
 ```
 
-因为这是稀有结局场景，所以这里的比值尺度应读作风险比。
+因为这是稀有结局场景，所以这里的比值尺度应读作危险比（hazard ratio）。
 
 对这个拟合结果，更稳妥的人话解读是：
 
 - 总效应 `te = `r fmt_num(case1_te$Estimate[1])``（`r case1_te_ci`）提示较高风险组总体事件瞬时风险更高
 - 通过连续炎症评分这条路径的间接效应 `tnie = `r fmt_num(case1_tnie$Estimate[1])``（`r case1_tnie_ci`）也指向同方向风险升高
 - 中介比例 `pm = `r fmt_pct(case1_pm$Estimate[1])``（`r case1_pm_ci`）说明在这个模拟队列里，炎症可能解释了总关联中相当可观的一部分
+
+这里 `pm` 的置信区间整体仍在 `0` 以上，因此这个模拟示例更接近“存在正向中介占比”的模式，而不是“中介比例可能为 0”的不确定场景。
 
 更接近论文语言的一句话可以写成：
 
