@@ -47,7 +47,7 @@ jobs:
 
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          extra-packages: any::devtools, any::remotes, any::regmedint, local::.
+          extra-packages: any::devtools, any::remotes, any::regmedint, any::interactionR, local::.
           needs: website
           dependencies: '"hard"'
 
