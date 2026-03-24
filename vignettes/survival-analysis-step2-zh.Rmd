@@ -1,6 +1,6 @@
 ---
 title: "生存分析 Step 2：亚组分析与交互效应"
-description: "学习生存结局的亚组分析、交互效应与异质性解释。"
+description: "学习生存结局中亚组分析、乘性交互和加性交互的选择、运行与解读。"
 output:
   rmarkdown::html_vignette:
     highlight: default
@@ -24,28 +24,25 @@ suppressPackageStartupMessages(library(leo.ukb))
 
 # 这一步要解决什么问题
 
-这篇教程是 `leo.ukb` 生存分析部分的第二步。  
-主 Cox 分析之后，一个非常常见的问题是：
+这篇教程是 `leo.ukb` 生存分析部分的第二步。主 Cox 分析之后，最常见的
+下一个问题通常是：
 
-> exposure 的效应，会不会在不同人群里不一样？
+> exposure 和结局的关联，会不会在不同人群中表现得不一样？如果不一样，
+> 是在哪个尺度上不一样？
 
-这时才进入亚组分析和交互效应分析。
+这个问题实际上会对应三类相关但不同的输出：
 
-# 先把两个问题分清楚
+1. 正式的乘性交互检验
+2. 用来展示各层 HR 模式的 subgroup 表
+3. 用于 binary-binary 对比的加性交互结果
 
-亚组分析和交互分析有关联，但它们回答的不是同一个问题。
+Step 2 的重点不是把这三者混在一起，而是学会什么时候该用哪一个、结果
+该怎么读。
 
-- `leo_cox_subgroup()` 问的是：每个 subgroup 里，HR 分别是多少？
-- `leo_cox_interaction()` 问的是：这些 subgroup 之间的效应，是否真的不同？
-  在当前 Cox 工作流里，这个检验对应的是 HR 尺度上的乘法交互。
+# 先看数据和变量角色
 
-这点在论文里非常重要。  
-“一个 subgroup 显著、另一个 subgroup 不显著” 并不等于  
-“两个 subgroup 之间存在显著差异”。
-
-# 继续用一个紧凑示例来教学
-
-这里继续使用 `survival::lung` 数据。
+这里继续使用 `survival::lung`，但这次我们会把数据框整理成更适合教学的
+结构，而不只是为了跑模型。
 
 ```{r}
 lung_df <- dplyr::transmute(
@@ -53,147 +50,367 @@ lung_df <- dplyr::transmute(
   outcome = as.integer(status == 2),
   outcome_censor = time / 365.25,
   age = age,
+  age_high = factor(
+    ifelse(age >= 65, "Older", "Younger"),
+    levels = c("Younger", "Older")
+  ),
   sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
-  ecog_group = factor(
-    ph.ecog,
-    levels = 0:3,
-    labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3")
+  ecog_group3 = factor(
+    dplyr::case_when(
+      ph.ecog == 0 ~ "ECOG0",
+      ph.ecog == 1 ~ "ECOG1",
+      ph.ecog >= 2 ~ "ECOG2plus",
+      TRUE ~ NA_character_
+    ),
+    levels = c("ECOG0", "ECOG1", "ECOG2plus")
+  ),
+  ecog_binary = factor(
+    ifelse(ph.ecog >= 2, "Poor", "Good"),
+    levels = c("Good", "Poor")
   )
-)
-
-cox_models <- list(
-  "Crude" = NULL,
-  "Model A" = c("ecog_group")
 )
 ```
 
-# 先做 interaction：这是正式的异质性检验
-
-当科学问题是“效应会不会因人群不同而变化”时，正式答案来自交互模型，
-不是来自各 subgroup P 值的肉眼比较。
+正式建模前，先像真实研究一样看变量角色和分布。
 
 ```{r}
-res_inter <- leo_cox_interaction(
+dplyr::glimpse(lung_df)
+```
+
+```{r}
+role_table <- data.frame(
+  Variable = c(
+    "outcome",
+    "outcome_censor",
+    "age",
+    "sex",
+    "ecog_group3",
+    "age_high",
+    "ecog_binary"
+  ),
+  Type = c(
+    "二分类事件指标",
+    "按年计的随访时间",
+    "连续 exposure",
+    "二分类 modifier",
+    "三分类 modifier",
+    "二分类年龄对比",
+    "二分类体能状态对比"
+  ),
+  Teaching_role = c(
+    "结局事件",
+    "结局时间",
+    "乘性交互示例中的主 exposure",
+    "乘性交互中的二分类 effect modifier",
+    "subgroup 展示中的多分类 modifier",
+    "加性交互教学用的年龄二分类变量",
+    "加性交互教学用的二分类体能状态变量"
+  )
+)
+
+knitr::kable(
+  role_table,
+  caption = "Step 2 教学数据中的变量角色"
+)
+```
+
+交互分析之前，最好还要看一下各组的事件数和 binary-binary 联合分布。
+
+```{r}
+knitr::kable(
+  dplyr::count(lung_df, ecog_group3, outcome),
+  caption = "多分类 subgroup 内的事件分布"
+)
+```
+
+```{r}
+knitr::kable(
+  dplyr::count(lung_df, age_high, ecog_binary),
+  caption = "加性交互教学示例中的四格分布"
+)
+```
+
+第二张表尤其重要，因为加性交互需要 binary-binary 结构，而且四个联合组
+都要有样本。
+
+# 建模前先决定你要回答哪个尺度上的问题
+
+最容易避免混乱的方法，是先决定科学问题，再决定函数。
+
+```{r}
+decision_table <- data.frame(
+  Goal = c(
+    "正式乘性交互检验",
+    "subgroup 展示",
+    "加性交互"
+  ),
+  Exposure_types = c(
+    "连续、二分类、多分类都可以",
+    "连续、二分类、多分类都可以",
+    "当前建议二分类"
+  ),
+  Modifier_types = c(
+    "连续、二分类、多分类都可以",
+    "二分类或多分类",
+    "当前建议二分类"
+  ),
+  Main_function = c(
+    "leo_cox_interaction()",
+    "leo_cox_subgroup()",
+    "leo_cox_add_interaction()"
+  ),
+  Main_question = c(
+    "效应是否在 HR 尺度上发生改变？",
+    "每一层内部的 HR 模式是什么？",
+    "联合效应是否超过相加预期？"
+  )
+)
+
+knitr::kable(
+  decision_table,
+  caption = "Step 2 里三类工具分别适合回答什么问题"
+)
+```
+
+可以把这张表记成一句话：
+
+- 乘性交互最通用
+- subgroup 表要求 modifier 是分类变量，因为它需要显式分层
+- 加性交互最严格，当前最适合 binary-binary 对比
+
+如果 modifier 是连续变量，`leo_cox_interaction()` 仍然可以做正式检验；
+但 `leo_cox_subgroup()` 通常要等你先定义一个有临床意义的分组之后才适合用。
+
+# 乘性交互：最通用的正式检验
+
+在 Cox 模型里，乘性交互问的是：
+
+> exposure 和结局的关联，会不会随着 modifier 不同而在 HR 尺度上改变？
+
+## 示例 1：连续 exposure × 二分类 modifier
+
+这里先问：`age` 和结局的关联，会不会因 `sex` 不同而改变？
+
+```{r}
+res_inter_sex <- leo_cox_interaction(
   df = lung_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "age",
   x_inter = "sex",
-  x_cov = cox_models,
+  x_cov = list(
+    "Crude" = NULL,
+    "Model A" = c("ecog_group3")
+  ),
   verbose = FALSE
 )
 
-res_inter$result
+res_inter_sex$result
 ```
 
 这张表要这样读：
 
+- `Exposure class = Continuous` 表明 `age` 被当成连续 exposure
+- `Interaction class = Binary` 表明 `sex` 是二分类 modifier
 - `P for interaction` 是正式的异质性检验
-- 在当前 Cox 分析里，它对应的是 hazard-ratio scale 上的乘法交互
-- `Interaction class` 会告诉你这个 effect modifier 是 binary、
-  多分类，还是连续变量
 
-如果 modifier 是连续变量，`leo_cox_interaction()` 仍然可以做正式检验；
-但除非你先把它分成有临床意义的组，否则不适合直接做 subgroup 表。
+在这个教学示例里，校正后的 `P for interaction = 0.18`，说明**没有清楚证据**
+支持 `age` 的效应因 `sex` 不同而在乘法 HR 尺度上发生变化。
 
-# 再做 subgroup：把每层内部的 HR 展示出来
+这并不等于“什么都没有”，而是表示：
 
-正式 interaction 做完以后，通常还需要把各层 HR 展示出来。
+> 当前数据没有足够强的证据支持 sex 对 age 效应存在乘性交互。
+
+## 示例 2：连续 exposure × 多分类 modifier
+
+同一个函数也可以处理多分类 modifier。
 
 ```{r}
-res_sub <- leo_cox_subgroup(
+res_inter_ecog <- leo_cox_interaction(
   df = lung_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "age",
-  x_subgroup = c("sex", "ecog_group"),
+  x_inter = "ecog_group3",
   x_cov = list("Crude" = NULL),
   verbose = FALSE
 )
 
-utils::head(res_sub$result, 8)
+res_inter_ecog$result
 ```
 
-这张 subgroup 表适合直接放进文章主表或补充表：
+这里 modifier 是三分类变量，`P for interaction = 0.037`。  
+这表示：
 
-- 每一行对应一个 subgroup level 和一个 model
-- 直接给 subgroup 内部的 `HR`、`95% CI`、`P value`
-- 同时附上对应的 `P for interaction`
+> `age` 和结局的关联，在不同 ECOG 组之间似乎并不完全一样，
+> 至少在乘法 HR 尺度上存在异质性证据。
 
-# 这两张表应该怎么一起解读
+既然 modifier 是分类变量，下一步就很自然进入 subgroup 展示。
 
-最清楚的逻辑是：
+# subgroup 分析：在正式检验之后展示 HR 模式
 
-1. 先用 `leo_cox_interaction()` 判断是否存在正式的效应修饰
-2. 再用 `leo_cox_subgroup()` 展示各 subgroup 内部的 HR 模式
+`leo_cox_subgroup()` 不是用来替代 interaction test 的。  
+它更像是正式检验之后的展示层，用来回答：
 
-实务上可以记住一句话：
-
-- `P for interaction` 是主异质性证据
-- subgroup HR 用来描述各层里效应方向和大小
-
-所以，亚组分析不应该被简化成“这一组显著，另一组不显著”。
-
-# 在论文里应该怎么表述
-
-更稳妥的写法顺序是：
-
-1. 先说明正式 interaction test 是否支持异质性
-2. 再描述 subgroup-specific HR 的方向和大小
-
-例如可以写成：
-
-> age 与结局的关联在不同 sex 间存在差异（`P for interaction = ...`）。
-> 在亚组分析中，该关联在 ... 组更强，在 ... 组较弱。
-
-这样能把正式检验和描述性结果区分清楚。
-
-# subgroup 变量为什么最好是分类变量
-
-`leo_cox_subgroup()` 的设计前提是 subgroup 变量本身是分类变量。
-
-- 二分类变量很自然，比如 `sex`
-- 多分类变量也可以，比如 `ecog_group`
-- 连续变量更适合先进入 `leo_cox_interaction()` 做正式交互检验
-
-如果 modifier 是连续变量，通常有两条路：
-
-1. 保持连续，只做 formal interaction test
-2. 先按临床意义分组，再做 subgroup analysis
-
-关键不是哪种更方便，而是哪种更符合你的科学问题。
-
-# 可选的 heterogeneity P
-
-默认情况下，`leo_cox_subgroup()` 会附上 `P for interaction`。  
-对大多数 cohort 的 Cox subgroup 表来说，这已经是主异质性信息了。
-
-如果需要，也可以额外加 `P for heterogeneity`：
+> 每一层内部的 HR 到底长什么样？
 
 ```{r}
-res_sub_hetero <- leo_cox_subgroup(
+res_sub_ecog <- leo_cox_subgroup(
   df = lung_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "age",
-  x_subgroup = "sex",
+  x_subgroup = "ecog_group3",
   x_cov = list("Crude" = NULL),
-  add_heterogeneity = TRUE,
   verbose = FALSE
 )
 
-res_sub_hetero$result
+res_sub_ecog$result
 ```
 
-但在 cohort 论文里，更建议把它当成补充信息，而不是主要决策依据。
+这张表告诉我们的描述性模式是：
+
+- 在 `ECOG0` 组中，`age` 每增加 1 岁，HR 为 `1.059`
+- 在 `ECOG1` 组中，HR 接近于 `1.004`
+- 在 `ECOG2plus` 组中，HR 也接近于 `0.994`
+- 同时表里附的 `P for interaction = 0.037` 提醒我们：
+  这些 subgroup HR 要放在正式 interaction test 的背景下解读
+
+所以更稳妥的论文表述应当是：
+
+> `age` 与结局的关联在不同 ECOG 组之间存在差异（`P for interaction = 0.037`）。
+> 在 subgroup 分析中，该关联在 `ECOG0` 组更强，而在 `ECOG1` 和
+> `ECOG2plus` 中更接近于零效应。
+
+这比“一个 subgroup 显著、另一个不显著”要科学得多。
+
+# 加性交互：回答的是另一类问题
+
+乘性交互和加性交互不是一回事。  
+加性交互问的是：
+
+> 两个 binary 因素一起出现时，它们的联合效应是否超过相加预期？
+
+这也是为什么当前教学工作流里，加性交互最适合 binary-binary。
+
+这里我们用：
+
+- `ecog_binary`：Poor vs Good
+- `age_high`：Older vs Younger
+
+注意：这里把 `age` 二分类，只是为了教学加性交互。  
+真实研究中，这类 cutpoint 应该在分析前基于临床意义预先定义，而不是为了
+让函数能跑才临时分组。
+
+```{r}
+res_add <- leo_cox_add_interaction(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "ecog_binary",
+  x_inter = "age_high",
+  x_cov = list("Crude" = NULL),
+  verbose = FALSE
+)
+
+res_add$result
+```
+
+这张表可以分层来读。
+
+先看结构列：
+
+- `Reference group`：哪一个联合组被当成参考组
+- `Recode applied`：函数是否为了更清楚的参考结构做了内部重编码
+
+再看核心指标：
+
+- `Multiplicative interaction`：乘法尺度上的交互
+- `RERI`：relative excess risk due to interaction
+- `AP`：attributable proportion due to interaction
+- `S`：synergy index
+
+这些指标的零值或无交互值并不一样：
+
+- `Multiplicative interaction` 的无交互值是 `1`
+- `RERI` 的无交互值是 `0`
+- `AP` 的无交互值是 `0`
+- `S` 的无交互值是 `1`
+
+在这个教学示例里：
+
+- `Multiplicative interaction = 0.454`，且 `P for interaction = 0.029`
+- `RERI = -1.475`，`AP = -0.739`，点估计都指向负向加性交互
+- 但 `RERI`、`AP`、`S` 的置信区间都跨过了各自的无交互值
+
+所以更谨慎的解释应当是：
+
+> 该 binary-binary 对比在乘法尺度上显示出交互证据，但在加法尺度上，
+> 虽然点估计提示可能存在负向交互，置信区间仍较宽，尚不足以支持清楚的
+> 加性交互结论。
+
+这正好说明了一个教学重点：
+
+> 同一组数据在乘法尺度和加法尺度上的答案，可能并不完全一致。
+
+# 常见结果组合应该怎么解读
+
+实务上可以按下面 4 种情况来理解：
+
+1. **乘性交互显著，加性交互不显著**
+
+   说明在 HR 尺度上有异质性证据，但加法尺度证据仍不稳定。
+
+2. **加性交互显著，乘性交互不显著**
+
+   说明联合效应超过相加预期，但未见清楚的乘法尺度偏离。
+
+3. **两种尺度都显著**
+
+   说明在两种尺度上都存在明确的交互证据。
+
+4. **两种尺度都不显著**
+
+   说明当前数据没有清楚支持效应修饰。
+
+但无论哪种情况，都要记住一句话：
+
+> “一个 subgroup 显著、另一个 subgroup 不显著” 本身不能证明存在交互。
+
+# 在论文里应该怎么写
+
+下面给出 3 个和上面输出对应的写法模板。
+
+对于没有明确乘性交互的情况：
+
+> 调整后未观察到 `age` 与结局的关联在不同 `sex` 间存在显著差异
+> （`P for interaction = 0.18`）。
+
+对于存在乘性交互并辅以 subgroup 表的情况：
+
+> `age` 与结局的关联在不同 ECOG 组之间存在差异
+> （`P for interaction = 0.037`）。在 subgroup 分析中，
+> `ECOG0` 组中 `age` 每增加 1 岁的 HR 为 `1.059`
+> （`95% CI 1.013, 1.107`），而在 `ECOG1` 与 `ECOG2plus` 中接近零效应。
+
+对于 binary-binary 的加性交互：
+
+> 对于较差体能状态与高年龄的 binary 对比，乘法尺度交互估计小于 1
+> （`0.454`, `95% CI 0.226, 0.911`），而加法尺度指标仍较不稳定
+> （例如 `RERI = -1.475`, `95% CI -3.199, 0.249`）。
+
+这种写法的好处是：
+
+- 先交代是哪一个尺度
+- 再交代方向和大小
+- 最后再决定能否下比较强的结论
 
 # 做完 Step 2 以后你应该带走什么
 
-这一步最重要的 3 个结论是：
+Step 2 最重要的 5 个结论是：
 
-1. 亚组分析和交互分析有关联，但不是同一个统计问题
-2. `P for interaction` 才是正式的效应修饰检验
-3. subgroup-specific HR 是描述层，不是用来替代 interaction test 的
+1. 乘性交互是 Cox 工作流里最通用的正式检验
+2. subgroup 表是展示层，modifier 最好是分类变量
+3. 加性交互当前最适合 binary-binary 对比
+4. 同一组数据在乘法尺度和加法尺度上可能给出不同答案
+5. 结果解读必须和真正检验的尺度对应，而不能只看 subgroup 的单个 `P value`
 
-把这套逻辑理顺以后，生存分析结果在文章里会清楚很多，也更经得起推敲。
+接下来的 Step 3 会换一个问题：
 
-接下来的 Step 3.0 会换一个问题：
-
-> exposure 和结局之间的关联，是否有一部分可能通过 mediator 传递？
+> exposure 和结局的关联，是否有一部分可能通过 mediator 传递？

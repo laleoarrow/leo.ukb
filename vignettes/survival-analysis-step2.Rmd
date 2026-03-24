@@ -1,6 +1,6 @@
 ---
 title: "Survival Analysis Step 2: Subgroup and Interaction"
-description: "Run subgroup and interaction analyses for survival outcomes and interpret heterogeneity."
+description: "Learn how to choose, run, and interpret subgroup, multiplicative interaction, and additive interaction analyses for survival outcomes."
 output:
   rmarkdown::html_vignette:
     highlight: default
@@ -24,29 +24,25 @@ suppressPackageStartupMessages(library(leo.ukb))
 
 # What this step is for
 
-This tutorial is the second survival-analysis step in `leo.ukb`. After fitting
-the main Cox model, a common next question is:
+This tutorial is the second survival-analysis step in `leo.ukb`. After the
+main Cox model, the next practical question is usually:
 
-> does the exposure effect differ across groups?
+> does the exposure-outcome association differ across groups, and if so, on
+> what scale?
 
-This is where subgroup analysis and interaction analysis begin.
+That question can lead to three related but different outputs:
 
-# First separate two questions
+1. a formal multiplicative interaction test
+2. a subgroup table that describes the pattern of hazard ratios
+3. an additive-interaction summary for binary-binary contrasts
 
-Subgroup analysis and interaction analysis are related, but they do not answer
-exactly the same question.
+The key is not to mix them up. Step 2 is where we learn how to choose the
+right one and how to read the results without over-interpreting them.
 
-- `leo_cox_subgroup()` asks: what is the hazard ratio within each subgroup?
-- `leo_cox_interaction()` asks: are those subgroup-specific effects genuinely
-  different from each other on the multiplicative hazard-ratio scale?
+# Start from the data and analytic roles
 
-This distinction matters in papers. One subgroup can be "statistically
-significant" and another can be "not significant" without there being strong
-evidence that the two subgroup effects differ.
-
-# Build a compact teaching data set
-
-We continue with the `survival::lung` example.
+We keep using `survival::lung`, but this time we build the data frame around
+teaching roles rather than only model fitting.
 
 ```{r}
 lung_df <- dplyr::transmute(
@@ -54,160 +50,379 @@ lung_df <- dplyr::transmute(
   outcome = as.integer(status == 2),
   outcome_censor = time / 365.25,
   age = age,
+  age_high = factor(
+    ifelse(age >= 65, "Older", "Younger"),
+    levels = c("Younger", "Older")
+  ),
   sex = factor(sex, levels = c(1, 2), labels = c("Male", "Female")),
-  ecog_group = factor(
-    ph.ecog,
-    levels = 0:3,
-    labels = c("ECOG0", "ECOG1", "ECOG2", "ECOG3")
+  ecog_group3 = factor(
+    dplyr::case_when(
+      ph.ecog == 0 ~ "ECOG0",
+      ph.ecog == 1 ~ "ECOG1",
+      ph.ecog >= 2 ~ "ECOG2plus",
+      TRUE ~ NA_character_
+    ),
+    levels = c("ECOG0", "ECOG1", "ECOG2plus")
+  ),
+  ecog_binary = factor(
+    ifelse(ph.ecog >= 2, "Poor", "Good"),
+    levels = c("Good", "Poor")
   )
-)
-
-cox_models <- list(
-  "Crude" = NULL,
-  "Model A" = c("ecog_group")
 )
 ```
 
-# Interaction first: the formal heterogeneity test
-
-When the scientific question is "does the effect differ across groups?", the
-formal answer comes from an interaction model, not from visually comparing
-subgroup-specific `P values`.
+Before fitting anything, look at the structure the way you would in a real
+paper:
 
 ```{r}
-res_inter <- leo_cox_interaction(
+dplyr::glimpse(lung_df)
+```
+
+```{r}
+role_table <- data.frame(
+  Variable = c(
+    "outcome",
+    "outcome_censor",
+    "age",
+    "sex",
+    "ecog_group3",
+    "age_high",
+    "ecog_binary"
+  ),
+  Type = c(
+    "Binary event indicator",
+    "Follow-up time in years",
+    "Continuous exposure",
+    "Binary modifier",
+    "3-level categorical modifier",
+    "Binary age contrast",
+    "Binary performance-status contrast"
+  ),
+  Teaching_role = c(
+    "Outcome event",
+    "Outcome time",
+    "Main exposure in multiplicative examples",
+    "Binary modifier for multiplicative interaction",
+    "Multi-level modifier for subgroup display",
+    "Binary age variable for additive interaction",
+    "Binary modifier for additive interaction"
+  )
+)
+
+knitr::kable(
+  role_table,
+  caption = "Analytic roles in the Step 2 teaching data frame"
+)
+```
+
+It is also worth checking the subgroup and joint-cell sizes before talking
+about effect modification.
+
+```{r}
+knitr::kable(
+  dplyr::count(lung_df, ecog_group3, outcome),
+  caption = "Outcome counts across the multi-level subgroup"
+)
+```
+
+```{r}
+knitr::kable(
+  dplyr::count(lung_df, age_high, ecog_binary),
+  caption = "Four joint cells for the additive-interaction example"
+)
+```
+
+The second table is especially important because additive interaction needs a
+binary-by-binary setup with all four cells present.
+
+# Choose the scale before fitting
+
+The easiest way to avoid confusion is to decide what question you are asking
+before you pick the function.
+
+```{r}
+decision_table <- data.frame(
+  Goal = c(
+    "Formal multiplicative interaction",
+    "Subgroup display",
+    "Additive interaction"
+  ),
+  Exposure_types = c(
+    "Continuous, binary, or multi-level categorical",
+    "Continuous, binary, or categorical",
+    "Binary only"
+  ),
+  Modifier_types = c(
+    "Continuous, binary, or multi-level categorical",
+    "Binary or multi-level categorical",
+    "Binary only"
+  ),
+  Main_function = c(
+    "leo_cox_interaction()",
+    "leo_cox_subgroup()",
+    "leo_cox_add_interaction()"
+  ),
+  Main_question = c(
+    "Does the association differ on the hazard-ratio scale?",
+    "What does the HR look like within each stratum?",
+    "Does the joint effect exceed what we expect under additivity?"
+  )
+)
+
+knitr::kable(
+  decision_table,
+  caption = "Which Step 2 tool matches which scientific question?"
+)
+```
+
+This table is the practical rule of thumb:
+
+- multiplicative interaction is the most general option
+- subgroup tables need a categorical modifier because they need explicit strata
+- additive interaction is currently the most restrictive because `RERI`, `AP`,
+  and `S` require a binary-by-binary contrast
+
+If a modifier is continuous, `leo_cox_interaction()` can still test it
+formally, but `leo_cox_subgroup()` is only appropriate after a clinically
+meaningful grouping has been defined.
+
+# Multiplicative interaction is the general formal test
+
+In a Cox model, multiplicative interaction asks whether the exposure effect
+differs across levels of a modifier on the hazard-ratio scale.
+
+## Example 1: continuous exposure by binary modifier
+
+Here we ask whether the age-outcome association differs by sex.
+
+```{r}
+res_inter_sex <- leo_cox_interaction(
   df = lung_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "age",
   x_inter = "sex",
-  x_cov = cox_models,
+  x_cov = list(
+    "Crude" = NULL,
+    "Model A" = c("ecog_group3")
+  ),
   verbose = FALSE
 )
 
-res_inter$result
+res_inter_sex$result
 ```
 
-Read this table as the formal interaction summary:
+How to read this result:
 
-- `P for interaction` is the key heterogeneity test
-- in the current Cox workflow, this is a multiplicative interaction test on the
-  hazard-ratio scale
-- `Interaction class` tells you whether the modifier was treated as binary,
-  multi-level categorical, or continuous
+- `Exposure class = Continuous` means `age` is handled as a continuous
+  exposure
+- `Interaction class = Binary` means `sex` is treated as a binary modifier
+- `P for interaction` is the formal heterogeneity test
 
-For a continuous modifier, `leo_cox_interaction()` can still test interaction,
-but `leo_cox_subgroup()` is not the right follow-up unless you first define a
-meaningful categorical grouping.
+In this teaching example, the adjusted `P for interaction` is `0.18`, so there
+is no clear evidence that the age-outcome association differs by sex on the
+multiplicative hazard-ratio scale.
 
-# Subgroup analysis next: show the stratum-specific HRs
+That is already a useful result. A non-significant interaction does not mean
+"nothing happened"; it means the data do not strongly support effect
+modification on this scale.
 
-After the formal interaction test, it is often useful to show the hazard ratio
-within each subgroup itself.
+## Example 2: continuous exposure by multi-level categorical modifier
+
+The same function also works for a multi-level subgroup variable.
 
 ```{r}
-res_sub <- leo_cox_subgroup(
+res_inter_ecog <- leo_cox_interaction(
   df = lung_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "age",
-  x_subgroup = c("sex", "ecog_group"),
+  x_inter = "ecog_group3",
   x_cov = list("Crude" = NULL),
   verbose = FALSE
 )
 
-utils::head(res_sub$result, 8)
+res_inter_ecog$result
 ```
 
-The subgroup table is designed to be easy to read in a manuscript:
+Here the modifier is a 3-level categorical variable, and the interaction test
+returns `P for interaction = 0.037`.
 
-- one row per subgroup level and model
-- the subgroup-specific `HR`, `95% CI`, and `P value`
-- the matching `P for interaction`
+That means the age-outcome association appears to differ across ECOG groups on
+the multiplicative hazard-ratio scale. Because the modifier is categorical, a
+subgroup table is now a natural follow-up.
 
-# How to interpret the two outputs together
+# Subgroup analysis describes the pattern after the formal test
 
-The cleanest reporting logic is:
-
-1. use `leo_cox_interaction()` to decide whether there is evidence that the
-   exposure effect differs by subgroup
-2. use `leo_cox_subgroup()` to describe the pattern of subgroup-specific hazard
-   ratios
-
-A practical interpretation rule is:
-
-- `P for interaction` is the primary evidence for heterogeneity
-- subgroup-specific `HR` values describe the direction and magnitude within
-  each group
-
-This is why subgroup analysis should not be reduced to "one subgroup was
-significant and another was not".
-
-# How to write the finding in a paper
-
-In a manuscript, the safest reporting order is:
-
-1. state whether the interaction test supported heterogeneity
-2. then describe the subgroup-specific hazard ratios
-
-For example:
-
-> The association between age and the event differed by sex
-> (`P for interaction = ...`). In subgroup analyses, the hazard ratio was
-> higher in ... than in ...
-
-This wording keeps the formal test and the descriptive pattern in the right
-order.
-
-# When should subgroup variables be categorical?
-
-`leo_cox_subgroup()` is designed for categorical subgroup variables.
-
-- binary subgroup variables are natural here, such as `sex`
-- multi-level subgroup variables are also fine, such as `ecog_group`
-- continuous modifiers belong first in `leo_cox_interaction()`
-
-If a modifier is continuous, you have two options:
-
-1. keep it continuous and do a formal interaction test only
-2. define a clinically meaningful grouping first, then use subgroup analysis
-
-The choice should follow the scientific question, not convenience.
-
-# Optional heterogeneity P values
-
-By default, `leo_cox_subgroup()` appends `P for interaction`. This is the main
-heterogeneity signal for most Cox subgroup tables in cohort papers.
-
-`P for heterogeneity` is available as an optional supplement:
+`leo_cox_subgroup()` is not a replacement for the interaction test. It is the
+display layer that helps you describe what the pattern looks like once a
+categorical modifier has been chosen.
 
 ```{r}
-res_sub_hetero <- leo_cox_subgroup(
+res_sub_ecog <- leo_cox_subgroup(
   df = lung_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "age",
-  x_subgroup = "sex",
+  x_subgroup = "ecog_group3",
   x_cov = list("Crude" = NULL),
-  add_heterogeneity = TRUE,
   verbose = FALSE
 )
 
-res_sub_hetero$result
+res_sub_ecog$result
 ```
 
-In most cohort papers, it is better to treat `P for heterogeneity` as
-supporting information rather than the primary decision point.
+This subgroup table tells a more descriptive story:
 
-# What to take away from step 2
+- in `ECOG0`, the HR per one-year increase in age is `1.059`
+- in `ECOG1`, the HR is close to null at `1.004`
+- in `ECOG2plus`, the HR is also close to null at `0.994`
+- the matching `P for interaction = 0.037` reminds us that the subgroup
+  pattern should be interpreted through the formal interaction test
 
-This step should leave you with three practical rules:
+In manuscript language, the safest interpretation is:
 
-1. subgroup analysis and interaction analysis are connected, but not identical
-2. `P for interaction` is the formal test of effect modification
-3. subgroup-specific hazard ratios are for description, not for replacing the
-   interaction test
+> There was evidence that the age-outcome association differed by ECOG
+> performance status on the multiplicative scale. The age-associated hazard
+> increase appeared stronger in `ECOG0` than in `ECOG1` or `ECOG2plus`.
 
-With that logic in place, your survival-analysis reporting becomes much easier
-to defend scientifically.
+This is much better than writing "one subgroup was significant and the others
+were not", which is not a proper interaction argument.
 
-Step 3.0 then asks a new question:
+# Additive interaction answers a different question
+
+Multiplicative and additive interaction are not the same. Additive interaction
+asks whether the joint effect of two binary factors is more or less than what
+we would expect from adding their separate effects.
+
+That is why the current teaching workflow in `leo.ukb` is binary-by-binary.
+
+Here we use:
+
+- `ecog_binary`: poor versus good performance status
+- `age_high`: older versus younger age
+
+The binary age grouping is only for teaching additive interaction. In a real
+analysis, the cutpoint should be clinically justified in advance rather than
+chosen after looking at the results.
+
+```{r}
+res_add <- leo_cox_add_interaction(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "ecog_binary",
+  x_inter = "age_high",
+  x_cov = list("Crude" = NULL),
+  verbose = FALSE
+)
+
+res_add$result
+```
+
+This output should be read in layers.
+
+First, the setup columns:
+
+- `Reference group` tells you which joint category is treated as the baseline
+- `Recode applied` tells you whether the function had to recode the binary
+  variables internally so the reference structure was interpretable
+
+Then the scale-specific measures:
+
+- `Multiplicative interaction`: interaction on the hazard-ratio scale
+- `RERI`: relative excess risk due to interaction
+- `AP`: attributable proportion due to interaction
+- `S`: synergy index
+
+The null values differ by measure:
+
+- multiplicative interaction: `1`
+- `RERI`: `0`
+- `AP`: `0`
+- `S`: `1`
+
+In this teaching example:
+
+- the multiplicative interaction estimate is `0.454` with `P for interaction =
+  0.029`
+- `RERI = -1.475` and `AP = -0.739` both point toward negative interaction on
+  the additive scale
+- but the confidence intervals for `RERI`, `AP`, and `S` all include their
+  null values
+
+So the most careful interpretation is:
+
+> The binary contrast showed evidence of interaction on the multiplicative
+> scale, but additive-interaction estimates were imprecise and did not provide
+> clear evidence on the additive scale.
+
+This is a good teaching result because it shows that the answer can depend on
+the scale. A significant multiplicative interaction does not guarantee a clear
+additive interaction, and vice versa.
+
+# How to interpret common result patterns
+
+The practical reading rules are:
+
+1. **Multiplicative interaction supported, additive interaction not supported**
+
+   State that effect modification is supported on the hazard-ratio scale, while
+   additive-interaction evidence remains uncertain.
+
+2. **Additive interaction supported, multiplicative interaction not supported**
+
+   State that the joint effect exceeds additivity, even though the hazard-ratio
+   scale does not show clear multiplicative deviation.
+
+3. **Both supported**
+
+   State explicitly that the association differs on both scales.
+
+4. **Neither supported**
+
+   State that there is no clear evidence of effect modification in the current
+   data.
+
+And one rule should always stay in place:
+
+> "one subgroup was significant and another was not" is not itself evidence of
+> interaction.
+
+# How to write Step 2 results in a paper
+
+Here are manuscript-style templates that match the outputs above.
+
+For a null multiplicative interaction:
+
+> There was no clear evidence that the association between age and the event
+> differed by sex after adjustment (`P for interaction = 0.18`).
+
+For a supported multiplicative interaction followed by a subgroup table:
+
+> The association between age and the event differed by ECOG performance status
+> (`P for interaction = 0.037`). In subgroup analyses, the hazard ratio per
+> one-year increase in age was `1.059` (`95% CI 1.013, 1.107`) in `ECOG0`, but
+> was close to null in `ECOG1` and `ECOG2plus`.
+
+For additive interaction:
+
+> For the binary contrast between poor performance status and older age,
+> multiplicative interaction was below 1 (`0.454`, `95% CI 0.226, 0.911`),
+> whereas additive-interaction estimates remained imprecise
+> (`RERI -1.475`, `95% CI -3.199, 0.249`).
+
+This wording keeps the scale explicit and avoids over-claiming.
+
+# What to take away from Step 2
+
+Step 2 should leave you with five practical rules:
+
+1. multiplicative interaction is the most general formal test in the Cox
+   workflow
+2. subgroup tables are descriptive and work best when the modifier is
+   categorical
+3. additive interaction currently belongs to binary-by-binary contrasts
+4. the same data can look different on multiplicative and additive scales
+5. interpretation should follow the scale actually tested, not only the raw
+   subgroup `P values`
+
+Step 3 then asks a different question:
 
 > could part of the exposure-outcome association operate through a mediator?
