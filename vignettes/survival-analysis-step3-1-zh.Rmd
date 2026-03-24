@@ -303,7 +303,7 @@ res_case2 <- leo_cox_mediation(
   x_cov = c("age", "sex", "smoking"),
   x_exp_a0 = 0,
   x_exp_a1 = 1,
-  x_med_cde = 1,
+  x_med_cde = "较高炎症",
   x_cov_cond = list(age = 60, sex = "女性", smoking = "从不"),
   mreg = "logistic",
   yreg = "auto",
@@ -320,7 +320,9 @@ dplyr::bind_rows(
 )
 ```
 
-这里最值得学习的不是“谁更显著”，而是科学问题怎么变了：
+这里最值得学习的不是“谁更显著”，而是科学问题怎么变了。对于
+`logistic` 中介，`x_med_cde` 现在应该写原始观测水平，而不是内部
+`0/1` 编码：
 
 - 案例 1 问的是连续生物标志物路径，所以间接效应为 `r fmt_num(case1_tnie$Estimate[1])`，中介比例为 `r fmt_pct(case1_pm$Estimate[1])`
 - 案例 2 问的是阈值状态路径，所以同一条大方向故事会变成更弱、也更不精确的结果（`tnie` = `r fmt_num(case2_tnie$Estimate[1])`，`pm` = `r fmt_pct(case2_pm$Estimate[1])`）

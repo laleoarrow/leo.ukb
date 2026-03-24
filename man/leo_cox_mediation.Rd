@@ -50,17 +50,23 @@ leo_cox_mediation_plot(
 \item{min_followup_time}{Minimum follow-up time filter.}
 
 \item{x_exp_a0}{Reference value of \code{x_exp}. Defaults to first factor level;
-\strong{required if x_exp is character (not factor) or numeric}. For a binary
-factor exposure, either use the default contrast or supply \code{x_exp_a0} and
-\code{x_exp_a1} together.}
+\strong{required if x_exp is character (not factor)}. For a binary factor
+exposure, either use the default contrast or supply \code{x_exp_a0} and
+\code{x_exp_a1} together. For numeric \code{x_exp}, if exactly two unique observed
+values remain after filtering, they are used as the default contrast;
+otherwise, supply \code{x_exp_a0} and \code{x_exp_a1} explicitly.}
 
 \item{x_exp_a1}{Contrasted value of \code{x_exp}. Defaults to second factor level;
-\strong{required if x_exp is character (not factor) or numeric}. For a binary
-factor exposure, either use the default contrast or supply \code{x_exp_a0} and
-\code{x_exp_a1} together.}
+\strong{required if x_exp is character (not factor)}. For a binary factor
+exposure, either use the default contrast or supply \code{x_exp_a0} and
+\code{x_exp_a1} together. For numeric \code{x_exp}, if exactly two unique observed
+values remain after filtering, they are used as the default contrast;
+otherwise, supply \code{x_exp_a0} and \code{x_exp_a1} explicitly.}
 
 \item{x_med_cde}{Value of \code{x_med} for CDE evaluation. Defaults to second factor
-level (binary) or median (continuous); \strong{required if x_med is character (not factor)}.}
+level (binary) or median (continuous); \strong{required if x_med is character (not factor)}.
+For logistic mediators, use the original observed mediator value rather than
+an internal 0/1 recode unless the observed values are themselves 0/1.}
 
 \item{x_cov_cond}{Covariate values for effect evaluation. Named list/vector for
 non-numeric covariates; defaults to medians. Required for factor/binary covariates.}

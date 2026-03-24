@@ -457,7 +457,7 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
       stop("For logical event column '", column_name, "', event_value must be TRUE/FALSE (or 1/0).", call. = FALSE)
     }
     observed_chr <- unique(as.character(stats::na.omit(x_cmp)))
-    if (!(event_value_chr %in% observed_chr) && !(is.numeric(x_cmp) || is.integer(x_cmp))) {
+    if (!(event_value_chr %in% observed_chr)) {
       stop(
         "event_value='", event_value_chr, "' does not match the observed values in '", column_name, "': ",
         paste(observed_chr, collapse = ", "), ". Please set event_value explicitly.",
@@ -1395,15 +1395,21 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #' @param min_followup_time Minimum follow-up time filter.
 #' @param event_value Value indicating an event.
 #' @param x_exp_a0 Reference value of `x_exp`. Defaults to first factor level;
-#'   **required if x_exp is character (not factor) or numeric**. For a binary
-#'   factor exposure, either use the default contrast or supply `x_exp_a0` and
-#'   `x_exp_a1` together.
+#'   **required if x_exp is character (not factor)**. For a binary factor
+#'   exposure, either use the default contrast or supply `x_exp_a0` and
+#'   `x_exp_a1` together. For numeric `x_exp`, if exactly two unique observed
+#'   values remain after filtering, they are used as the default contrast;
+#'   otherwise, supply `x_exp_a0` and `x_exp_a1` explicitly.
 #' @param x_exp_a1 Contrasted value of `x_exp`. Defaults to second factor level;
-#'   **required if x_exp is character (not factor) or numeric**. For a binary
-#'   factor exposure, either use the default contrast or supply `x_exp_a0` and
-#'   `x_exp_a1` together.
+#'   **required if x_exp is character (not factor)**. For a binary factor
+#'   exposure, either use the default contrast or supply `x_exp_a0` and
+#'   `x_exp_a1` together. For numeric `x_exp`, if exactly two unique observed
+#'   values remain after filtering, they are used as the default contrast;
+#'   otherwise, supply `x_exp_a0` and `x_exp_a1` explicitly.
 #' @param x_med_cde Value of `x_med` for CDE evaluation. Defaults to second factor
 #'   level (binary) or median (continuous); **required if x_med is character (not factor)**.
+#'   For logistic mediators, use the original observed mediator value rather than
+#'   an internal 0/1 recode unless the observed values are themselves 0/1.
 #' @param x_cov_cond Covariate values for effect evaluation. Named list/vector for
 #'   non-numeric covariates; defaults to medians. Required for factor/binary covariates.
 #' @param mreg Mediator model: `"auto"`, `"linear"`, or `"logistic"`.
@@ -1616,6 +1622,8 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
     a0_use <- x_exp_a0
     a1_use <- x_exp_a1
     m_cde_use <- x_med_cde
+    m_cde_internal_use <- x_med_cde
+    m_cde_output_use <- x_med_cde
     exposure_contrast_display <- NULL
     mediator_reference_display <- NULL
 
@@ -1731,23 +1739,41 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
       }
       model_df[[x_med]] <- as.integer(mediator_factor == levels(mediator_factor)[2])
       mediator_levels <- levels(mediator_factor)
+      mediator_level_output <- function(level_chr) {
+        if (is.numeric(mediator_raw) || is.integer(mediator_raw)) return(as.numeric(level_chr))
+        if (is.logical(mediator_raw)) return(level_chr %in% c("TRUE", "T", "true", "1"))
+        level_chr
+      }
       map_mediator_level <- function(value) {
         if (length(value) != 1 || is.na(value[1])) {
-          stop("x_med_cde must be a single non-missing value coded as 0/1 or matching one of the observed mediator levels.", call. = FALSE)
+          stop("x_med_cde must be a single non-missing value matching one of the observed mediator levels.", call. = FALSE)
         }
         value <- value[1]
-        if (is.numeric(value) && length(value) == 1 && !is.na(value) && value %in% c(0, 1)) return(as.numeric(value))
         value_chr <- as.character(value)
-        if (value_chr %in% mediator_levels) return(match(value_chr, mediator_levels) - 1L)
+        if (value_chr %in% mediator_levels) {
+          level_index <- match(value_chr, mediator_levels)
+          return(list(
+            internal = unname(level_index - 1L),
+            output = mediator_level_output(mediator_levels[level_index])
+          ))
+        }
+        if (identical(mediator_levels, c("0", "1")) && is.numeric(value) && !is.na(value) && value %in% c(0, 1)) {
+          return(list(
+            internal = unname(as.numeric(value)),
+            output = unname(as.numeric(value))
+          ))
+        }
         stop(
-          "x_med_cde must be 0/1 or match one of the observed mediator levels when mreg = 'logistic': ",
+          "x_med_cde must match one of the observed mediator levels when mreg = 'logistic': ",
           paste(mediator_levels, collapse = ", "), ".",
           call. = FALSE
         )
       }
-      if (is.null(m_cde_use)) m_cde_use <- 1
-      m_cde_use <- map_mediator_level(m_cde_use)
-      mediator_reference_display <- mediator_levels[m_cde_use + 1]
+      if (is.null(m_cde_use)) m_cde_use <- mediator_level_output(mediator_levels[2])
+      mediator_mapping <- map_mediator_level(m_cde_use)
+      m_cde_internal_use <- mediator_mapping$internal
+      m_cde_output_use <- mediator_mapping$output
+      mediator_reference_display <- mediator_levels[m_cde_internal_use + 1]
     } else {
       if (is.factor(mediator_raw) || is.character(mediator_raw) || is.logical(mediator_raw)) {
         stop(
@@ -1760,7 +1786,9 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
       if (anyNA(model_df[[x_med]])) stop("Mediator must be numeric when mreg = 'linear'.", call. = FALSE)
       if (is.null(m_cde_use)) m_cde_use <- stats::median(model_df[[x_med]], na.rm = TRUE)
       if (!is.numeric(m_cde_use) || length(m_cde_use) != 1 || is.na(m_cde_use)) stop("x_med_cde must be a single numeric value.", call. = FALSE)
-      mediator_reference_display <- format_num(m_cde_use)
+      m_cde_internal_use <- m_cde_use
+      m_cde_output_use <- m_cde_use
+      mediator_reference_display <- format_num(m_cde_output_use)
     }
 
     ## covariate matrix ----
@@ -1779,7 +1807,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
       eventvar = "event",
       a0 = a0_use,
       a1 = a1_use,
-      m_cde = m_cde_use,
+      m_cde = m_cde_internal_use,
       c_cond = cov_build$c_cond_use,
       mreg = mediator_mode_use,
       yreg = yreg_use,
@@ -1808,7 +1836,8 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
     med_coef$yreg <- yreg_use
     med_coef$x_exp_a0 <- a0_use
     med_coef$x_exp_a1 <- a1_use
-    med_coef$x_med_cde <- m_cde_use
+    med_coef$x_med_cde <- m_cde_output_use
+    med_coef$x_med_cde_internal <- m_cde_internal_use
     med_coef$exposure_contrast_label <- exposure_contrast_display
     med_coef$mediator_reference_label <- mediator_reference_display
     med_coef$x_cov_cond <- cov_build$c_cond_label
@@ -1849,7 +1878,8 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
       x_exp_a0 = a0_use,
       x_exp_a1 = a1_use,
       mediator_reference = mediator_reference_display,
-      x_med_cde = m_cde_use,
+      x_med_cde = m_cde_output_use,
+      x_med_cde_internal = m_cde_internal_use,
       mreg = mediator_mode_use,
       yreg = yreg_use,
       pm_unstable = te_ci_includes_null,

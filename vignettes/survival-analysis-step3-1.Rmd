@@ -319,7 +319,7 @@ res_case2 <- leo_cox_mediation(
   x_cov = c("age", "sex", "smoking"),
   x_exp_a0 = 0,
   x_exp_a1 = 1,
-  x_med_cde = 1,
+  x_med_cde = "Higher inflammation",
   x_cov_cond = list(age = 60, sex = "Female", smoking = "Never"),
   mreg = "logistic",
   yreg = "auto",
@@ -337,7 +337,9 @@ dplyr::bind_rows(
 ```
 
 The scientific lesson is not that binary mediators are wrong. It is that the
-mediator encoding should match the question:
+mediator encoding should match the question. For logistic mediators, `x_med_cde`
+should now be given as the original observed mediator level, not an internal
+`0/1` recode:
 
 - in Case 1, the indirect pathway was `r fmt_num(case1_tnie$Estimate[1])` on the hazard-ratio scale, with `pm` estimated at `r fmt_pct(case1_pm$Estimate[1])`
 - in Case 2, the same broad story became much weaker and less precise (`tnie` = `r fmt_num(case2_tnie$Estimate[1])`, `pm` = `r fmt_pct(case2_pm$Estimate[1])`)

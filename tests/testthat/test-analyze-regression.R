@@ -483,6 +483,36 @@ test_that(".prepare_cox_regression_data maps logical events to TRUE/FALSE by def
   expect_equal(factor_prep$data$event, c(1L, 0L, 1L, 0L))
 })
 
+test_that(".prepare_cox_regression_data rejects unmatched numeric event_value instead of silently creating all-zero events", {
+  numeric_df <- data.frame(
+    outcome = c(1, 0, 1, 0),
+    outcome_censor = c(5, 7, 9, 11),
+    exposure = c(0.2, -0.1, 0.4, -0.3)
+  )
+
+  expect_error(
+    leo.ukb:::.prepare_cox_regression_data(
+      df = numeric_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      event_value = 2,
+      verbose = FALSE
+    ),
+    "Please set event_value explicitly"
+  )
+
+  expect_error(
+    leo.ukb:::.prepare_cox_regression_data(
+      df = numeric_df,
+      y_out = c("outcome", "outcome_censor"),
+      x_exp = "exposure",
+      event_value = "Case",
+      verbose = FALSE
+    ),
+    "Please set event_value explicitly"
+  )
+})
+
 test_that("leo_cox_subgroup supports multiple subgroup variables and retains interaction output", {
   lung_df <- make_lung_cox_df()
   model <- list("Crude" = NULL, "Model A" = c("ecog_group"))
@@ -795,7 +825,8 @@ test_that("leo_cox_mediation accepts factor-level inputs for x_exp_a0, x_exp_a1,
   expect_true(all(is.na(res$result$`Mediator reference`[res$result$`Effect code` != "cde"])))
   expect_true(all(res$result_detail$x_exp_a0 == 0))
   expect_true(all(res$result_detail$x_exp_a1 == 1))
-  expect_true(all(res$result_detail$x_med_cde == 1))
+  expect_true(all(res$result_detail$x_med_cde == "High"))
+  expect_true(all(res$result_detail$x_med_cde_internal == 1))
 })
 
 test_that("leo_cox_mediation requires both x_exp_a0 and x_exp_a1 when overriding a binary factor exposure contrast", {
@@ -833,6 +864,29 @@ test_that("leo_cox_mediation keeps numeric binary mediator ordering stable under
 
   expect_identical(unique(stats::na.omit(res$result$`Mediator reference`)), "1")
   expect_identical(unique(res$result$`Mediator model`), "logistic")
+})
+
+test_that("leo_cox_mediation interprets x_med_cde using raw observed values for numeric binary mediators", {
+  skip_if_not_installed("regmedint")
+  med_df <- make_mediation_rare_df()
+  med_df$mediator_num <- ifelse(med_df$mediator == "High", 2, 1)
+  med_df <- med_df[order(-med_df$mediator_num), , drop = FALSE]
+
+  res <- leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator_num",
+    x_cov = "age",
+    x_med_cde = 1,
+    verbose = FALSE
+  )
+
+  expect_identical(unique(stats::na.omit(res$result$`Mediator reference`)), "1")
+  expect_true(all(res$evaluation$x_med_cde == 1))
+  expect_true(all(res$evaluation$x_med_cde_internal == 0))
+  expect_true(all(res$result_detail$x_med_cde == 1))
+  expect_true(all(res$result_detail$x_med_cde_internal == 0))
 })
 
 test_that("leo_cox_mediation rejects multi-value evaluation settings instead of silently truncating them", {
@@ -917,7 +971,8 @@ test_that("leo_cox_mediation accepts explicit character evaluation values when x
   expect_identical(res$evaluation$mediator_reference, "High")
   expect_true(all(res$result_detail$x_exp_a0 == 0))
   expect_true(all(res$result_detail$x_exp_a1 == 1))
-  expect_true(all(res$result_detail$x_med_cde == 1))
+  expect_true(all(res$result_detail$x_med_cde == "High"))
+  expect_true(all(res$result_detail$x_med_cde_internal == 1))
 })
 
 test_that("leo_cox_mediation renames public evaluation fields in evaluation and result_detail", {
@@ -938,7 +993,8 @@ test_that("leo_cox_mediation renames public evaluation fields in evaluation and 
   )
 
   expect_true(all(c("x_exp_a0", "x_exp_a1", "x_med_cde", "x_cov_cond") %in% names(res$evaluation)))
-  expect_true(all(c("x_exp_a0", "x_exp_a1", "x_med_cde", "x_cov_cond") %in% names(res$result_detail)))
+  expect_true(all(c("x_exp_a0", "x_exp_a1", "x_med_cde", "x_med_cde_internal", "x_cov_cond") %in% names(res$evaluation)))
+  expect_true(all(c("x_exp_a0", "x_exp_a1", "x_med_cde", "x_med_cde_internal", "x_cov_cond") %in% names(res$result_detail)))
   expect_false(any(c("a0", "a1", "m_cde", "c_cond") %in% names(res$evaluation)))
   expect_false(any(c("a0", "a1", "m_cde") %in% names(res$result_detail)))
   expect_false(any(c("control_n", "person_year") %in% names(res$result_detail)))
