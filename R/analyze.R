@@ -1939,8 +1939,6 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
 
 #' Paper-style Cox mediation plot
 #'
-#' `r lifecycle::badge('experimental')`
-#'
 #' `leo_cox_mediation_plot()` turns a `leo_cox_mediation` result into a compact
 #' pathway figure for a selected model. The plot keeps all annotation text on a
 #' shared vertical center axis, uses equal-sized boxes, and draws only straight
@@ -1983,14 +1981,24 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
 #'     x_exp = "exposure", x_med = "mediator", x_cov = "age",
 #'     verbose = FALSE
 #'   )
+#'   # with default labels and note
 #'   leo_cox_mediation_plot(
 #'     res_med, model = "model_1",
 #'     exposure_label = "Metabolic\nrisk",
 #'     mediator_label = "Inflammation",
 #'     outcome_label = "Incident\noutcome"
 #'   )
+#'   # with no note
+#'   leo_cox_mediation_plot(
+#'     res_med, model = "model_1",
+#'     exposure_label = "Metabolic\nrisk",
+#'     mediator_label = "Inflammation",
+#'     outcome_label = "Incident\noutcome",
+#'     add_note = FALSE
+#'   )
 #' }
-leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure", mediator_label = "Mediator", outcome_label = "Outcome", language = c("en", "zh"), palette = c("jama", "jco", "lancet", "nejm"), add_note = TRUE, font_family = NULL) {
+leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure", mediator_label = "Mediator", outcome_label = "Outcome",
+                                   language = c("en", "zh"), palette = c("jama", "jco", "lancet", "nejm"), add_note = TRUE, font_family = NULL) {
   if (!inherits(x, "leo_cox_mediation")) stop("x must be a `leo_cox_mediation` object returned by leo_cox_mediation().", call. = FALSE)
   if (!is.data.frame(x$result)) stop("x$result is missing or malformed.", call. = FALSE)
   language <- match.arg(language)

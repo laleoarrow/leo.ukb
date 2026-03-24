@@ -78,12 +78,15 @@ jobs:
 
       - name: Install R dependencies
         run: |
-          dir.create(Sys.getenv("R_LIBS_USER"), recursive = TRUE, showWarnings = FALSE)
+          lib <- Sys.getenv("R_LIBS_USER")
+          dir.create(lib, recursive = TRUE, showWarnings = FALSE)
+          # R only keeps library dirs that exist at startup, so prepend it here.
+          .libPaths(c(lib, .libPaths()))
           options(repos = c(CRAN = Sys.getenv("RSPM")))
-          install.packages("pak", lib = Sys.getenv("R_LIBS_USER"), quiet = TRUE)
+          install.packages("pak", lib = lib, quiet = TRUE)
           pak::pkg_install(
             c("local::.", "remotes", "regmedint"),
-            lib = Sys.getenv("R_LIBS_USER"),
+            lib = lib,
             ask = FALSE,
             upgrade = FALSE,
             dependencies = TRUE
