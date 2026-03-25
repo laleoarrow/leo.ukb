@@ -77,42 +77,17 @@ lung_df <- dplyr::transmute(
 dplyr::glimpse(lung_df)
 ```
 
-```{r}
-role_table <- data.frame(
-  Variable = c(
-    "outcome",
-    "outcome_censor",
-    "age",
-    "sex",
-    "ecog_group3",
-    "age_high",
-    "ecog_binary"
-  ),
-  Type = c(
-    "二分类事件指标",
-    "按年计的随访时间",
-    "连续 exposure",
-    "二分类 modifier",
-    "三分类 modifier",
-    "二分类年龄对比",
-    "二分类体能状态对比"
-  ),
-  Teaching_role = c(
-    "结局事件",
-    "结局时间",
-    "乘性交互示例中的主 exposure",
-    "乘性交互中的二分类 effect modifier",
-    "subgroup 展示中的多分类 modifier",
-    "加性交互教学用的年龄二分类变量",
-    "加性交互教学用的二分类体能状态变量"
-  )
-)
+Table: Step 2 教学数据中的变量角色
 
-knitr::kable(
-  role_table,
-  caption = "Step 2 教学数据中的变量角色"
-)
-```
+| Variable | Type | Teaching role |
+| --- | --- | --- |
+| `outcome` | 二分类事件指标 | 结局事件 |
+| `outcome_censor` | 按年计的随访时间 | 结局时间 |
+| `age` | 连续 exposure | 乘性交互示例中的主 exposure |
+| `sex` | 二分类 modifier | 乘性交互中的二分类 effect modifier |
+| `ecog_group3` | 三分类 ECOG 体能状态分组 | subgroup 展示中的多分类 modifier |
+| `age_high` | 二分类年龄分组 | 加性交互教学用的年龄二分类变量 |
+| `ecog_binary` | 二分类 ECOG 体能状态分组 | 加性交互教学用的 ECOG 体能状态二分类变量 |
 
 交互分析之前，最好还要看一下各组的事件数和 binary-binary 联合分布。
 
@@ -292,7 +267,7 @@ res_sub_ecog$result
 
 这里我们用：
 
-- `ecog_binary`：Poor vs Good
+- `ecog_binary`：ECOG 体能状态较差 vs 较好
 - `age_high`：Older vs Younger
 
 注意：这里把 `age` 二分类，只是为了教学加性交互。  
@@ -338,6 +313,26 @@ res_add$result
 - `Multiplicative interaction = 0.454`，且 `P for interaction = 0.029`
 - `RERI = -1.475`，`AP = -0.739`，点估计都指向负向加性交互
 - 但 `RERI`、`AP`、`S` 的置信区间都跨过了各自的无交互值
+
+这里最容易误读的是第一行。`Multiplicative interaction` 不是联合组本身的
+HR，而是：
+
+`HR11 / (HR10 × HR01)`
+
+所以它小于 1 的意思不是“联合组一定是保护性的”或“联合组 HR 一定小于 1”，
+而是：
+
+> 联合效应低于按两个单独效应直接相乘时的预期。
+
+举个最直观的例子：
+
+- 如果 `ecog_binary` 单独 HR 是 `2`
+- `age_high` 单独 HR 是 `3`
+- 那么在“没有乘法交互”时，联合组预期 HR 是 `2 × 3 = 6`
+- 如果乘法交互项是 `0.454`，联合组 HR 大约就是 `2 × 3 × 0.454 = 2.724`
+
+也就是说，联合组风险仍然可能高于参考组，只是没有高到“纯乘法预期”那么强。
+这更接近乘法尺度上的负向交互或拮抗，而不是“联合组 HR < 1”。
 
 所以更谨慎的解释应当是：
 
@@ -391,8 +386,9 @@ res_add$result
 
 对于 binary-binary 的加性交互：
 
-> 对于较差体能状态与高年龄的 binary 对比，乘法尺度交互估计小于 1
-> （`0.454`, `95% CI 0.226, 0.911`），而加法尺度指标仍较不稳定
+> 对于 ECOG 体能状态较差与高年龄的 binary 对比，乘法尺度交互项估计为
+> `0.454`（`95% CI 0.226, 0.911`），提示联合效应低于按两个单独 HR 直接
+> 相乘时的预期；这并不表示联合组 HR 必然低于 1。加法尺度指标仍较不稳定
 > （例如 `RERI = -1.475`, `95% CI -3.199, 0.249`）。
 
 这种写法的好处是：

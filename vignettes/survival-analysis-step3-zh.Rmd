@@ -100,34 +100,17 @@ med_df <- data.frame(
 dplyr::glimpse(med_df)
 ```
 
-```{r}
-role_table <- data.frame(
-  变量 = c("outcome", "outcome_censor", "exposure", "mediator", "age", "bmi", "smoking"),
-  类型 = c(
-    "二分类事件指示变量",
-    "随访时间",
-    "二分类 exposure",
-    "二分类 mediator",
-    "连续协变量",
-    "连续协变量",
-    "二分类分类协变量"
-  ),
-  Step3_角色 = c(
-    "incident outcome 是否发生",
-    "incident outcome 随访时间",
-    "需要被分解的 exposure",
-    "候选中介路径变量",
-    "调整协变量",
-    "调整协变量",
-    "需要显式指定 x_cov_cond 的示例协变量"
-  )
-)
+Table: Step 3 教学数据框中的变量角色
 
-knitr::kable(
-  role_table,
-  caption = "Step 3 教学数据框中的变量角色"
-)
-```
+| 变量 | 类型 | Step 3 角色 |
+| --- | --- | --- |
+| `outcome` | 二分类事件指示变量 | `incident outcome` 是否发生 |
+| `outcome_censor` | 随访时间 | `incident outcome` 随访时间 |
+| `exposure` | 二分类 exposure | 需要被分解的 exposure |
+| `mediator` | 二分类 mediator | 候选中介路径变量 |
+| `age` | 连续协变量 | 调整协变量 |
+| `bmi` | 连续协变量 | 调整协变量 |
+| `smoking` | 二分类协变量 | 需要显式指定 `x_cov_cond` 的示例协变量 |
 
 # 建模前先看一眼分析数据
 

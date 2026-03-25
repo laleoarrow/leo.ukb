@@ -65,30 +65,15 @@ lung_df <- dplyr::transmute(
 Now check the analytic roles explicitly instead of jumping straight into model
 fitting.
 
-```{r}
-role_table <- data.frame(
-  Variable = c("outcome", "outcome_censor", "age", "sex", "ecog_group"),
-  Type = c(
-    "Binary event indicator",
-    "Follow-up time in years",
-    "Continuous exposure",
-    "Binary covariate",
-    "4-level categorical covariate"
-  ),
-  Step1_role = c(
-    "Incident outcome event",
-    "Incident outcome follow-up time",
-    "Main exposure in the first example",
-    "Basic demographic adjustment",
-    "Clinical performance-status adjustment"
-  )
-)
+Table: Analytic roles in the Step 1 teaching data frame
 
-knitr::kable(
-  role_table,
-  caption = "Analytic roles in the Step 1 teaching data frame"
-)
-```
+| Variable | Type | Step 1 role |
+| --- | --- | --- |
+| `outcome` | Binary event indicator | Incident outcome event |
+| `outcome_censor` | Follow-up time in years | Incident outcome follow-up time |
+| `age` | Continuous exposure | Main exposure in the first example |
+| `sex` | Binary covariate | Basic demographic adjustment |
+| `ecog_group` | 4-level ECOG performance-status grouping | ECOG performance-status adjustment |
 
 # Inspect the analysis-ready data before fitting
 

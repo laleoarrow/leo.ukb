@@ -106,34 +106,17 @@ Before fitting anything, look at the analytic roles explicitly.
 dplyr::glimpse(med_df)
 ```
 
-```{r}
-role_table <- data.frame(
-  Variable = c("outcome", "outcome_censor", "exposure", "mediator", "age", "bmi", "smoking"),
-  Type = c(
-    "Binary event indicator",
-    "Follow-up time",
-    "Binary exposure",
-    "Binary mediator",
-    "Continuous covariate",
-    "Continuous covariate",
-    "Binary categorical covariate"
-  ),
-  Step3_role = c(
-    "Incident outcome event",
-    "Incident outcome follow-up time",
-    "Exposure to be decomposed",
-    "Candidate pathway variable",
-    "Adjustment covariate",
-    "Adjustment covariate",
-    "Example covariate that requires explicit x_cov_cond"
-  )
-)
+Table: Analytic roles in the Step 3 teaching data frame
 
-knitr::kable(
-  role_table,
-  caption = "Analytic roles in the Step 3 teaching data frame"
-)
-```
+| Variable | Type | Step 3 role |
+| --- | --- | --- |
+| `outcome` | Binary event indicator | Incident outcome event |
+| `outcome_censor` | Follow-up time | Incident outcome follow-up time |
+| `exposure` | Binary exposure | Exposure to be decomposed |
+| `mediator` | Binary mediator | Candidate pathway variable |
+| `age` | Continuous covariate | Adjustment covariate |
+| `bmi` | Continuous covariate | Adjustment covariate |
+| `smoking` | Binary covariate | Example covariate that requires explicit `x_cov_cond` |
 
 # Inspect the analysis-ready data before fitting
 

@@ -61,30 +61,15 @@ lung_df <- dplyr::transmute(
 
 先把变量角色说清楚，而不是直接开始跑模型。
 
-```{r}
-role_table <- data.frame(
-  变量 = c("outcome", "outcome_censor", "age", "sex", "ecog_group"),
-  类型 = c(
-    "二分类事件指示变量",
-    "以年为单位的随访时间",
-    "连续 exposure",
-    "二分类协变量",
-    "4 水平分类协变量"
-  ),
-  Step1_角色 = c(
-    "incident outcome 是否发生",
-    "incident outcome 随访时间",
-    "第一个示例里的主 exposure",
-    "基础人口学调整变量",
-    "临床表现状态调整变量"
-  )
-)
+Table: Step 1 教学数据框中的变量角色
 
-knitr::kable(
-  role_table,
-  caption = "Step 1 教学数据框中的变量角色"
-)
-```
+| 变量 | 类型 | Step 1 角色 |
+| --- | --- | --- |
+| `outcome` | 二分类事件指示变量 | `incident outcome` 是否发生 |
+| `outcome_censor` | 以年为单位的随访时间 | `incident outcome` 随访时间 |
+| `age` | 连续 exposure | 第一个示例里的主 exposure |
+| `sex` | 二分类协变量 | 基础人口学调整变量 |
+| `ecog_group` | 4 水平 ECOG 体能状态分组 | ECOG 体能状态调整变量 |
 
 # 建模前先检查分析数据
 
@@ -278,7 +263,7 @@ dplyr::select(
 )
 ```
 
-在这个示例里，Model A 提示较差的 performance status 与更高的 incident hazard
+在这个示例里，Model A 提示较差的 ECOG 体能状态与更高的 incident hazard
 相关：
 
 - `ECOG1` vs `ECOG0`: `HR = 1.519`
@@ -311,7 +296,7 @@ dplyr::select(
 
 对于分类 exposure，可以写成：
 
-> 与 `ECOG0` 相比，较差的 performance status 与更高的 incident hazard 相关，
+> 与 `ECOG0` 相比，较差的 ECOG 体能状态与更高的 incident hazard 相关，
 > 其中 `ECOG2` vs `ECOG0` 的对比最强（`HR = 2.579`, `95% CI 1.660 to 4.007`），
 > 该估计在 sex 调整后仍然存在。
 
