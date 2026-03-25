@@ -209,13 +209,16 @@ The current wrapper is most appropriate when:
 - the mediator is binary or continuous
 - the temporal ordering is scientifically defensible
 
-Two boundaries are especially important in UK Biobank-style cohort analyses:
+Two boundaries are especially important in UK Biobank-style analyses that rely
+heavily on baseline measurements:
 
-1. if the final `yreg` is `survCox`, the decomposition relies on the rare-event
-   approximation
+1. if the final `yreg` is `survCox`, the decomposition relies on the
+   rare-event approximation, so it is better reported as an approximate
+   decomposition than as an exact estimate
 2. if exposure and mediator are measured at the same baseline visit, the
-   result is easier to defend as a pathway-consistent decomposition than as a
-   strong causal claim unless the temporal order is supported externally
+   result usually supports a decomposition that is consistent with an assumed
+   pathway; without external evidence on temporal ordering, it should not be
+   written up as a strong causal claim
 
 # Fit the simplest mediation workflow
 
@@ -548,10 +551,11 @@ A defensible reporting order is usually:
 2. then present the mediation analysis as a pathway decomposition
 3. state the exposure contrast, mediator reference, and adjustment profile
 4. report which `yreg` was used; if it was `survCox`, mention the rare-event
-   approximation, and if it was AFT, remember that the ratio scale is a time
-   ratio
-5. avoid over-claiming causality when exposure and mediator are measured at the
-   same baseline visit
+   approximation and make clear that the decomposition is approximate, and if
+   it was AFT, remember that the ratio scale is a time ratio
+5. if exposure and mediator are measured at the same baseline visit, write the
+   result up as decomposition evidence that is consistent with an assumed
+   pathway unless temporal ordering is supported externally
 
 In other words, mediation should usually refine the biological story after the
 main Cox result is already established.
@@ -567,7 +571,8 @@ This step should leave you with six practical rules:
 4. `mreg` controls `x_med ~ x_exp + x_cov`, `yreg` controls
    `time ~ x_exp + x_med + x_cov`, and `interaction = TRUE` adds
    `x_exp:x_med` to the outcome model
-5. `yreg = "auto"` chooses `survCox` for event proportion `<= 10%` and
+5. `yreg = "auto"` chooses `survCox` for event proportion `<= 10%` (which
+   means the decomposition then relies on the rare-event approximation) and
    `survAFT_weibull` otherwise
 6. factor mediators should not be forced into `mreg = "linear"`, and the final
    mediation result should always be interpreted with the actual outcome model,
