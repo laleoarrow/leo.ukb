@@ -289,8 +289,9 @@ For the main Cox model, the usual interpretation logic is:
    supported
 2. if the HR is away from 1 but the confidence interval crosses 1, the data
    suggest a possible association, but the estimate is still imprecise
-3. if the point estimate is close to 1, the evidence for a main association is
-   weak regardless of the exact P value
+3. if the point estimate is close to 1, the effect size may be small; however,
+   the strength of statistical evidence still depends on the precision of the
+   confidence interval, the sample size, and the scientific context
 4. for categorical exposures, always read both the effect size and the cell
    sizes; sparse strata can generate unstable large HRs
 

@@ -85,9 +85,9 @@ Table: Step 2 教学数据中的变量角色
 | `outcome_censor` | 按年计的随访时间 | 结局时间 |
 | `age` | 连续 exposure | 乘性交互示例中的主 exposure |
 | `sex` | 二分类 modifier | 乘性交互中的二分类 effect modifier |
-| `ecog_group3` | 三分类 ECOG 体能状态分组 | subgroup 展示中的多分类 modifier |
+| `ecog_group3` | ECOG 体能状态（三组） | subgroup 展示中的多分类 modifier |
 | `age_high` | 二分类年龄分组 | 加性交互教学用的年龄二分类变量 |
-| `ecog_binary` | 二分类 ECOG 体能状态分组 | 加性交互教学用的 ECOG 体能状态二分类变量 |
+| `ecog_binary` | ECOG 体能状态（二分） | 加性交互教学用的二分化 ECOG 体能状态变量 |
 
 交互分析之前，最好还要看一下各组的事件数和 binary-binary 联合分布。
 
