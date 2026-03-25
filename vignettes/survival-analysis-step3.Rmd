@@ -212,13 +212,15 @@ The current wrapper is most appropriate when:
 Two boundaries are especially important in UK Biobank-style analyses that rely
 heavily on baseline measurements:
 
-1. if the final `yreg` is `survCox`, the decomposition relies on the
-   rare-event approximation, so it is better reported as an approximate
-   decomposition than as an exact estimate
+1. if the final `yreg` (the outcome-model setting here) is `survCox`, the
+   decomposition relies on the rare-event approximation; in plain terms, this
+   means the split is easier to defend as an approximate result when events are
+   relatively rare, rather than as an exact estimate
 2. if exposure and mediator are measured at the same baseline visit, the
-   result usually supports a decomposition that is consistent with an assumed
-   pathway; without external evidence on temporal ordering, it should not be
-   written up as a strong causal claim
+   data usually cannot show that exposure came before mediator, so the result
+   is better written as decomposition evidence that is consistent with an
+   assumed pathway; without external evidence on temporal ordering, it should
+   not be written up as a strong causal claim
 
 # Fit the simplest mediation workflow
 
@@ -551,11 +553,13 @@ A defensible reporting order is usually:
 2. then present the mediation analysis as a pathway decomposition
 3. state the exposure contrast, mediator reference, and adjustment profile
 4. report which `yreg` was used; if it was `survCox`, mention the rare-event
-   approximation and make clear that the decomposition is approximate, and if
-   it was AFT, remember that the ratio scale is a time ratio
+   approximation and make clear that this means the decomposition is only being
+   reported as an approximate split when events are relatively rare, and if it
+   was AFT, remember that the ratio scale is a time ratio
 5. if exposure and mediator are measured at the same baseline visit, write the
    result up as decomposition evidence that is consistent with an assumed
-   pathway unless temporal ordering is supported externally
+   pathway, and say explicitly that the data alone do not establish exposure
+   before mediator unless temporal ordering is supported externally
 
 In other words, mediation should usually refine the biological story after the
 main Cox result is already established.
@@ -572,7 +576,8 @@ This step should leave you with six practical rules:
    `time ~ x_exp + x_med + x_cov`, and `interaction = TRUE` adds
    `x_exp:x_med` to the outcome model
 5. `yreg = "auto"` chooses `survCox` for event proportion `<= 10%` (which
-   means the decomposition then relies on the rare-event approximation) and
+   means the decomposition then relies on the rare-event approximation and is
+   better read as approximate when events are relatively rare) and
    `survAFT_weibull` otherwise
 6. factor mediators should not be forced into `mreg = "linear"`, and the final
    mediation result should always be interpreted with the actual outcome model,

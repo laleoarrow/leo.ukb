@@ -199,8 +199,8 @@ knitr::kable(
 
 对 UK Biobank 这类主要依赖 baseline 测量的队列，解释中介结果时尤其要把两件事说清楚：
 
-1. 如果最终 `yreg` 是 `survCox`，中介分解依赖低事件率下的 rare-event approximation，因此更适合作为近似分解结果来报告，而不是当成无条件精确的估计
-2. 如果 exposure 和 mediator 都在同一次 baseline visit 测量，通常只能说结果与某条中介路径一致；除非有额外的时间顺序或外部证据支持，否则不宜写成很强的因果结论
+1. 如果最终 `yreg`（也就是这里的 outcome model）是 `survCox`，中介分解依赖低事件率下的 rare-event approximation；换句话说，只有在事件比较少时，这个拆分才更适合作为近似结果来报告，而不是当成无条件精确的估计
+2. 如果 exposure 和 mediator 都在同一次 baseline visit 测量，数据本身通常不能证明 exposure 先于 mediator，所以更稳妥的写法是“结果与某条假定中介路径一致”；除非有额外的时间顺序或外部证据支持，否则不宜写成很强的因果结论
 
 # 先跑最基础的中介分析
 
@@ -495,8 +495,8 @@ for (pal in c("jama", "jco", "lancet", "nejm")) {
 1. 先报告 main exposure-outcome association
 2. 再把 mediation 作为 pathway decomposition 的补充证据
 3. 写清 exposure contrast、mediator reference 和 adjustment profile
-4. 写清最终用的是哪个 `yreg`；如果是 `survCox`，说明 rare-event approximation，并提醒读者这是低事件率下的近似分解；如果是 AFT，提醒读者比值尺度应读作 time ratio
-5. 如果 exposure 和 mediator 都来自同一次 baseline visit，把结果写成与假定中介路径一致的分解证据；除非时间顺序有外部支持，否则避免把因果结论写得过强
+4. 写清最终用的是哪个 `yreg`；如果是 `survCox`，说明 rare-event approximation，并直接提醒读者这意味着只有在事件较少时，这个分解更适合作为近似结果报告；如果是 AFT，提醒读者比值尺度应读作 time ratio
+5. 如果 exposure 和 mediator 都来自同一次 baseline visit，直接写明数据本身不能证明 exposure 先于 mediator，把结果写成与假定中介路径一致的分解证据；除非时间顺序有外部支持，否则避免把因果结论写得过强
 
 也就是说，中介分析通常是在主关联已经建立以后，用来细化生物学故事，而不是替代主分析。
 
@@ -508,5 +508,5 @@ for (pal in c("jama", "jco", "lancet", "nejm")) {
 2. 和 Step 1、Step 2 一样，建模前也要先看数据结构和事件负担
 3. `x_exp_a0`、`x_exp_a1`、`x_med_cde`、`x_cov_cond` 决定了中介效应在哪里被评价
 4. `mreg` 控制 `x_med ~ x_exp + x_cov`，`yreg` 控制 `time ~ x_exp + x_med + x_cov`，`interaction = TRUE` 会在 outcome 模型里加入 `x_exp:x_med`
-5. `yreg = "auto"` 会在事件率 `<= 10%` 时选 `survCox`（也就意味着后续分解依赖 rare-event approximation），否则选 `survAFT_weibull`
+5. `yreg = "auto"` 会在事件率 `<= 10%` 时选 `survCox`（也就意味着后续分解依赖 rare-event approximation，也就是只有在事件较少时才更适合作为近似分解来理解），否则选 `survAFT_weibull`
 6. factor mediator 不应该强行塞进 `mreg = "linear"`，最终结果也必须结合实际 outcome model、不确定性和时间顺序一起解释
