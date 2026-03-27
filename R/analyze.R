@@ -294,18 +294,20 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #' Helper function to format p-values according to common publication standards
 #'
 #' @param p_value Numeric p-value
+#' @param fmt Format style: `"threshold"` (default, uses `<0.001`) or
+#'   `"scientific"` (uses scientific notation for p < 0.001, e.g. `2.300e-04`).
 #' @return Formatted p-value string
 #' @examples
 #' leo.ukb:::.format_p_value(0.2)
 #' leo.ukb:::.format_p_value(0.0314)
 #' leo.ukb:::.format_p_value(0.0002)
+#' leo.ukb:::.format_p_value(0.0002, fmt = "scientific")
 #' @noRd
-.format_p_value <- function(p_value) {
+.format_p_value <- function(p_value, fmt = "threshold") {
   if (is.na(p_value)) return("NA")
+  if (fmt == "scientific" && p_value < 0.001) return(sprintf("%.3e", p_value))
   if (p_value < 0.001) return("<0.001")
-  if (p_value < 0.01) return(as.character(round(p_value, 3)))
-  if (p_value < 0.05) return(as.character(round(p_value, 3)))
-  return(as.character(round(p_value, 3)))
+  sprintf("%.3f", round(p_value, 3))
 }
 
 #' Normalize model input into a named covariate list
@@ -531,10 +533,15 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #'   type, `"continuous"` to force a numeric Cox term, or `"categorical"` to
 #'   force factor coding. In `"auto"` mode, small integer-coded exposures will
 #'   trigger a warning because they may represent categorical groups.
-#'
-#' @return A `leo_cox` object containing the default wide table in
-#'   `$result`, the underlying tidy rows in `$result_tidy`, model metadata, and
-#'   fitted `coxph` objects.
+#' @param simplify Output mode: `"wide"` (default) returns the wide result
+#'   table directly; `"tidy"` returns the tidy result table; `FALSE` returns
+#'   the full `leo_cox` object.
+#' @param p_fmt P-value display format: `"threshold"` (default) uses `<0.001`;
+#'   `"scientific"` uses scientific notation for p < 0.001 (e.g. `2.300e-04`).
+#' @return When `simplify = FALSE`, a `leo_cox` object containing the default
+#'   wide table in `$result`, the underlying tidy rows in `$result_tidy`, model
+#'   metadata, and fitted `coxph` objects. When `simplify = "wide"` or
+#'   `"tidy"`, the corresponding formatted table directly.
 #' @export
 #' @examples
 #' lung_df <- stats::na.omit(
@@ -556,7 +563,7 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #'
 #' res_age <- leo_cox(
 #'   df = lung_df, y_out = c("outcome", "outcome_censor"),
-#'   x_exp = "age", x_cov = model_cont, verbose = FALSE
+#'   x_exp = "age", x_cov = model_cont, simplify = FALSE, verbose = FALSE
 #' )
 #' res_age$result
 #' leo_cox_format(res_age, style = "tidy")
@@ -569,14 +576,14 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #' res_ecog <- leo_cox(
 #'   df = lung_df, y_out = c("outcome", "outcome_censor"),
 #'   x_exp = "ecog_group", x_cov = model_cat,
-#'   x_exp_type = "categorical", verbose = FALSE
+#'   x_exp_type = "categorical", simplify = FALSE, verbose = FALSE
 #' )
 #' res_ecog$result
 #'
 #' if (requireNamespace("gtsummary", quietly = TRUE) && requireNamespace("broom.helpers", quietly = TRUE)) {
 #'   leo_cox_format(res_age, style = "gtsummary")
 #' }
-leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followup_time = 0, x_exp_type = "auto", verbose = TRUE) {
+leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followup_time = 0, x_exp_type = "auto", simplify = "wide", p_fmt = "threshold", verbose = TRUE) {
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Regression", col = "blue")
@@ -675,7 +682,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
       hr = c(1, rep(NA_real_, length(levels_x) - 1)),
       hr_ci_l = c(1, rep(NA_real_, length(levels_x) - 1)),
       hr_ci_u = c(1, rep(NA_real_, length(levels_x) - 1)),
-      p_value = c(NA_real_, rep(NA_real_, length(levels_x) - 1)),
+      p_value = c(1, rep(NA_real_, length(levels_x) - 1)),
       exposure_class = if (length(levels_x) == 2) "Binary" else paste0("Categorical (", length(levels_x), " levels)"),
       formula = formula_txt,
       check.names = FALSE
@@ -705,13 +712,15 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
       n_after_followup = prep$n_after_followup,
       n_after_complete_case = prep$n_after_complete_case,
       min_followup_time = prep$min_followup_time,
-      event_value = prep$event_value
+      event_value = prep$event_value,
+      p_fmt = p_fmt
     ),
     fit = fit_results
   ), class = "leo_cox")
   out$result <- leo_cox_format(out, style = "wide")
   leo.basic::leo_log("Cox regression completed for {prep$exposure_name} -> {prep$outcome_name} with {length(prep$models)} model(s).", level = "success", verbose = verbose)
   if (verbose) leo.basic::leo_time_elapsed(t0)
+  if (is.character(simplify)) return(leo_cox_format(out, style = simplify))
   return(out)
 }
 
@@ -740,11 +749,12 @@ leo_cox_format <- function(x, style = "wide") {
       model_ids <- unique(result_tidy$model)
       result_wide <- result_tidy[result_tidy$model == model_ids[1], c("row_id", "exposure", "outcome", "case_n", "control_n", "person_year", "exposure_class"), drop = FALSE]
       names(result_wide) <- c("row_id", "Exposure", "Outcome", "Case N", "Control N", "Person-years", "Class")
+      p_fmt <- if (!is.null(x$data_info$p_fmt)) x$data_info$p_fmt else "threshold"
       for (model_id in model_ids) {
         model_df <- result_tidy[result_tidy$model == model_id, c("row_id", "hr", "hr_ci_l", "hr_ci_u", "p_value"), drop = FALSE]
         model_df$hr <- round(model_df$hr, 3)
         model_df$ci_95 <- ifelse(is.na(model_df$hr_ci_l) | is.na(model_df$hr_ci_u), "NA", paste0(sprintf("%.3f", round(model_df$hr_ci_l, 3)), ", ", sprintf("%.3f", round(model_df$hr_ci_u, 3))))
-        model_df$p_value <- vapply(model_df$p_value, .format_p_value, character(1))
+        model_df$p_value <- vapply(model_df$p_value, function(p) .format_p_value(p, fmt = p_fmt), character(1))
         model_df <- model_df[, c("row_id", "hr", "ci_95", "p_value"), drop = FALSE]
         names(model_df) <- c("row_id", paste(model_id, "HR"), paste(model_id, "95% CI"), paste(model_id, "P value"))
         result_wide <- merge(result_wide, model_df, by = "row_id", all.x = TRUE, sort = FALSE)
@@ -757,11 +767,11 @@ leo_cox_format <- function(x, style = "wide") {
     tidy = {
       result_tidy <- x$result_tidy
       result_out <- result_tidy[, c("model", "exposure", "outcome", "level", "case_n", "control_n", "person_year"), drop = FALSE]
+      p_fmt <- if (!is.null(x$data_info$p_fmt)) x$data_info$p_fmt else "threshold"
       result_out$HR <- round(result_tidy$hr, 3)
       result_out$`95% CI` <- ifelse(is.na(result_tidy$hr_ci_l) | is.na(result_tidy$hr_ci_u), "NA", paste0(sprintf("%.3f", round(result_tidy$hr_ci_l, 3)), ", ", sprintf("%.3f", round(result_tidy$hr_ci_u, 3))))
-      result_out$`P value` <- vapply(result_tidy$p_value, .format_p_value, character(1))
+      result_out$`P value` <- vapply(result_tidy$p_value, function(p) .format_p_value(p, fmt = p_fmt), character(1))
       result_out$Class <- result_tidy$exposure_class
-      result_out$Formula <- result_tidy$formula
       names(result_out)[1:7] <- c("Model", "Exposure", "Outcome", "Level", "Case N", "Control N", "Person-years")
       rownames(result_out) <- NULL
       result_out
@@ -1270,6 +1280,7 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
           event_value = 1,
           min_followup_time = min_followup_time,
           x_exp_type = x_exp_type,
+          simplify = FALSE,
           verbose = FALSE
         ),
         error = function(e) {

@@ -13,6 +13,8 @@ leo_cox(
   event_value = 1,
   min_followup_time = 0,
   x_exp_type = "auto",
+  simplify = "wide",
+  p_fmt = "threshold",
   verbose = TRUE
 )
 
@@ -43,6 +45,13 @@ type, \code{"continuous"} to force a numeric Cox term, or \code{"categorical"} t
 force factor coding. In \code{"auto"} mode, small integer-coded exposures will
 trigger a warning because they may represent categorical groups.}
 
+\item{simplify}{Output mode: \code{"wide"} (default) returns the wide result
+table directly; \code{"tidy"} returns the tidy result table; \code{FALSE} returns
+the full \code{leo_cox} object.}
+
+\item{p_fmt}{P-value display format: \code{"threshold"} (default) uses \verb{<0.001};
+\code{"scientific"} uses scientific notation for p < 0.001 (e.g. \code{2.300e-04}).}
+
 \item{verbose}{Logical; print progress messages.}
 
 \item{x}{Result returned by \code{leo_cox()}.}
@@ -50,9 +59,10 @@ trigger a warning because they may represent categorical groups.}
 \item{style}{One of \code{"wide"}, \code{"tidy"}, or \code{"gtsummary"}.}
 }
 \value{
-A \code{leo_cox} object containing the default wide table in
-\verb{$result}, the underlying tidy rows in \verb{$result_tidy}, model metadata, and
-fitted \code{coxph} objects.
+When \code{simplify = FALSE}, a \code{leo_cox} object containing the default
+wide table in \verb{$result}, the underlying tidy rows in \verb{$result_tidy}, model
+metadata, and fitted \code{coxph} objects. When \code{simplify = "wide"} or
+\code{"tidy"}, the corresponding formatted table directly.
 }
 \description{
 \code{leo_cox()} fits one or more Cox proportional hazards models for a
@@ -93,7 +103,7 @@ model_cont <- list(
 
 res_age <- leo_cox(
   df = lung_df, y_out = c("outcome", "outcome_censor"),
-  x_exp = "age", x_cov = model_cont, verbose = FALSE
+  x_exp = "age", x_cov = model_cont, simplify = FALSE, verbose = FALSE
 )
 res_age$result
 leo_cox_format(res_age, style = "tidy")
@@ -106,7 +116,7 @@ model_cat <- list(
 res_ecog <- leo_cox(
   df = lung_df, y_out = c("outcome", "outcome_censor"),
   x_exp = "ecog_group", x_cov = model_cat,
-  x_exp_type = "categorical", verbose = FALSE
+  x_exp_type = "categorical", simplify = FALSE, verbose = FALSE
 )
 res_ecog$result
 

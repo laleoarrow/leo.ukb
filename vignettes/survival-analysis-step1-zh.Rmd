@@ -181,7 +181,7 @@ res_cox <- leo_cox(
   verbose = FALSE
 )
 
-res_cox$result
+res_cox
 ```
 
 # 主 Cox 结果应该怎么读
@@ -198,8 +198,19 @@ res_cox$result
 
 在这里就是年龄每增加 1 岁的 effect。
 
+如果需要 tidy 表用于后续编程，可以设置 `simplify = "tidy"` 或者
+用 `simplify = FALSE` 配合 `leo_cox_format()`：
+
 ```{r}
-age_tidy <- leo_cox_format(res_cox, style = "tidy")
+res_cox_full <- leo_cox(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_cov = cox_models,
+  simplify = FALSE,
+  verbose = FALSE
+)
+age_tidy <- leo_cox_format(res_cox_full, style = "tidy")
 age_model_b <- dplyr::filter(age_tidy, Model == "Model B")
 age_model_b
 ```
@@ -229,8 +240,10 @@ dplyr::select(
 
 可以把规则记成一句话：
 
-- `$result` 用来读主结果表
-- `leo_cox_format(..., style = "tidy")` 用来继续编程处理
+- `simplify = "wide"`（默认）或 `simplify = "tidy"` 直接拿结果表
+- `simplify = FALSE` 拿完整对象，可以继续用 `leo_cox_format()` 或查看拟合结果
+
+也可以设置 `p_fmt = "scientific"` 来显示精确 p 值，而不是 `<0.001`。
 
 # 主 Cox 示例 2：分类 exposure
 
@@ -246,7 +259,7 @@ res_cox_cat <- leo_cox(
   verbose = FALSE
 )
 
-res_cox_cat$result
+res_cox_cat
 ```
 
 这张表和年龄模型的读法不一样：
@@ -256,7 +269,15 @@ res_cox_cat$result
 - 所以这里不再是“每增加 1 单位”，而是 “level vs reference”
 
 ```{r}
-ecog_tidy <- leo_cox_format(res_cox_cat, style = "tidy")
+ecog_tidy <- leo_cox(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "ecog_group",
+  x_cov = list("Crude" = NULL, "Model A" = c("sex")),
+  x_exp_type = "categorical",
+  simplify = "tidy",
+  verbose = FALSE
+)
 dplyr::select(
   ecog_tidy,
   Model, Exposure, Level, HR, `95% CI`, `P value`

@@ -110,7 +110,10 @@ For \code{leo_cox_mediation()}, a \code{leo_cox_mediation} object containing a d
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
 
-\ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
+\code{leo_cox_mediation_plot()} turns a \code{leo_cox_mediation} result into a compact
+pathway figure for a selected model. The plot keeps all annotation text on a
+shared vertical center axis, uses equal-sized boxes, and draws only straight
+arrows between the exposure, mediator, and outcome nodes.
 }
 \details{
 Performs causal mediation analysis for survival outcomes via \code{regmedint::regmedint()}.
@@ -120,11 +123,6 @@ Fits mediator model \code{x_med ~ x_exp + x_cov} and outcome model
 \code{yreg = "auto"} uses the observed event proportion in the post-filter,
 complete-case analysis set: Cox for rare outcomes (<=10\% events), AFT otherwise.
 This 10\% threshold is an empirical rare-event approximation rule.
-
-\code{leo_cox_mediation_plot()} turns a \code{leo_cox_mediation} result into a compact
-pathway figure for a selected model. The plot keeps all annotation text on a
-shared vertical center axis, uses equal-sized boxes, and draws only straight
-arrows between the exposure, mediator, and outcome nodes.
 }
 \examples{
 if (requireNamespace("regmedint", quietly = TRUE)) {
@@ -184,11 +182,20 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
     x_exp = "exposure", x_med = "mediator", x_cov = "age",
     verbose = FALSE
   )
+  # with default labels and note
   leo_cox_mediation_plot(
     res_med, model = "model_1",
     exposure_label = "Metabolic\nrisk",
     mediator_label = "Inflammation",
     outcome_label = "Incident\noutcome"
+  )
+  # with no note
+  leo_cox_mediation_plot(
+    res_med, model = "model_1",
+    exposure_label = "Metabolic\nrisk",
+    mediator_label = "Inflammation",
+    outcome_label = "Incident\noutcome",
+    add_note = FALSE
   )
 }
 }

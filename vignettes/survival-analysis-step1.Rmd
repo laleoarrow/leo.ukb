@@ -185,7 +185,7 @@ res_cox <- leo_cox(
   verbose = FALSE
 )
 
-res_cox$result
+res_cox
 ```
 
 # How to read the main Cox result
@@ -201,8 +201,19 @@ This output is already paper-oriented:
 For a continuous exposure, the hazard ratio is interpreted per one-unit
 increase in the exposure. Here that means per one-year increase in age.
 
+To get the tidy table for downstream programming, set `simplify = "tidy"` or
+set `simplify = FALSE` and use `leo_cox_format()`:
+
 ```{r}
-age_tidy <- leo_cox_format(res_cox, style = "tidy")
+res_cox_full <- leo_cox(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "age",
+  x_cov = cox_models,
+  simplify = FALSE,
+  verbose = FALSE
+)
+age_tidy <- leo_cox_format(res_cox_full, style = "tidy")
 age_model_b <- dplyr::filter(age_tidy, Model == "Model B")
 age_model_b
 ```
@@ -233,8 +244,12 @@ dplyr::select(
 
 A useful rule is:
 
-- use `$result` for manuscript-style reading
-- use `leo_cox_format(..., style = "tidy")` for downstream programming
+- use `simplify = "wide"` (the default) or `simplify = "tidy"` when you only
+  need the result table
+- use `simplify = FALSE` when you need fitted model objects or `leo_cox_format()`
+
+You can also set `p_fmt = "scientific"` to show precise p-values instead of
+`<0.001`.
 
 # Main Cox example 2: categorical exposure
 
@@ -250,7 +265,7 @@ res_cox_cat <- leo_cox(
   verbose = FALSE
 )
 
-res_cox_cat$result
+res_cox_cat
 ```
 
 This table is read differently from the age model:
@@ -261,7 +276,15 @@ This table is read differently from the age model:
   increase
 
 ```{r}
-ecog_tidy <- leo_cox_format(res_cox_cat, style = "tidy")
+ecog_tidy <- leo_cox(
+  df = lung_df,
+  y_out = c("outcome", "outcome_censor"),
+  x_exp = "ecog_group",
+  x_cov = list("Crude" = NULL, "Model A" = c("sex")),
+  x_exp_type = "categorical",
+  simplify = "tidy",
+  verbose = FALSE
+)
 dplyr::select(
   ecog_tidy,
   Model, Exposure, Level, HR, `95% CI`, `P value`
