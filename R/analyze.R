@@ -673,7 +673,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
     result_df <- data.frame(
       model = model_name,
       row_id = seq_along(levels_x),
-      exposure = c("Ref", levels_x[-1]),
+      exposure = c(paste0(levels_x[1], " (Ref)"), levels_x[-1]),
       outcome = prep$outcome_name,
       level = levels_x,
       case_n = level_counts$Case_N[match(levels_x, level_counts$level)],
@@ -1313,7 +1313,7 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
       for (subgroup_var in unique(result_df$subgroup)) {
         for (row_id in unique(result_df$row_id[result_df$subgroup == subgroup_var])) {
           idx <- which(result_df$model == model_name & result_df$subgroup == subgroup_var & result_df$row_id == row_id)
-          idx <- idx[is.finite(result_df$hr[idx]) & is.finite(result_df$p_value[idx]) & !is.na(result_df$p_value[idx]) & result_df$exposure[idx] != "Ref"]
+          idx <- idx[is.finite(result_df$hr[idx]) & is.finite(result_df$p_value[idx]) & !is.na(result_df$p_value[idx]) & !grepl("(Ref)", result_df$exposure[idx], fixed = TRUE)]
           if (length(idx) < 2) next
           hetero_res <- utils::capture.output(
             hetero_obj <- leo_heterogeneity_p(
@@ -2292,7 +2292,7 @@ leo_linear <- function(df, y_out, x_exp, x_cov = NULL, x_exp_type = "auto", verb
     result_df <- data.frame(
       model = model_name,
       row_id = seq_along(levels_x),
-      exposure = c("Ref", levels_x[-1]),
+      exposure = c(paste0(levels_x[1], " (Ref)"), levels_x[-1]),
       outcome = y_out,
       level = levels_x,
       n = level_counts$N[match(levels_x, level_counts$level)],
@@ -2540,7 +2540,7 @@ leo_logistic <- function(df, y_out, x_exp, x_cov = NULL, case_value = 1, x_exp_t
     result_df <- data.frame(
       model = model_name,
       row_id = seq_along(levels_x),
-      exposure = c("Ref", levels_x[-1]),
+      exposure = c(paste0(levels_x[1], " (Ref)"), levels_x[-1]),
       outcome = y_out,
       level = levels_x,
       case_n = level_counts$Case_N[match(levels_x, level_counts$level)],
