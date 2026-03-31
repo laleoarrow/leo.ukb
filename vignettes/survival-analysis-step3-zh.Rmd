@@ -1,6 +1,6 @@
 ---
 title: "生存分析 Step 3.0：中介分析"
-description: "学习如何在 leo.ukb 中设置、拟合并解释生存中介分析。"
+description: "学习 leo.ukb 默认中介分析路线：从建模设定到 ACME/ADE/ATE 的生存结局解读。"
 output:
   rmarkdown::html_vignette:
     highlight: default
@@ -20,52 +20,114 @@ knitr::opts_chunk$set(
   warning = FALSE
 )
 suppressPackageStartupMessages(library(leo.ukb))
-has_regmedint <- requireNamespace("regmedint", quietly = TRUE)
-if (!has_regmedint) {
+has_mediation <- requireNamespace("mediation", quietly = TRUE)
+if (!has_mediation) {
   knitr::opts_chunk$set(eval = FALSE)
 }
+fmt_num <- function(x, digits = 3) {
+  if (length(x) == 0 || all(is.na(x))) return("NA")
+  sprintf(paste0("%.", digits, "f"), x[1])
+}
+fmt_pct <- function(x, digits = 1) {
+  if (length(x) == 0 || all(is.na(x))) return("NA")
+  sprintf(paste0("%.", digits, "f%%"), 100 * x[1])
+}
+effect_row <- function(res, code) {
+  if (is.null(res)) return(data.frame())
+  dplyr::filter(res$result, `Effect code` == code)
+}
+effect_value <- function(res, code, column = "Estimate") {
+  row <- effect_row(res, code)
+  if (!nrow(row) || !column %in% names(row)) return(NA_real_)
+  row[[column]][1]
+}
+effect_text <- function(res, code, column = "95% CI") {
+  row <- effect_row(res, code)
+  if (!nrow(row) || !column %in% names(row)) return("NA")
+  as.character(row[[column]][1])
+}
+eval_value <- function(res, column) {
+  if (is.null(res) || !column %in% names(res$evaluation)) return(NA)
+  res$evaluation[[column]][1]
+}
+res_med <- NULL
+res_med_profile <- NULL
+res_med_boot <- NULL
+res_med_inter <- NULL
+mediation_warning <- NA_character_
 ```
 
-# 这一步要解决什么问题
+# 这一步到底在解决什么问题
 
-这篇教程是 `leo.ukb` 生存分析部分的 Step 3.0。完成主 Cox 分析，以及 Step 2
-里的亚组/交互分析之后，下一类常见问题是：
+这篇文章是 `leo.ukb` 生存分析教程里的默认 Step 3.0。走到这一步时，
+主关联通常已经看过了，有时 Step 2 的交互分析也已经做完。接下来更常见
+的问题不是“有没有关联”，而是：
 
-> exposure 和结局之间的关联，有没有一部分是通过某个 mediator 传递的？
+> exposure 和结局之间的关联里，有没有一部分与某条中介路径相一致？
 
-这就是中介分析，不是亚组分析，也不是交互分析。
+这听起来像一句话，实际上包含两个层次：
+
+1. 先选一条和科学问题相匹配的中介分析路线
+2. 再按模型真正输出的尺度去解释，而不是一上来就下意识地翻译成 HR
+
+现在 `leo_cox_mediation()` 的默认路线已经是 `method = "mediation"`，
+所以 Step 3.0 也应该先把这条主线讲清楚。
 
 ```{r, echo = FALSE, results = "asis"}
-if (!has_regmedint) {
+if (!has_mediation) {
   cat(
-    "> 说明：当前构建环境没有安装 regmedint，因此下方示例代码会保留展示但不会执行。若要完整运行本教程，请先在本地安装 regmedint。\n\n",
+    "> 说明：当前构建环境没有安装 `mediation`，因此下方代码会保留展示但不会执行。若要完整运行本教程，请先在本地安装 `mediation`。\n\n",
     sep = ""
   )
 }
 ```
 
-# 先把中介分析和交互分析分清楚
+# 先把中介分析和交互分析分开
 
-当前这套生存分析 workflow 其实是在回答三类不同的问题：
-
-1. Step 1：有没有主 exposure-outcome 关联？
-2. Step 2：这个关联会不会在不同人群里不一样，又该在哪个尺度上解释？
-3. Step 3.0：这个关联是不是部分通过 mediator 路径传递？
-
-所以：
-
-- interaction 讨论的是 **效应异质性**
-- mediation 讨论的是 **路径分解**
-
-中介分析不是替代 Step 1/Step 2，而是在前两步成立以后进一步细化生物学故事。
-
-# 先从数据和变量角色开始
-
-下面继续用一个教学型模拟数据：rare event、二分类 exposure、二分类 mediator，
-再加几个常见协变量。
+Step 2 问的是“这个关联会不会因人群不同而不同”，Step 3 问的是“这个关联
+能不能拆成路径成分”。这两个问题经常一起出现，但绝不能混着解释。
 
 ```{r}
-set.seed(20260323)
+decision_table <- data.frame(
+  Step = c("Step 2", "Step 3.0"),
+  主要问题 = c(
+    "暴露-结局关联会不会在不同分层里发生变化？",
+    "暴露-结局关联里，有没有一部分与中介路径相一致？"
+  ),
+  常见输出 = c(
+    "交互作用 P 值、亚组 HR、加性交互指标",
+    "ACME、ADE、ATE、中介比例"
+  ),
+  核心概念 = c(
+    "效应异质性",
+    "路径分解"
+  ),
+  check.names = FALSE
+)
+
+knitr::kable(
+  decision_table,
+  caption = "Step 2 和 Step 3 讨论的是两类不同问题"
+)
+```
+
+如果这一步不先分清，中介分析最常见的误区就是把它写成“换了一种形式的
+interaction analysis”。
+
+# 先搭一个教学用队列，再看变量角色
+
+下面继续用一个教学型模拟队列，包含：
+
+- 一个二分类 exposure
+- 一个二分类 mediator
+- 两个数值型协变量，先用于默认模型
+- 一个分类型协变量，专门留到 `x_cov_cond` 那一节再讲
+
+结局是由事件时间和删失时间生成的 time-to-event 数据，而不是直接用
+Bernoulli 抽一个 0/1 结果。这样才和生存分析本身保持一致。
+
+```{r}
+set.seed(20260329)
 n <- 500
 age <- rnorm(n, 60, 8)
 bmi <- rnorm(n, 26, 4)
@@ -94,27 +156,23 @@ med_df <- data.frame(
 )
 ```
 
-先明确每列变量在 Step 3 里到底扮演什么角色。
-
 ```{r}
 dplyr::glimpse(med_df)
 ```
 
-Table: Step 3 教学数据框中的变量角色
+Table: Step 3.0 教学数据中的变量角色
 
-| 变量 | 类型 | Step 3 角色 |
+| 变量 | 类型 | 在 Step 3.0 中的角色 |
 | --- | --- | --- |
-| `outcome` | 二分类事件指示变量 | `incident outcome` 是否发生 |
-| `outcome_censor` | 随访时间 | `incident outcome` 随访时间 |
-| `exposure` | 二分类 exposure | 需要被分解的 exposure |
-| `mediator` | 二分类 mediator | 候选中介路径变量 |
-| `age` | 连续协变量 | 调整协变量 |
-| `bmi` | 连续协变量 | 调整协变量 |
-| `smoking` | 二分类协变量 | 需要显式指定 `x_cov_cond` 的示例协变量 |
+| `outcome` | 二分类事件指示变量 | 事件是否发生 |
+| `outcome_censor` | 随访时间 | time-to-event 结局时间 |
+| `exposure` | 二分类 factor | 需要拆分的 exposure |
+| `mediator` | 二分类 factor | 候选中介路径变量 |
+| `age` | 连续协变量 | 数值型调整变量 |
+| `bmi` | 连续协变量 | 数值型调整变量 |
+| `smoking` | 二分类 factor | 用来演示 `x_cov_cond` 的分类型协变量 |
 
-# 建模前先看一眼分析数据
-
-和 Step 1、Step 2 一样，真正进入模型之前，先看分析数据是否像样。
+正式建模之前，先像开组会一样看数据，而不是只关心代码能不能跑通。
 
 ```{r}
 knitr::kable(utils::head(med_df, 6))
@@ -132,7 +190,7 @@ event_summary <- data.frame(
 
 knitr::kable(
   event_summary,
-  caption = "中介分析教学数据的总体事件负担"
+  caption = "教学数据中的总体事件负担"
 )
 ```
 
@@ -143,370 +201,326 @@ knitr::kable(
 )
 ```
 
-这几步已经能先回答三个关键问题：
+这几张表至少先帮你回答三件事：
 
-- 事件率是否足够低，以支持 `yreg = "auto"` 走 `survCox`
-- exposure 和 mediator 的分布是否存在与中介路径一致的模式
-- 协变量是否足够可解释，后面能不能定义一个可复现的评价点
+- 这确实是 time-to-event 数据，而不是普通二分类结果
+- exposure 和 mediator 的分布方向是否和中介故事大体一致
+- 虽然这里事件率不高，但默认路线依然不是 Cox mediation，而是
+  `survreg` 路线下的 `mediation` 分析
 
-# 建模前先决定中介分析的设置
+# 先弄清默认路线到底在拟合什么
 
-中介分析最容易被误解的，不是公式，而是“这些效应到底是在什么设定下被评价的”。
+`leo_cox_mediation()` 现在默认走 `method = "mediation"`。对生存结局来说，
+这条路线的核心含义如下：
 
 ```{r}
-setup_table <- data.frame(
+default_route <- data.frame(
   组成部分 = c(
-    "Exposure contrast",
-    "Mediator 类型",
-    "Outcome model",
-    "协变量评价点"
+    "中介分析引擎",
+    "结局模型",
+    "非 PM 行的尺度",
+    "interaction 默认值",
+    "效应家族"
   ),
-  当前教学规则 = c(
-    "优先用二分类 exposure；如果是数值 exposure，就显式给 x_exp_a0 和 x_exp_a1",
-    "二分类 mediator -> logistic；连续/评分型 mediator -> linear",
-    "yreg = 'auto' 在事件率 <= 10% 时用 survCox，否则用 survAFT_weibull",
-    "如果 x_cov 含非数值或二值数值变量，应显式给 x_cov_cond"
+  当前设定 = c(
+    "`mediation::mediate()`",
+    "`survival::survreg(dist = 'weibull')`",
+    "Time difference",
+    "`interaction = NULL` 会解析成 `FALSE`",
+    "ACME / ADE / ATE / PM"
   ),
   为什么重要 = c(
-    "所有直接/间接效应都围绕这个 exposure 比较定义",
-    "Mediator model 决定路径是如何被表示的",
-    "最终效应量到底是 HR 还是 TR，取决于 outcome model",
-    "中介分解永远是在某个具体协变量人群画像下评价的"
-  )
+    "这条路线报告的是 average-effect mediation，而不是 TE/TNIE/PNDE",
+    "这里做的是参数化生存中介模型，不是 Cox mediation",
+    "负值代表事件前无病时间更短，正值代表更长",
+    "默认先走更简单的平均效应解释，而不是自动进入 interaction 扩展版本",
+    "Step 3.0 应该优先掌握的是这一套命名"
+  ),
+  check.names = FALSE
 )
 
 knitr::kable(
-  setup_table,
-  caption = "中介分析建模前的关键设置"
+  default_route,
+  caption = "默认中介分析路线在统计上意味着什么"
 )
 ```
 
-# 建模前先明确方法边界
+这里有个很容易说错的点。内部之所以固定成
+`survival::survreg(dist = "weibull")`，是因为这条路线在当前 wrapper 里
+最稳定、最清楚，不等于“所有 UK Biobank 结局天然都服从 Weibull 分布”。
+那是建模约定，不是数据本体真理。
 
-`leo_cox_mediation()` 当前封装的是 `regmedint::regmedint()`，并且保留两套子模型：
+# 先跑一个最基础的默认模型
 
-- `mreg` 控制 mediator 模型，也就是 `x_med ~ x_exp + x_cov`
-- `yreg` 控制 outcome 模型，也就是 `time ~ x_exp + x_med + x_cov`
-- 如果 `interaction = TRUE`，outcome 模型会变成
-  `time ~ x_exp + x_med + x_exp:x_med + x_cov`
-
-当前 wrapper 最适合的使用场景是：
-
-- 结局是 time-to-event
-- exposure 是二分类，或者是已经明确给定 `x_exp_a0`/`x_exp_a1` 的连续变量
-- mediator 是二分类或连续变量
-- 时间顺序在科学上说得通
-
-对 UK Biobank 这类主要依赖 baseline 测量的队列，解释中介结果时尤其要把两件事说清楚：
-
-1. 如果最终 `yreg`（也就是这里的 outcome model）是 `survCox`，中介分解依赖低事件率下的 rare-event approximation；换句话说，只有在事件比较少时，这个拆分才更适合作为近似结果来报告，而不是当成无条件精确的估计
-2. 如果 exposure 和 mediator 都在同一次 baseline visit 测量，数据本身通常不能证明 exposure 先于 mediator，所以更稳妥的写法是“结果与某条假定中介路径一致”；除非有额外的时间顺序或外部证据支持，否则不宜写成很强的因果结论
-
-# 先跑最基础的中介分析
-
-和主 Cox 分析一样，先把 adjustment hierarchy 设清楚。
+第一步用最容易解释的版本：只放数值型协变量，保留默认引擎和默认
+interaction 处理。
 
 ```{r}
-med_models <- list(
-  "Model A" = c("age"),
-  "Model B" = c("age", "bmi")
-)
-
 res_med <- leo_cox_mediation(
   df = med_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "exposure",
   x_med = "mediator",
-  x_cov = med_models,
+  x_cov = c("age", "bmi"),
   verbose = FALSE
 )
 
 res_med$result
 ```
 
-# 结果表应该怎么读
-
-这张表最容易读乱的地方，现在已经被拆开了：
-
-- `Effect code` 和 `Effect` 告诉你当前是哪一种因果分解量
-- `Scale` 提醒你：`pm` 是比例，其他行是 ratio measure
-- `Exposure contrast` 展示的是 `x_exp_a0 -> x_exp_a1`
-- `Mediator reference` 会在 `cde` 行显示，并在 `$evaluation` 里完整保留
-- `Mediator model` 和 `Outcome model` 告诉你最终实际用的是哪个 `mreg` / `yreg`
-
-真正的科学要点是：
-
-> 中介分析输出不是天然唯一的，它一定依赖 exposure 对比、mediator 参考值、
-> 协变量评价点，以及最终使用的模型组合
-
-# 用 `leo.ukb` 的语言理解这些核心设置
-
-`regmedint` 原始接口里既有“评价点参数”，也有“模型设置参数”。
-`leo_cox_mediation()` 把它们保留了，但用更容易教和更容易读的方式展示出来。
-
-| 你真正想问的问题 | `leo.ukb` 参数 | 实际含义 |
-|---|---|---|
-| 到底比较哪个 exposure contrast？ | `x_exp_a0`, `x_exp_a1` | 定义中介效应时采用的 exposure 对比，例如 `Low risk -> High risk` 或 `8.0 -> 9.0`。 |
-| `cde` 是把 mediator 固定在哪个值上算的？ | `x_med_cde` | 计算 controlled direct effect 时使用的 mediator 参考值。 |
-| 这些效应是在什么协变量背景下评价的？ | `x_cov_cond` | 计算直接/间接效应时的 covariate profile。 |
-| Mediator 是怎么建模的？ | `mreg` | mediator 子模型类型，对应 `x_med ~ x_exp + x_cov`。 |
-| Outcome 是怎么建模的？ | `yreg` | outcome 子模型类型，对应 `time ~ x_exp + x_med + x_cov`。 |
-| Outcome 模型里要不要加 `x_exp:x_med`？ | `interaction` | 如果为 `TRUE`，则允许 `x_exp` 对结局的作用随着 `x_med` 改变。 |
-
-也就是说：
-
-- `x_exp_a0`、`x_exp_a1`、`x_med_cde`、`x_cov_cond` 决定的是 **效应在哪里被评价**
-- `mreg`、`yreg`、`interaction` 决定的是 **效应通过什么模型分解出来**
-
-# `mreg = "auto"` 现在是怎么判断的
-
-当前 `leo.ukb` 的规则是：
-
-- 二分类 factor / character / logical mediator -> `logistic`
-- 只有两个取值、且接近整数编码的 numeric mediator（例如 `0/1`） -> `logistic`
-- 取值超过两个的 numeric mediator，或虽然只有两个取值但更像连续编码的变量（例如 `0.2/0.8`） -> `linear`
-- 以 factor 形式存储的多分类 mediator -> 当前不支持
-
-这套规则在队列研究里通常最稳妥：
-
-- 二分类 mediator，可以放心让 `auto` 走 `logistic`
-- 真正连续的 biomarker，可以让 `auto` 走 `linear`
-- 如果 mediator 是一个有序评分，比如低度炎症指数从 `-7` 到 `7`，
-  更推荐保持 numeric，并把它当近似连续 mediator 处理
-- 如果你的问题本来就是一个临床阈值状态，那就先按预先定义的 cutpoint 转成二分类 mediator，再走 `logistic`
-
-# 先把缩写翻成人话
-
 ```{r}
-data.frame(
-  `Effect code` = c("cde", "pnde", "tnie", "tnde", "pnie", "te", "pm"),
-  含义 = c(
-    "Controlled direct effect",
-    "Pure natural direct effect",
-    "Total natural indirect effect",
-    "Total natural direct effect",
-    "Pure natural indirect effect",
-    "Total effect",
-    "Proportion mediated"
-  ),
-  `怎么理解` = c(
-    "把 mediator 固定在参考值时的直接效应。",
-    "不通过 mediator 的直接路径。",
-    "通过 mediator 传递的间接路径。",
-    "允许 mediator 自然变化时的直接路径。",
-    "pure natural 定义下的间接路径。",
-    "暴露与结局之间的总效应。",
-    "总效应中有多少比例可能通过 mediator 路径传递。"
-  )
-)
-```
-
-对大多数应用型读者来说，最常先看的通常是这 3 行：
-
-- `te`：总效应多大
-- `tnie`：通过 mediator 的间接路径多大
-- `pm`：总效应里大约有多少比例可能通过 mediator 传递
-
-# 把结果翻成更接近临床表述的话
-
-```{r}
-key_rows <- dplyr::filter(
+dplyr::select(
   res_med$result,
-  Model == "Model B",
-  `Effect code` %in% c("te", "tnie", "pm")
-)
-key_rows
-
-te_row <- dplyr::filter(key_rows, `Effect code` == "te")
-tnie_row <- dplyr::filter(key_rows, `Effect code` == "tnie")
-pm_row <- dplyr::filter(key_rows, `Effect code` == "pm")
-pm_ci <- as.numeric(trimws(strsplit(pm_row$`95% CI`, ",", fixed = TRUE)[[1]]))
-ratio_label <- if (te_row$`Outcome model` == "survCox") "HR" else "TR"
-ratio_noun <- if (te_row$`Outcome model` == "survCox") "hazard" else "time"
-te_pct <- 100 * (te_row$Estimate - 1)
-pm_pct <- 100 * pm_row$Estimate
-
-data.frame(
-  指标 = c("总效应", "通过炎症的间接效应", "中介比例"),
-  `Model B 摘要` = c(
-    sprintf("%s %.3f (%s)", ratio_label, te_row$Estimate, te_row$`95% CI`),
-    sprintf("%s %.3f (%s)", ratio_label, tnie_row$Estimate, tnie_row$`95% CI`),
-    sprintf("%.1f%% (%.1f%% to %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2])
-  )
+  `Effect code`, Scale, `Exposure contrast`, Estimate, `95% CI`, `P value`
 )
 ```
 
-因为这个示例的事件率只有
-`r sprintf("%.1f%%", 100 * mean(med_df$outcome))`，所以 `yreg = "auto"` 实际选到
-的是 `survCox`，这里的比值尺度应该读作 hazard ratio。
-
-如果把 Model B 翻成更接近临床/流行病学论文的语言，可以这样理解：
-
-- `High risk` 组的总体 `r ratio_noun` ratio 大约比 `Low risk` 组
-  `r sprintf("%.1f", abs(te_pct))`%
-  `r if (te_pct >= 0) "更高" else "更低"`（`te = `r sprintf("%.3f", te_row$Estimate)``）
-- 通过炎症路径的间接效应较小（`tnie = `r sprintf("%.3f", tnie_row$Estimate)``）
-- 中介比例点估计为 `r sprintf("%.1f%%", pm_pct)`，提示总效应中可能有一部分通过炎症路径传递
-
-但真正需要保守解释的是不确定性。这里 `pm` 的置信区间很宽，而且跨过 0，
-所以更科学的写法不是“已经证实存在中介”，而是：
-
-> 当前结果与“部分效应可能通过炎症路径传递”这一解释一致，但这条路径的估计仍然不够精确，暂时还不足以支持很强的机制性结论
-
-# 直接查看评价设置
-
-`leo_cox_mediation()` 会把评价点摘要保存在 `$evaluation` 里。
-
 ```{r}
-res_med$evaluation
+res_med$evaluation[, c(
+  "method", "mreg", "yreg", "outcome_distribution",
+  "interaction", "x_cov_cond", "mediation_boot", "mediation_sims"
+)]
 ```
 
-这张表最适合用来审计：
+这张 evaluation 表建议先看完再去读结果表：
 
-- exposure 到底是按哪个 `x_exp_a0 -> x_exp_a1` 比较的
-- `cde` 用的 mediator 参考值是什么
-- `x_cov_cond` 用的是哪一组协变量取值
-- 实际使用的是哪个 `mreg` / `yreg`
-- outcome 模型里是否加入了 `x_exp:x_med`
+- `method = mediation` 说明用的是默认路线
+- `yreg = survreg` 说明实际拟合的 outcome model 类
+- `outcome_distribution = weibull` 说明当前 `survreg` 用的分布
+- `interaction = FALSE` 说明 `interaction = NULL` 在这条引擎下默认解析成
+  了 `FALSE`
+- `x_cov_cond = NA` 在这个默认示例里是正常现象，表示 average-effect 的
+  `mediation` 路线没有要求你先把结果钉在一个显式命名的人群画像上
 
-# 如果协变量里有非数值变量，就要显式给 `x_cov_cond`
+# ACME、ADE、ATE、PM 应该怎么读
 
-当 adjustment set 里包含非数值协变量时，评价点必须显式给出。二值数值协变量
-（例如 `0/1` 指示变量）也一样，因为默认中位数可能会产生 `0.5` 这种根本不存在
-的取值。
+第一层读法先记住名称：
+
+- `ACME`：平均间接效应
+- `ADE`：平均直接效应
+- `ATE`：平均总效应
+- `PM`：中介比例
+
+真正关键的是第二层：这里除 `PM` 外，其余效应都在 **time-difference**
+尺度上，不在 HR 尺度上。
 
 ```{r}
-res_med_smoking <- leo_cox_mediation(
+acme_row <- effect_row(res_med, "acme")
+ade_row <- effect_row(res_med, "ade")
+ate_row <- effect_row(res_med, "ate")
+pm_row <- effect_row(res_med, "pm")
+
+interpret_table <- data.frame(
+  指标 = c("ACME", "ADE", "ATE", "PM"),
+  Estimate = c(
+    acme_row$Estimate[1],
+    ade_row$Estimate[1],
+    ate_row$Estimate[1],
+    pm_row$Estimate[1]
+  ),
+  `95% CI` = c(
+    acme_row$`95% CI`[1],
+    ade_row$`95% CI`[1],
+    ate_row$`95% CI`[1],
+    pm_row$`95% CI`[1]
+  ),
+  `该怎么读` = c(
+    "mediator 路径对应的平均时间尺度效应",
+    "不经过 mediator 的平均时间尺度效应",
+    "总体 exposure 比较对应的平均时间尺度效应",
+    "总效应里由 mediator 路径承载的比例"
+  ),
+  check.names = FALSE
+)
+
+knitr::kable(
+  interpret_table,
+  caption = "Step 3.0 默认路线下的效应家族"
+)
+```
+
+把这张输出像老师改作业那样顺着读，会更稳：
+
+1. 先看 `Effect code` 和 `Scale`，确认这一行到底是在报告哪一类效应、又是在什么尺度上
+2. 再看 `Exposure contrast`，确认每一行都在比较同一个 exposure 对比
+3. 最后才看 `Estimate`、`95% CI` 和 `P value`
+
+这次运行里，ACME 是 `r fmt_num(effect_value(res_med, "acme"))`，ADE 是
+`r fmt_num(effect_value(res_med, "ade"))`，ATE 是
+`r fmt_num(effect_value(res_med, "ate"))`。因为 outcome model 是
+`survreg`，所以这些数值的方向应该理解为：
+
+- 负值：与更短的事件前无病时间相一致
+- 正值：与更长的事件前无病时间相一致
+
+也正因为如此，不能一看到负号就直接脑补成“hazard 更高”。默认路线这里
+并没有在报告 HR。
+
+同一张结果表里的 `Case N`、`Non-event N` 和 `Total follow-up` 则在提醒你：
+这些路径分解不是漂在空中的数学量，而是建立在具体事件数和随访信息上的。数字
+越整齐，越要先回头看信息量是不是足够支撑它。
+
+这次运行的中介比例是 `r fmt_pct(effect_value(res_med, "pm"))`，95% CI 为
+`r effect_text(res_med, "pm")`。wrapper 还会自动检查总效应的区间是否跨
+null。这里
+`r if (isTRUE(eval_value(res_med, "pm_unstable"))) "总效应区间跨越了 null，因此 PM 会被自动标记为不稳定，解读时要更保守。" else "总效应区间没有跨越 null，因此 PM 不会被自动标记为不稳定。"`
+
+# 一旦想指定 profile，就把它明确写出来
+
+默认的 `method = "mediation"` 路线不会自动替你制造一个具名的
+covariate profile。只要 `x_cov_cond` 留空，报告出来的 ACME/ADE/ATE/PM
+就是在 observed covariate distribution 上求 average-effect。只有当你
+明确写出 `x_cov_cond` 时，分解结果才会被锚定到某个具体 profile 上。
+
+一旦 `x_cov` 里放进 factor，这点就更值得主动写清楚，因为“adjusted for
+smoking”和“在 age = 60、smoking = Never 这个 profile 下评价”并不是同一
+个科学表述。
+
+```{r}
+res_med_profile <- leo_cox_mediation(
   df = med_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "exposure",
   x_med = "mediator",
-  x_cov = "smoking",
-  x_cov_cond = list(smoking = "Never"),
+  x_cov = c("age", "smoking"),
+  x_cov_cond = list(age = 60, smoking = "Never"),
   verbose = FALSE
 )
 
-res_med_smoking$evaluation
+res_med_profile$evaluation[, c("x_cov_cond", "interaction", "method", "yreg")]
 ```
-
-这不只是“更透明”，而是必须这样做：只要 `x_cov` 里有 factor 或二值数值协变量，
-就应该把 `x_cov_cond` 写成一个真实、可解释、可复现的人群画像。
-
-# 连续 mediator，包括评分型 mediator，也可以做
-
-同一套 workflow 也可以用于连续 mediator。
 
 ```{r}
-med_df_cont <- dplyr::mutate(
-  med_df,
-  mediator_cont = rnorm(
-    n,
-    mean = 0.5 * as.integer(exposure == "High risk") + 0.02 * (age - 60),
-    sd = 1
-  )
+dplyr::select(
+  res_med_profile$result,
+  `Effect code`, `Covariate profile`, Estimate, `95% CI`
 )
+```
 
-res_med_cont <- leo_cox_mediation(
-  df = med_df_cont,
+这一步的重要性首先是科学层面的。你一旦把 `smoking = "Never"` 明确写进
+`x_cov_cond`，结果就不再是含糊的“adjusted for smoking”，而是更接近
+“在 60 岁、从不吸烟这类人群画像下，中介分解结果如何”。
+
+# Bootstrap 是选项，不是唯一正确姿势
+
+`mediation::mediate()` 本来就不要求每次都 bootstrap，所以 wrapper 把相关
+参数暴露出来，而不是偷偷锁死成某一种推断方式。教学示例里只用一个较小的
+bootstrap 规模，便于快速演示。
+
+```{r}
+res_med_boot <- leo_cox_mediation(
+  df = med_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "exposure",
-  x_med = "mediator_cont",
-  x_cov = "age",
-  mreg = "linear",
+  x_med = "mediator",
+  x_cov = c("age", "bmi"),
+  mediation_boot = TRUE,
+  mediation_sims = 80,
+  mediation_boot_ci_type = "perc",
   verbose = FALSE
 )
 
-res_med_cont$result
+res_med_boot$evaluation[, c(
+  "mediation_boot", "mediation_sims", "mediation_boot_ci_type", "mediation_use_speed"
+)]
 ```
 
-对于连续 mediator，`cde` 行的 `Mediator reference` 会显示成一个数值，因为
-controlled direct effect 是在 `x_med_cde` 上评价的。
+真正该学会的不是“bootstrap 一定更高级”，而是：
 
-这也是我更推荐用于“评分型 mediator”的路线。比如一个低度炎症指数从 `-7` 到 `7`：
+- 快速探索时可以先用默认推断
+- 最终结果表可以再决定是否要 bootstrap、以及 bootstrap 规模
+- 不管怎么选，推断设置都应该在分析记录里留痕
 
-- 首先问的是：这是不是一个有序严重度评分，单位变化在科学上是否还能解释？
-- 还是说研究问题其实更像“高炎症状态 vs 非高炎症状态”这种阈值型对比？
+# 如果强行设 interaction = TRUE，会发生什么？
 
-对大多数有序评分变量来说，第一步更干净的做法通常是：
+在默认 `mediation` 路线里，`interaction = NULL` 会自动当成 `FALSE`。
+你当然可以手动改成 `TRUE`，但 wrapper 会明确给 warning。原因不是代码
+不能跑，而是底层 `mediation` 对象这时可以给出 treatment-specific 结果，
+而当前 `leo_cox_mediation()` 的摘要表仍然只汇总平均版
+ACME/ADE/ATE/PM。
 
-- 保持 numeric
-- 先按 `linear` mediator model 跑
+```{r}
+mediation_warning <- NA_character_
+res_med_inter <- withCallingHandlers(
+  leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator",
+    x_cov = c("age", "bmi"),
+    interaction = TRUE,
+    verbose = FALSE
+  ),
+  warning = function(w) {
+    mediation_warning <<- conditionMessage(w)
+    invokeRestart("muffleWarning")
+  }
+)
 
-# 再加一张论文风格的路径图
+mediation_warning
+```
 
-对于单一 mediator，一张紧凑的路径图往往比一大张结果表更容易让读者迅速抓住重点。
+这条 warning 的意思很具体：如果你真的需要 `d0/d1`、`z0/z1`、`n0/n1`
+这类 treatment-specific 输出，就应该直接去看
+`$fit$model_1$mediation_model`，而不是假装四行摘要表已经替你把
+interaction 情况完整表达清楚了。
 
-```{r, fig.width = 8.8, fig.height = 5.8, dev.args = list(bg = "white")}
+# 画出这条路径图
+
+`leo_cox_mediation_plot()` 的目标，是把当前这次结果用一张足够紧凑、又能
+直接进文档草稿的图先画出来。
+
+```{r}
 leo_cox_mediation_plot(
   x = res_med,
-  model = "Model B",
-  exposure_label = "代谢风险",
-  mediator_label = "炎症",
-  outcome_label = "结局事件",
-  language = "zh",
+  exposure_label = "Metabolic\nrisk",
+  mediator_label = "Inflammation",
+  outcome_label = "Incident\noutcome",
+  language = "en",
   palette = "jama"
 )
 ```
 
-这类图的作用是把最关键的几件事压缩进同一张图里：
+图下方那几行注释不是装饰，而是在固定三件最容易被写漏的事：
 
-- 左边：exposure 对比
-- 中间：假定的 mediator
-- 右边：incident outcome
-- 上方：通过 mediator 的间接路径
-- 中间：这条路径大约解释了多少总效应
-- 下方：不经过 mediator 的直接路径
-
-还有一个容易误解的点是：这里的间接路径指的是完整的 `X -> M -> Y` 路径。图里没有把 `M -> Y` 单独写成一个回归系数，不是因为这部分没建模，而是因为 `regmedint` 输出的重点是 `tnie`、`pnde`、`te` 这类因果分解量，而不是传统线性中介里的两个路径系数乘积。
+- 暴露比较到底是哪个 contrast
+- 效应是在哪个 covariate profile 下评价的
+- 中介比例是否被自动标记为不稳定
 
 # 内置期刊风格配色示例
 
-同一套拟合结果，也可以直接切换成几种常见的期刊风格配色。
+绘图函数把几何结构固定住，再通过 palette 切换期刊风格，方便你先比较画面，
+而不是每次都手工调一遍。
 
-```{r, fig.width = 10, fig.height = 9, fig.show = "hold", out.width = "49%", dev.args = list(bg = "white")}
+```{r, fig.width = 10, fig.height = 8}
+old_par <- graphics::par(no.readonly = TRUE)
+on.exit(graphics::par(old_par), add = TRUE)
+graphics::par(mfrow = c(2, 2), mar = c(1.2, 1.2, 2.2, 1.2))
 for (pal in c("jama", "jco", "lancet", "nejm")) {
   leo_cox_mediation_plot(
     x = res_med,
-    model = "Model B",
-    exposure_label = "代谢风险",
-    mediator_label = "炎症",
-    outcome_label = "结局事件",
-    language = "zh",
-    palette = pal
+    exposure_label = "Metabolic\nrisk",
+    mediator_label = "Inflammation",
+    outcome_label = "Incident\noutcome",
+    language = "en",
+    palette = pal,
+    add_note = FALSE
   )
+  graphics::title(main = pal, line = 0.2, cex.main = 1)
 }
 ```
 
-# Step 3 常见结果模式应该怎么解读
+# Step 3.0 真正应该带走什么
 
-在应用型生存中介分析里，最常见的几种解释模式是：
+默认 `method = "mediation"` 路线下，我更推荐按下面顺序读结果：
 
-1. `te` 明显偏离 null，`tnie` 较小，`pm` 为正但不精确：与部分中介一致，但证据还不够强
-2. `te` 和 `tnie` 都比较清楚，且 `pm` 也比较稳定：更支持 mediator 解释了总效应里具有意义的一部分
-3. `te` 本身就较弱或跨过 null：`pm` 往往会不稳定，此时更应保守解释
-4. `yreg` 自动切换成 AFT：这时除 `pm` 外，其他效应量都要按 time ratio 解释，而不是 hazard ratio
+1. 先确认引擎确实是 `mediation`，结局模型确实是 `survreg`
+2. 再按模型实际输出的尺度去读 ACME、ADE、ATE、PM
+3. 一定看清 `x_cov_cond` 对应的人群画像
+4. 如果总效应区间跨 null，就把 PM 当作不稳定结果处理
+5. 只有当你真的需要更细的路径分解时，再升级到 Step 3.1 的
+   `regmedint` 路线
 
-所以 Step 3 不只是“跑出一张分解表”，而是要学会什么时候可以讲 pathway，什么时候只能说“结果与某种路径解释一致，但不够精确”。
-
-# 论文里 Step 3 应该怎么写
-
-比较稳妥的 reporting order 通常是：
-
-1. 先报告 main exposure-outcome association
-2. 再把 mediation 作为 pathway decomposition 的补充证据
-3. 写清 exposure contrast、mediator reference 和 adjustment profile
-4. 写清最终用的是哪个 `yreg`；如果是 `survCox`，说明 rare-event approximation，并直接提醒读者这意味着只有在事件较少时，这个分解更适合作为近似结果报告；如果是 AFT，提醒读者比值尺度应读作 time ratio
-5. 如果 exposure 和 mediator 都来自同一次 baseline visit，直接写明数据本身不能证明 exposure 先于 mediator，把结果写成与假定中介路径一致的分解证据；除非时间顺序有外部支持，否则避免把因果结论写得过强
-
-也就是说，中介分析通常是在主关联已经建立以后，用来细化生物学故事，而不是替代主分析。
-
-# 本节小结
-
-做完这一步以后，你应该带走 6 个最重要的结论：
-
-1. 中介分析讨论的是路径，不是异质性
-2. 和 Step 1、Step 2 一样，建模前也要先看数据结构和事件负担
-3. `x_exp_a0`、`x_exp_a1`、`x_med_cde`、`x_cov_cond` 决定了中介效应在哪里被评价
-4. `mreg` 控制 `x_med ~ x_exp + x_cov`，`yreg` 控制 `time ~ x_exp + x_med + x_cov`，`interaction = TRUE` 会在 outcome 模型里加入 `x_exp:x_med`
-5. `yreg = "auto"` 会在事件率 `<= 10%` 时选 `survCox`（也就意味着后续分解依赖 rare-event approximation，也就是只有在事件较少时才更适合作为近似分解来理解），否则选 `survAFT_weibull`
-6. factor mediator 不应该强行塞进 `mreg = "linear"`，最终结果也必须结合实际 outcome model、不确定性和时间顺序一起解释
+最后这一点尤其值得克制。很多分析并不缺“更复杂的方法”，而是缺一条清楚的
+默认主线，以及一套不越界、不过度翻译的结果解读。Step 3.0 的任务，就是把
+这条主线先讲稳。

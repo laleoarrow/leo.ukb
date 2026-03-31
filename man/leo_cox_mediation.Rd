@@ -13,13 +13,19 @@ leo_cox_mediation(
   x_cov = NULL,
   event_value = 1,
   min_followup_time = 0,
-  x_exp_a0 = NULL,
-  x_exp_a1 = NULL,
-  x_med_cde = NULL,
-  x_cov_cond = NULL,
   mreg = c("auto", "linear", "logistic"),
   yreg = c("auto", "survCox", "survAFT_weibull", "survAFT_exp"),
-  interaction = TRUE,
+  method = c("mediation", "regmedint"),
+  simplify = FALSE,
+  x_exp_a0 = NULL,
+  x_exp_a1 = NULL,
+  x_cov_cond = NULL,
+  interaction = NULL,
+  x_med_cde = NULL,
+  mediation_boot = NULL,
+  mediation_sims = NULL,
+  mediation_boot_ci_type = NULL,
+  mediation_use_speed = NULL,
   verbose = TRUE
 )
 
@@ -50,34 +56,54 @@ leo_cox_mediation_plot(
 
 \item{min_followup_time}{Minimum follow-up time filter.}
 
-\item{x_exp_a0}{Reference value of \code{x_exp}. Defaults to first factor level;
-\strong{required if x_exp is character (not factor)}. For a binary factor
-exposure, either use the default contrast or supply \code{x_exp_a0} and
-\code{x_exp_a1} together. For numeric \code{x_exp}, if exactly two unique observed
-values remain after filtering, they are used as the default contrast;
-otherwise, supply \code{x_exp_a0} and \code{x_exp_a1} explicitly.}
+\item{mreg}{Mediator model: \code{"auto"}, \code{"linear"}, or \code{"logistic"}.}
 
-\item{x_exp_a1}{Contrasted value of \code{x_exp}. Defaults to second factor level;
-\strong{required if x_exp is character (not factor)}. For a binary factor
-exposure, either use the default contrast or supply \code{x_exp_a0} and
-\code{x_exp_a1} together. For numeric \code{x_exp}, if exactly two unique observed
-values remain after filtering, they are used as the default contrast;
-otherwise, supply \code{x_exp_a0} and \code{x_exp_a1} explicitly.}
+\item{yreg}{Outcome model selector. For \code{method = "regmedint"}, supports
+\code{"auto"}, \code{"survCox"}, \code{"survAFT_weibull"}, and \code{"survAFT_exp"}. For
+\code{method = "mediation"}, supports only \code{"auto"} and internally fits
+\code{survival::survreg(dist = "weibull")}.}
 
-\item{x_med_cde}{Value of \code{x_med} for CDE evaluation. Defaults to second factor
-level (binary) or median (continuous); \strong{required if x_med is character (not factor)}.
-For logistic mediators, use the original observed mediator value rather than
-an internal 0/1 recode unless the observed values are themselves 0/1.}
+\item{method}{Mediation engine: \code{"regmedint"} (counterfactual mediation with
+\code{regmedint}) or \code{"mediation"} (average-effect mediation with the
+\code{mediation} package). Defaults to \code{"mediation"}.}
+
+\item{simplify}{Return style. Use \code{FALSE} to keep the full object, \code{"wide"} to
+return the display table directly, \code{"tidy"} to return the detailed table,
+or \code{TRUE} as a shortcut for \code{"wide"}.}
+
+\item{x_exp_a0, x_exp_a1}{Exposure contrast values used for mediation
+evaluation. For binary factors, defaults to the first and second observed
+levels. If \code{x_exp} is character, supply both explicitly. For numeric
+\code{x_exp}, the two observed values are used only when exactly two unique
+values remain after filtering; otherwise, supply both explicitly.}
 
 \item{x_cov_cond}{Covariate values for effect evaluation. Named list/vector for
 non-numeric covariates; defaults to medians. Required for factor/binary covariates.}
 
-\item{mreg}{Mediator model: \code{"auto"}, \code{"linear"}, or \code{"logistic"}.}
+\item{interaction}{Include \code{x_exp:x_med} interaction in the outcome model?
+If \code{NULL}, defaults to \code{TRUE} for \code{method = "regmedint"} and \code{FALSE} for
+\code{method = "mediation"}. Users may still set \code{TRUE} or \code{FALSE} explicitly
+to override the engine-specific default.}
 
-\item{yreg}{Outcome model: \code{"auto"}, \code{"survCox"}, \code{"survAFT_weibull"}, or \code{"survAFT_exp"}.}
+\item{x_med_cde}{Mediator value used for CDE evaluation when
+\code{method = "regmedint"}. Defaults to the second observed level for binary
+mediators or the median for continuous mediators. If \code{x_med} is character,
+supply \code{x_med_cde} explicitly. Ignored when \code{method = "mediation"}.}
 
-\item{interaction}{Include \code{x_exp:x_med} interaction? If \code{TRUE}, the outcome model adds \code{x_exp:x_med},
-i.e. \code{time ~ x_exp + x_med + x_exp:x_med + x_cov}.}
+\item{mediation_boot}{Optional override for \code{mediation::mediate(boot = )}.
+\code{NULL} uses the current wrapper default matching \code{mediate()}, i.e. \code{FALSE}.}
+
+\item{mediation_sims}{Optional override for \code{mediation::mediate(sims = )}.
+\code{NULL} uses the current wrapper default matching \code{mediate()}, i.e. \code{1000}.}
+
+\item{mediation_boot_ci_type}{Optional override for
+\code{mediation::mediate(boot.ci.type = )}. Only used when
+\code{mediation_boot = TRUE}; choose \code{"perc"} or \code{"bca"}. \code{NULL} uses \code{"perc"}.}
+
+\item{mediation_use_speed}{Optional override for
+\code{mediation::mediate(use_speed = )}. Only used when
+\code{mediation_boot = TRUE}; \code{NULL} uses \code{FALSE}. Setting it to \code{TRUE}
+requires package \code{speedglm}.}
 
 \item{verbose}{Print progress messages.}
 
@@ -103,9 +129,16 @@ applicable.}
 \code{"sans"}, \code{"serif"}, or \code{"mono"} for the most robust cross-device output.}
 }
 \value{
-\code{leo_cox_mediation} object with \verb{$result}, \verb{$result_detail}, \verb{$evaluation}, \verb{$fit}.
+When \code{simplify = FALSE}, a \code{leo_cox_mediation} object with \verb{$result},
+\verb{$result_detail}, \verb{$result_tidy}, \verb{$evaluation}, and engine metadata. When
+\code{simplify = "wide"} or \code{"tidy"}, the corresponding data frame directly.
 
-For \code{leo_cox_mediation()}, a \code{leo_cox_mediation} object containing a display table in \verb{$result}, a detailed mediation table in \verb{$result_detail}, an evaluation summary in \verb{$evaluation}, and fitted \code{regmedint} objects in \verb{$fit}. For \code{leo_cox_mediation_plot()}, an invisible \code{recordedplot} object after drawing the pathway figure on the active graphics device.
+For \code{leo_cox_mediation()}, a \code{leo_cox_mediation} object containing a
+display table in \verb{$result}, a detailed mediation table in
+\verb{$result_detail}, a tidy mediation table in \verb{$result_tidy}, and an
+evaluation summary in \verb{$evaluation}. For \code{leo_cox_mediation_plot()}, an
+invisible \code{recordedplot} object after drawing the pathway figure on the
+active graphics device.
 }
 \description{
 \ifelse{html}{\href{https://lifecycle.r-lib.org/articles/stages.html#experimental}{\figure{lifecycle-experimental.svg}{options: alt='[Experimental]'}}}{\strong{[Experimental]}}
@@ -116,16 +149,20 @@ shared vertical center axis, uses equal-sized boxes, and draws only straight
 arrows between the exposure, mediator, and outcome nodes.
 }
 \details{
-Performs causal mediation analysis for survival outcomes via \code{regmedint::regmedint()}.
-Fits mediator model \code{x_med ~ x_exp + x_cov} and outcome model
-\code{time ~ x_exp + x_med + x_cov} (with optional \code{x_exp:x_med} interaction).
+Performs causal mediation analysis for survival outcomes via either
+\code{regmedint::regmedint()} or \code{mediation::mediate()}, depending on \code{method}.
+Both engines fit a mediator model \code{x_med ~ x_exp + x_cov} and an outcome
+model \code{time ~ x_exp + x_med + x_cov} (with optional \code{x_exp:x_med}
+interaction), but they report different effect families.
 
-\code{yreg = "auto"} uses the observed event proportion in the post-filter,
-complete-case analysis set: Cox for rare outcomes (<=10\% events), AFT otherwise.
-This 10\% threshold is an empirical rare-event approximation rule.
+For \code{method = "regmedint"}, \code{yreg = "auto"} uses the observed event
+proportion in the post-filter, complete-case analysis set: Cox for rare
+outcomes (<=10\% events), AFT otherwise. This 10\% threshold is an empirical
+rare-event approximation rule. For \code{method = "mediation"}, \code{yreg = "auto"}
+fits a standard \code{survival::survreg(dist = "weibull")} outcome model.
 }
 \examples{
-if (requireNamespace("regmedint", quietly = TRUE)) {
+if (requireNamespace("mediation", quietly = TRUE)) {
   set.seed(123)
   n <- 200
   age <- rnorm(n, 60, 8)
@@ -141,13 +178,13 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
   res_med <- leo_cox_mediation(
     df = med_df, y_out = c("outcome", "outcome_censor"),
     x_exp = "exposure", x_med = "mediator", x_cov = "age",
-    verbose = FALSE
+    mediation_sims = 100, verbose = FALSE
   )
   res_med$result
 }
 
 # Continuous exposure requires x_exp_a0 and x_exp_a1
-if (requireNamespace("regmedint", quietly = TRUE)) {
+if (requireNamespace("mediation", quietly = TRUE)) {
   set.seed(123)
   n <- 200
   cont_df <- data.frame(
@@ -158,11 +195,11 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
   res_cont <- leo_cox_mediation(
     df = cont_df, y_out = c("outcome", "outcome_censor"),
     x_exp = "exposure", x_med = "mediator", x_cov = "age",
-    x_exp_a0 = -1, x_exp_a1 = 1, verbose = FALSE
+    x_exp_a0 = -1, x_exp_a1 = 1, mediation_sims = 100, verbose = FALSE
   )
   res_cont$result
 }
-if (requireNamespace("regmedint", quietly = TRUE)) {
+if (requireNamespace("mediation", quietly = TRUE)) {
   set.seed(123)
   n <- 200
   age <- rnorm(n, 60, 8)
@@ -180,7 +217,7 @@ if (requireNamespace("regmedint", quietly = TRUE)) {
   res_med <- leo_cox_mediation(
     df = med_df, y_out = c("outcome", "outcome_censor"),
     x_exp = "exposure", x_med = "mediator", x_cov = "age",
-    verbose = FALSE
+    mediation_sims = 100, verbose = FALSE
   )
   # with default labels and note
   leo_cox_mediation_plot(

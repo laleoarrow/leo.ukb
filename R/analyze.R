@@ -33,7 +33,7 @@
 #' leo_impute_na(sample_data, method = "rf")
 leo_impute_na <- function(data, method = "mean", ...) {
   if (!method %in% c("mean", "median", "rf", "knn", "mice")) {
-    stop("Invalid method. Choose 'mean', 'median', 'rf', 'knn', or 'mice'")
+    leo_stop("Invalid method. Choose 'mean', 'median', 'rf', 'knn', or 'mice'")
   }
 
   # Calculate missing values per column
@@ -61,17 +61,17 @@ leo_impute_na <- function(data, method = "mean", ...) {
       dplyr::mutate(dplyr::across(where(is.numeric), ~ifelse(is.na(.), stats::median(., na.rm = TRUE), .)))
   } else if (method == "rf") {
     if (!requireNamespace("missRanger", quietly = TRUE)) {
-      stop("Package 'missRanger' required for random forest imputation")
+      leo_stop("Package 'missRanger' required for random forest imputation")
     }
     imputed_data <- missRanger::missRanger(data, ...)
   } else if (method == "knn") {
     if (!requireNamespace("VIM", quietly = TRUE)) {
-      stop("Package 'VIM' required for KNN imputation")
+      leo_stop("Package 'VIM' required for KNN imputation")
     }
     imputed_data <- VIM::kNN(data, ...)
   } else if (method == "mice") {
     if (!requireNamespace("mice", quietly = TRUE)) {
-      stop("Package 'mice' required for multiple imputation")
+      leo_stop("Package 'mice' required for multiple imputation")
     }
     imputed <- mice::mice(data, ...)
     imputed_data <- mice::complete(imputed)
@@ -121,12 +121,12 @@ leo_quantile <- function(x, bins = 4, labels = NULL, right = TRUE, include_lowes
 
   breaks_use <- breaks_use[is.finite(breaks_use)]
   if (length(breaks_use) < 2) {
-    cli::cli_alert_warning("leo_quantile(): insufficient finite break points; returning all NA.")
+    leo_log("leo_quantile(): insufficient finite break points; returning all NA.", level = "warning")
     return(rep(NA_character_, length(x_num)))
   }
 
   if (anyDuplicated(breaks_use)) {
-    cli::cli_alert_warning("leo_quantile(): duplicated break points detected (ties). Collapsing duplicates.")
+    leo_log("leo_quantile(): duplicated break points detected (ties). Collapsing duplicates.", level = "warning")
     breaks_use <- unique(breaks_use)
     if (length(breaks_use) < 2) return(rep(NA_character_, length(x_num)))
   }
@@ -160,88 +160,80 @@ leo_quantile <- function(x, bins = 4, labels = NULL, right = TRUE, include_lowes
 #'   subgroup_names = names_example
 #' )
 #' @export
-leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
-
-  # --- 1. Input Validation ---
-  if (length(hrs) != length(p_values)) stop("Error: The length of 'hrs' and 'p_values' must be the same.")
-  if (length(hrs) < 2) stop("Error: At least two subgroups are required to test for heterogeneity.")
-  if (any(hrs <= 0) || any(p_values <= 0) || any(p_values > 1)) stop("Error: Invalid input. HRs must be > 0 and P-values must be between 0 and 1.")
-
-  # --- 2. Calculate log(HR) and Standard Errors (SE) ---
-  # The test statistic for a single HR is z = log(HR) / SE(log(HR))
-  # The p-value is derived from z. We can reverse this to find SE.
-  # p = 2 * pnorm(-abs(z)) => z = abs(qnorm(p / 2))
-
-  log_hrs <- log(hrs)
-  z_scores <- abs(qnorm(p_values / 2))
-
-  # Handle cases where HR is exactly 1 (log_hr is 0)
-  # In this case, SE can't be calculated by division.
-  # If HR=1, p should be 1, and z=0. SE would be infinite, weight=0.
-  # We add a small epsilon to avoid division by zero if p is close to 1.
-  z_scores[z_scores == 0] <- 1e-10
-
-  ses <- abs(log_hrs / z_scores)
-
-  # If a log_hr is 0 (HR=1), its SE should result in a weight of 0
-  # unless p-value is also 1. If p-value is not 1, z is not 0, so SE is 0.
-  # A SE of 0 gives infinite weight, which is problematic.
-  # A robust way is to assign a very small weight (or handle as a special case),
-  # but in practice, if log(HR) is 0, its contribution to the Q-stat is 0
-  # if weighted properly. Let's use weights directly.
-
-  # --- 3. Calculate Weights (Inverse Variance) ---
-  weights <- 1 / (ses^2)
-
-  # Handle cases where SE was 0 (due to log_hr being 0 but p not 1)
-  weights[is.infinite(weights)] <- 1e10 # Assign a very large weight
-
-  # --- 4. Perform Cochran's Q Test ---
-  # Calculate the weighted average of the log(HR)s
-  pooled_log_hr <- sum(weights * log_hrs) / sum(weights)
-
-  # Calculate the Q statistic
-  # Q = sum(w_i * (log_hr_i - pooled_log_hr)^2)
-  Q <- sum(weights * ((log_hrs - pooled_log_hr)^2))
-
-  # Degrees of freedom = number of subgroups - 1
-  df <- length(hrs) - 1
-
-  # --- 5. Calculate Heterogeneity P-value and I^2 ---
-  # The Q statistic follows a Chi-squared distribution with df degrees of freedom
-  p_heterogeneity <- pchisq(Q, df, lower.tail = FALSE)
-
-  # Calculate I^2 statistic
-  # I^2 = ((Q - df) / Q) * 100%
-  # It represents the percentage of variation across subgroups due to heterogeneity
-  i_squared <- max(0, (Q - df) / Q) * 100
-
-  # --- 6. Format and Print Output ---
-  if (is.null(subgroup_names)) {
-    subgroup_names <- paste("Subgroup", 1:length(hrs))
+leo_heterogeneity_p <- function(hrs = NULL, p_values = NULL, betas = NULL, ses = NULL,
+                                subgroup_names = NULL, verbose = TRUE) {
+  # --- 1. Input Validation and Effect/SE Preparation ---
+  # Prefer direct beta/SE input when available. This is the cleaner route for
+  # subgroup heterogeneity because the Cox model already estimates log(HR)
+  # and its standard error directly.
+  if (!is.null(betas) || !is.null(ses)) {
+    if (is.null(betas) || is.null(ses)) leo_stop("Please provide both 'betas' and 'ses' for heterogeneity testing.")
+    if (length(betas) != length(ses)) leo_stop("The length of 'betas' and 'ses' must be the same.")
+    if (length(betas) < 2) leo_stop("At least two subgroups are required to test for heterogeneity.")
+    if (any(!is.finite(betas)) || any(!is.finite(ses)) || any(ses <= 0)) leo_stop("'betas' must be finite and 'ses' must be finite positive values.")
+    effect_values <- betas
+    se_values <- ses
+    if (is.null(subgroup_names)) subgroup_names <- paste("Subgroup", seq_along(betas))
+    input_df <- data.frame(Subgroup = subgroup_names, Beta = betas, SE = ses)
+  } else {
+    # Backward-compatible path: if only HR and Wald P are available, recover
+    # log(HR) and approximate SE(log(HR)) from the z statistic.
+    # The test statistic for a single HR is z = log(HR) / SE(log(HR)).
+    # The p-value is derived from z:
+    #   p = 2 * pnorm(-abs(z))  =>  z = abs(qnorm(p / 2))
+    if (is.null(hrs) || is.null(p_values)) leo_stop("Please provide either ('hrs', 'p_values') or ('betas', 'ses').")
+    if (length(hrs) != length(p_values)) leo_stop("The length of 'hrs' and 'p_values' must be the same.")
+    if (length(hrs) < 2) leo_stop("At least two subgroups are required to test for heterogeneity.")
+    if (any(hrs <= 0) || any(p_values <= 0) || any(p_values > 1)) leo_stop("HRs must be > 0 and P-values must be between 0 and 1.")
+    effect_values <- log(hrs)
+    z_scores <- abs(qnorm(p_values / 2))
+    # Handle cases where HR is exactly 1 (log(HR) is 0). In that case z can
+    # also be 0, so we add a tiny epsilon to avoid dividing by zero.
+    z_scores[z_scores == 0] <- 1e-10
+    se_values <- abs(effect_values / z_scores)
+    se_values[abs(effect_values) < 1e-12] <- Inf
+    if (is.null(subgroup_names)) subgroup_names <- paste("Subgroup", seq_along(hrs))
+    input_df <- data.frame(Subgroup = subgroup_names, HR = hrs, P_value = p_values, log_HR = round(effect_values, 4), SE_log_HR = round(se_values, 4))
   }
 
-  cat("--- Test for Heterogeneity in Subgroup Analysis ---\n\n")
-  cat("Input Data:\n")
-  print(data.frame(
-    Subgroup = subgroup_names,
-    HR = hrs,
-    P_value = p_values,
-    log_HR = round(log_hrs, 4),
-    SE_log_HR = round(ses, 4)
-  ))
+  # --- 2. Calculate Inverse-Variance Weights ---
+  weights <- ifelse(is.finite(se_values) & se_values > 0, 1 / (se_values^2), 0)
+  if (sum(weights) <= 0) {
+    return(invisible(list(
+      Q_statistic = NA_real_,
+      df = length(effect_values) - 1,
+      p_value_heterogeneity = NA_real_,
+      I2_statistic_percent = NA_real_
+    )))
+  }
 
-  cat("\nResults of Cochran's Q Test:\n")
-  cat("Q-statistic:", round(Q, 4), "\n")
-  cat("Degrees of Freedom (df):", df, "\n")
-  cat("P-value for Heterogeneity:", format.pval(p_heterogeneity, digits = 3, eps = 0.001), "\n\n")
+  # --- 3. Perform Cochran's Q Test ---
+  # Calculate the inverse-variance weighted average effect.
+  pooled_effect <- sum(weights * effect_values) / sum(weights)
 
-  cat("Heterogeneity Metrics:\n")
-  cat("I^2 statistic:", paste0(round(i_squared, 2), "%"), "\n")
-  cat("Interpretation of I^2: ~0-40% (might not be important); 30-60% (may represent moderate heterogeneity); 50-90% (may represent substantial heterogeneity); 75-100% (considerable heterogeneity).\n")
-  cat("\n---------------------------------------------------\n")
+  # Q = sum(w_i * (theta_i - theta_bar)^2), where theta is log(HR) or beta.
+  Q <- sum(weights * ((effect_values - pooled_effect)^2))
+  df <- length(effect_values) - 1
+  p_heterogeneity <- pchisq(Q, df, lower.tail = FALSE)
 
-  # Return results as a list
+  # --- 4. Calculate I-squared ---
+  i_squared <- max(0, (Q - df) / Q) * 100
+
+  # --- 5. Optional Console Summary ---
+  if (verbose) {
+    cat("--- Test for Heterogeneity in Subgroup Analysis ---\n\n")
+    cat("Input Data:\n")
+    print(input_df)
+    cat("\nResults of Cochran's Q Test:\n")
+    cat("Q-statistic:", round(Q, 4), "\n")
+    cat("Degrees of Freedom (df):", df, "\n")
+    cat("P-value for Heterogeneity:", format.pval(p_heterogeneity, digits = 3, eps = 0.001), "\n\n")
+    cat("Heterogeneity Metrics:\n")
+    cat("I^2 statistic:", paste0(round(i_squared, 2), "%"), "\n")
+    cat("Interpretation of I^2: ~0-40% (might not be important); 30-60% (may represent moderate heterogeneity); 50-90% (may represent substantial heterogeneity); 75-100% (considerable heterogeneity).\n")
+    cat("\n---------------------------------------------------\n")
+  }
+
   invisible(list(
     Q_statistic = Q,
     df = df,
@@ -269,26 +261,51 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
   x_non_missing <- stats::na.omit(x)
   n_unique <- length(unique(x_non_missing))
   if (var_type == "categorical") {
-    if (n_unique < 2) stop(var_name, " must contain at least 2 non-missing values when var_type = 'categorical'.", call. = FALSE)
+    if (n_unique < 2) leo_stop(var_name, " must contain at least 2 non-missing values when var_type = 'categorical'.")
     if (is.factor(x) || is.character(x) || is.logical(x)) return("categorical")
-    if (!is.numeric(x)) stop(var_name, " has an unsupported type for categorical handling.", call. = FALSE)
+    if (!is.numeric(x)) leo_stop(var_name, " has an unsupported type for categorical handling.")
     unique_values <- sort(unique(x_non_missing))
     integer_like <- all(abs(unique_values - round(unique_values)) < 1e-8)
-    if (!integer_like || length(unique_values) > 10) stop(var_name, " looks continuous and cannot be forced to categorical. Convert it to factor() first if this is intentional.", call. = FALSE)
+    if (!integer_like || length(unique_values) > 10) leo_stop(var_name, " looks continuous and cannot be forced to categorical. Convert it to factor() first if this is intentional.")
     return("categorical")
   }
   if (var_type == "continuous") {
-    if (is.character(x) || is.factor(x) || is.logical(x)) stop(var_name, " requires a numeric or integer variable when var_type = 'continuous'.", call. = FALSE)
+    if (is.character(x) || is.factor(x) || is.logical(x)) leo_stop(var_name, " requires a numeric or integer variable when var_type = 'continuous'.")
     return("continuous")
   }
   if (is.factor(x) || is.character(x) || is.logical(x)) return("categorical")
-  if (!is.numeric(x)) stop(var_name, " has an unsupported type for auto detection.", call. = FALSE)
+  if (!is.numeric(x)) leo_stop(var_name, " has an unsupported type for auto detection.")
   unique_values <- sort(unique(x_non_missing))
   integer_like <- length(unique_values) > 1 && all(abs(unique_values - round(unique_values)) < 1e-8)
   if (integer_like && length(unique_values) <= 5) {
     leo.basic::leo_log("Exposure '{var_name}' looks like a coded categorical variable ({paste(unique_values, collapse = ', ')}). Convert it to factor() or set x_exp_type = 'categorical' if that is your intent.", level = "warning", verbose = verbose)
   }
   "continuous"
+}
+
+.analyze_log_spec <- function(exposure, outcome, model_names = NULL, subgroup_names = NULL, interaction = NULL, mediator = NULL, method = NULL, verbose = TRUE) {
+  if (!verbose) return(invisible(NULL))
+  msg <- c(
+    paste0("Analysis spec: exposure = ", exposure),
+    paste0("outcome = ", outcome)
+  )
+  if (!is.null(interaction)) msg <- c(msg, paste0("interaction = ", interaction))
+  if (!is.null(mediator)) msg <- c(msg, paste0("mediator = ", mediator))
+  if (!is.null(subgroup_names)) msg <- c(msg, paste0("subgroup(s) = ", paste(subgroup_names, collapse = ", ")))
+  if (!is.null(model_names)) msg <- c(msg, paste0("model(s) = ", paste(model_names, collapse = ", ")))
+  if (!is.null(method)) msg <- c(msg, paste0("method = ", method))
+  cli::cli_alert_info(paste(msg, collapse = ", "))
+  invisible(NULL)
+}
+
+.analyze_log_step <- function(scope, index, total, label, detail = NULL, context = NULL, verbose = TRUE) {
+  if (!verbose) return(invisible(NULL))
+  msg <- paste0(scope, " [", index, "/", total, "]")
+  if (!is.null(context) && nzchar(context)) msg <- paste(msg, "in", context)
+  msg <- paste0(msg, ": ", label)
+  if (!is.null(detail) && nzchar(detail)) msg <- paste0(msg, " | ", detail)
+  cli::cli_alert_info(msg)
+  invisible(NULL)
 }
 
 #' Helper function to format p-values according to common publication standards
@@ -328,12 +345,12 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
   } else if (is.list(x_cov)) {
     model_list <- x_cov
   } else {
-    stop("x_cov must be NULL, a character vector, or a list of character vectors.", call. = FALSE)
+    leo_stop("x_cov must be NULL, a character vector, or a list of character vectors.")
   }
 
   model_list <- lapply(model_list, function(x) {
     if (is.null(x)) return(NULL)
-    if (!is.character(x)) stop("Each model in x_cov must be NULL or a character vector.", call. = FALSE)
+    if (!is.character(x)) leo_stop("Each model in x_cov must be NULL or a character vector.")
     unique(stats::na.omit(x))
   })
   default_names <- paste0("model_", seq_along(model_list))
@@ -349,7 +366,7 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
       msg <- paste(vapply(bad_models, function(i) {
         paste0(names(model_list)[i], " (", paste(missing_vars[[i]], collapse = ", "), ")")
       }, character(1)), collapse = "; ")
-      stop("Missing covariates in df: ", msg, call. = FALSE)
+      leo_stop("Missing covariates in df: ", msg)
     }
   }
 
@@ -372,11 +389,11 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #' leo.ukb:::.prepare_regression_data(df = df, y_cols = "y", x_exp = "prs", x_cov = "age")
 #' @noRd
 .prepare_regression_data <- function(df, y_cols, x_exp, x_cov = NULL) {
-  if (!is.data.frame(df)) stop("df must be a data.frame.", call. = FALSE)
-  if (!is.character(y_cols) || length(y_cols) < 1) stop("y_cols must be a character vector of column names.", call. = FALSE)
-  if (!all(y_cols %in% names(df))) stop("All y_cols must exist in df.", call. = FALSE)
-  if (!is.character(x_exp) || length(x_exp) != 1) stop("x_exp must be a single column name.", call. = FALSE)
-  if (!x_exp %in% names(df)) stop("x_exp must exist in df.", call. = FALSE)
+  if (!is.data.frame(df)) leo_stop("df must be a data.frame.")
+  if (!is.character(y_cols) || length(y_cols) < 1) leo_stop("y_cols must be a character vector of column names.")
+  if (!all(y_cols %in% names(df))) leo_stop("All y_cols must exist in df.")
+  if (!is.character(x_exp) || length(x_exp) != 1) leo_stop("x_exp must be a single column name.")
+  if (!x_exp %in% names(df)) leo_stop("x_exp must exist in df.")
 
   model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
   covariates <- unique(unlist(model_list, use.names = FALSE))
@@ -432,21 +449,21 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
 #' )
 #' @noRd
 .prepare_cox_regression_data <- function(df, y_out, x_exp, x_cov = NULL, min_followup_time = 0, event_value = 1, verbose = TRUE) {
-  if (!is.data.frame(df)) stop("df must be a data.frame.", call. = FALSE)
-  if (!is.character(y_out) || length(y_out) != 2) stop("y_out must be a character vector of length 2: c(event, time).", call. = FALSE)
-  if (!all(y_out %in% names(df))) stop("All y_out columns must exist in df.", call. = FALSE)
-  if (!is.character(x_exp) || length(x_exp) != 1) stop("x_exp must be a single column name.", call. = FALSE)
-  if (!x_exp %in% names(df)) stop("x_exp must exist in df.", call. = FALSE)
-  if (!is.numeric(min_followup_time) || length(min_followup_time) != 1) stop("min_followup_time must be a numeric scalar.", call. = FALSE)
-  if (length(event_value) != 1 || is.na(event_value)) stop("event_value must be a single non-missing value.", call. = FALSE)
+  if (!is.data.frame(df)) leo_stop("df must be a data.frame.")
+  if (!is.character(y_out) || length(y_out) != 2) leo_stop("y_out must be a character vector of length 2: c(event, time).")
+  if (!all(y_out %in% names(df))) leo_stop("All y_out columns must exist in df.")
+  if (!is.character(x_exp) || length(x_exp) != 1) leo_stop("x_exp must be a single column name.")
+  if (!x_exp %in% names(df)) leo_stop("x_exp must exist in df.")
+  if (!is.numeric(min_followup_time) || length(min_followup_time) != 1) leo_stop("min_followup_time must be a numeric scalar.")
+  if (length(event_value) != 1 || is.na(event_value)) leo_stop("event_value must be a single non-missing value.")
 
   model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
   coerce_followup_time <- function(x, column_name) {
     x_cmp <- if (is.factor(x)) as.character(x) else x
-    if (is.logical(x_cmp)) stop("Follow-up time column '", column_name, "' must be numeric or numeric-like, not logical.", call. = FALSE)
+    if (is.logical(x_cmp)) leo_stop("Follow-up time column '", column_name, "' must be numeric or numeric-like, not logical.")
     time_num <- suppressWarnings(as.numeric(x_cmp))
     if (any(!is.na(x_cmp) & is.na(time_num))) {
-      stop("Follow-up time column '", column_name, "' must be numeric or numeric-like.", call. = FALSE)
+      leo_stop("Follow-up time column '", column_name, "' must be numeric or numeric-like.")
     }
     time_num
   }
@@ -456,14 +473,13 @@ leo_heterogeneity_p <- function(hrs, p_values, subgroup_names = NULL) {
     if (is.logical(x_cmp)) {
       if (event_value_chr %in% c("1", "TRUE", "T", "true")) return(ifelse(is.na(x_cmp), NA_integer_, as.integer(x_cmp)))
       if (event_value_chr %in% c("0", "FALSE", "F", "false")) return(ifelse(is.na(x_cmp), NA_integer_, as.integer(!x_cmp)))
-      stop("For logical event column '", column_name, "', event_value must be TRUE/FALSE (or 1/0).", call. = FALSE)
+      leo_stop("For logical event column '", column_name, "', event_value must be TRUE/FALSE (or 1/0).")
     }
     observed_chr <- unique(as.character(stats::na.omit(x_cmp)))
     if (!(event_value_chr %in% observed_chr)) {
-      stop(
+      leo_stop(
         "event_value='", event_value_chr, "' does not match the observed values in '", column_name, "': ",
-        paste(observed_chr, collapse = ", "), ". Please set event_value explicitly.",
-        call. = FALSE
+        paste(observed_chr, collapse = ", "), ". Please set event_value explicitly."
       )
     }
     ifelse(is.na(x_cmp), NA_integer_, as.integer(as.character(x_cmp) == event_value_chr))
@@ -587,7 +603,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Regression", col = "blue")
-  if (!x_exp_type %in% c("auto", "continuous", "categorical")) stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
+  if (!x_exp_type %in% c("auto", "continuous", "categorical")) leo_stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.")
 
   # Normalize and validate inputs
   prep <- .prepare_cox_regression_data(
@@ -599,18 +615,29 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
     event_value = event_value,
     verbose = verbose
   )
-  if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering.", call. = FALSE)
-  if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
+  if (prep$n_after_followup == 0) leo_stop("No rows remain after follow-up filtering.")
+  if (nrow(prep$data) == 0) leo_stop("No rows remain after complete-case filtering.")
   if (prep$n_removed_complete_case > 0) {
     leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before Cox analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
   }
   exposure_type <- .check_var_type(prep$data$exposure, var_name = prep$exposure_name, var_type = x_exp_type, verbose = verbose)
+  .analyze_log_spec(exposure = prep$exposure_name, outcome = prep$outcome_name, model_names = names(prep$models), verbose = verbose)
 
   # Loop over models
   model_results <- list()
   fit_results <- list()
-  for (model_name in names(prep$models)) {
+  model_total <- length(prep$models)
+  for (model_index in seq_along(prep$models)) {
+    model_name <- names(prep$models)[model_index]
     covariates <- if (is.null(prep$models[[model_name]])) character(0) else prep$models[[model_name]]
+    .analyze_log_step(
+      scope = "Model",
+      index = model_index,
+      total = model_total,
+      label = model_name,
+      detail = if (length(covariates) == 0) "crude model" else paste0("covariates = ", paste(covariates, collapse = ", ")),
+      verbose = verbose
+    )
     leo.basic::leo_log("Fitting {model_name} with {if (length(covariates) == 0) 'no covariates (crude model)' else paste(covariates, collapse = ', ')}.", verbose = verbose)
 
     # Prepare analysis data
@@ -619,10 +646,10 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
     # Fit Cox model
     if (exposure_type == "categorical") {
       model_df$exposure <- droplevels(factor(model_df$exposure))
-      if (nlevels(model_df$exposure) < 2) stop("x_exp must contain at least 2 exposure levels after filtering.", call. = FALSE)
+      if (nlevels(model_df$exposure) < 2) leo_stop("x_exp must contain at least 2 exposure levels after filtering.")
     } else {
       if (is.character(model_df$exposure) || is.factor(model_df$exposure) || is.logical(model_df$exposure)) {
-        stop("x_exp_type = 'continuous' requires a numeric or integer exposure.", call. = FALSE)
+        leo_stop("x_exp_type = 'continuous' requires a numeric or integer exposure.")
       }
       model_df$exposure <- suppressWarnings(as.numeric(model_df$exposure))
     }
@@ -631,6 +658,7 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
     formula <- stats::as.formula(paste("survival::Surv(time, event) ~", paste(rhs, collapse = " + ")))
     fit <- survival::coxph(formula = formula, data = model_df)
     tidy_fit <- broom::tidy(fit, conf.int = TRUE, exponentiate = TRUE)
+    coef_fit <- broom::tidy(fit, conf.int = FALSE, exponentiate = FALSE)
     total_case <- sum(model_df$event == 1, na.rm = TRUE)
     total_control <- sum(model_df$event == 0, na.rm = TRUE)
     total_years <- sum(model_df$time, na.rm = TRUE)
@@ -652,6 +680,8 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
         hr_ci_l = exposure_row$conf.low[1],
         hr_ci_u = exposure_row$conf.high[1],
         p_value = exposure_row$p.value[1],
+        beta = coef_fit$estimate[coef_fit$term == "exposure"][1],
+        se = coef_fit$std.error[coef_fit$term == "exposure"][1],
         exposure_class = "Continuous",
         formula = formula_txt,
         check.names = FALSE
@@ -683,17 +713,22 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
       hr_ci_l = c(1, rep(NA_real_, length(levels_x) - 1)),
       hr_ci_u = c(1, rep(NA_real_, length(levels_x) - 1)),
       p_value = c(1, rep(NA_real_, length(levels_x) - 1)),
+      beta = c(NA_real_, rep(NA_real_, length(levels_x) - 1)),
+      se = c(NA_real_, rep(NA_real_, length(levels_x) - 1)),
       exposure_class = if (length(levels_x) == 2) "Binary" else paste0("Categorical (", length(levels_x), " levels)"),
       formula = formula_txt,
       check.names = FALSE
     )
     if (length(levels_x) > 1) {
-      exposure_rows <- tidy_fit[seq_len(length(levels_x) - 1L), , drop = FALSE]
-      if (nrow(exposure_rows) != length(levels_x) - 1L) stop("Failed to recover categorical exposure coefficients from the Cox model.", call. = FALSE)
+      exposure_rows <- tidy_fit[grepl("^exposure", tidy_fit$term), , drop = FALSE]
+      coef_rows <- coef_fit[grepl("^exposure", coef_fit$term), , drop = FALSE]
+      if (nrow(exposure_rows) != length(levels_x) - 1L || nrow(coef_rows) != length(levels_x) - 1L) leo_stop("Failed to recover categorical exposure coefficients from the Cox model.")
       result_df$hr[-1] <- exposure_rows$estimate
       result_df$hr_ci_l[-1] <- exposure_rows$conf.low
       result_df$hr_ci_u[-1] <- exposure_rows$conf.high
       result_df$p_value[-1] <- exposure_rows$p.value
+      result_df$beta[-1] <- coef_rows$estimate
+      result_df$se[-1] <- coef_rows$std.error
     }
     model_results[[model_name]] <- result_df
     fit_results[[model_name]] <- fit
@@ -740,8 +775,8 @@ leo_cox <- function(df, y_out, x_exp, x_cov = NULL, event_value = 1, min_followu
 #'
 #' @export
 leo_cox_format <- function(x, style = "wide") {
-  if (!inherits(x, "leo_cox")) stop("x must be a leo_cox result.", call. = FALSE)
-  if (!style %in% c("wide", "tidy", "gtsummary")) stop("style must be one of 'wide', 'tidy', or 'gtsummary'.", call. = FALSE)
+  if (!inherits(x, "leo_cox")) leo_stop("x must be a leo_cox result.")
+  if (!style %in% c("wide", "tidy", "gtsummary")) leo_stop("style must be one of 'wide', 'tidy', or 'gtsummary'.")
   switch(style,
     wide = {
       if (!is.null(x$result)) return(x$result)
@@ -778,10 +813,10 @@ leo_cox_format <- function(x, style = "wide") {
     },
     gtsummary = {
       if (is.null(x$fit) || length(x$fit) == 0) {
-        stop("x does not contain fitted models required for style = 'gtsummary'.", call. = FALSE)
+        leo_stop("x does not contain fitted models required for style = 'gtsummary'.")
       }
       if (!requireNamespace("gtsummary", quietly = TRUE) || !requireNamespace("broom.helpers", quietly = TRUE)) {
-        stop("style = 'gtsummary' requires packages 'gtsummary' and 'broom.helpers'.", call. = FALSE)
+        leo_stop("style = 'gtsummary' requires packages 'gtsummary' and 'broom.helpers'.")
       }
       tbls <- lapply(x$fit, function(fit) gtsummary::tbl_regression(fit, exponentiate = TRUE))
       if (length(tbls) == 1) return(tbls[[1]])
@@ -853,10 +888,10 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL,
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Interaction", col = "blue")
-  if (!is.character(x_inter) || length(x_inter) != 1) stop("x_inter must be a single column name.", call. = FALSE)
-  if (!x_inter %in% names(df)) stop("x_inter must exist in df.", call. = FALSE)
-  if (!x_exp_type %in% c("auto", "continuous", "categorical")) stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
-  if (!x_inter_type %in% c("auto", "continuous", "categorical")) stop("x_inter_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
+  if (!is.character(x_inter) || length(x_inter) != 1) leo_stop("x_inter must be a single column name.")
+  if (!x_inter %in% names(df)) leo_stop("x_inter must exist in df.")
+  if (!x_exp_type %in% c("auto", "continuous", "categorical")) leo_stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.")
+  if (!x_inter_type %in% c("auto", "continuous", "categorical")) leo_stop("x_inter_type must be one of 'auto', 'continuous', or 'categorical'.")
 
   model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
   prep_models <- lapply(model_list, function(covariates) unique(c(if (is.null(covariates)) character(0) else covariates, x_inter)))
@@ -869,37 +904,48 @@ leo_cox_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL,
     event_value = event_value,
     verbose = verbose
   )
-  if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering.", call. = FALSE)
-  if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
+  if (prep$n_after_followup == 0) leo_stop("No rows remain after follow-up filtering.")
+  if (nrow(prep$data) == 0) leo_stop("No rows remain after complete-case filtering.")
   if (prep$n_removed_complete_case > 0) {
     leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before Cox interaction analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox_interaction(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
   }
 
   exposure_type <- .check_var_type(prep$data$exposure, var_name = x_exp, var_type = x_exp_type, verbose = verbose)
   interaction_type <- .check_var_type(prep$data[[x_inter]], var_name = x_inter, var_type = x_inter_type, verbose = verbose)
+  .analyze_log_spec(exposure = x_exp, outcome = y_out[1], interaction = x_inter, model_names = names(model_list), verbose = verbose)
   result_rows <- list()
   fit_main <- list()
   fit_inter <- list()
   formula_main <- stats::setNames(character(length(model_list)), names(model_list))
   formula_inter <- stats::setNames(character(length(model_list)), names(model_list))
-  for (model_name in names(model_list)) {
+  model_total <- length(model_list)
+  for (model_index in seq_along(model_list)) {
+    model_name <- names(model_list)[model_index]
     covariates <- if (is.null(model_list[[model_name]])) character(0) else setdiff(model_list[[model_name]], x_inter)
+    .analyze_log_step(
+      scope = "Model",
+      index = model_index,
+      total = model_total,
+      label = model_name,
+      detail = if (length(covariates) == 0) "crude model" else paste0("covariates = ", paste(covariates, collapse = ", ")),
+      verbose = verbose
+    )
     leo.basic::leo_log("Testing interaction in {model_name} with {x_inter}{if (length(covariates) > 0) paste0(' adjusted for ', paste(covariates, collapse = ', ')) else ''}.", verbose = verbose)
     model_df <- prep$data[, c("event", "time", "exposure", x_inter, covariates), drop = FALSE]
 
     if (exposure_type == "categorical") {
       model_df$exposure <- droplevels(factor(model_df$exposure))
-      if (nlevels(model_df$exposure) < 2) stop("x_exp must contain at least 2 exposure levels after filtering.", call. = FALSE)
+      if (nlevels(model_df$exposure) < 2) leo_stop("x_exp must contain at least 2 exposure levels after filtering.")
     } else {
       model_df$exposure <- suppressWarnings(as.numeric(model_df$exposure))
-      if (anyNA(model_df$exposure)) stop("x_exp_type = 'continuous' requires a numeric or integer exposure.", call. = FALSE)
+      if (anyNA(model_df$exposure)) leo_stop("x_exp_type = 'continuous' requires a numeric or integer exposure.")
     }
     if (interaction_type == "categorical") {
       model_df[[x_inter]] <- droplevels(factor(model_df[[x_inter]]))
-      if (nlevels(model_df[[x_inter]]) < 2) stop("x_inter must contain at least 2 levels after filtering.", call. = FALSE)
+      if (nlevels(model_df[[x_inter]]) < 2) leo_stop("x_inter must contain at least 2 levels after filtering.")
     } else {
       model_df[[x_inter]] <- suppressWarnings(as.numeric(model_df[[x_inter]]))
-      if (anyNA(model_df[[x_inter]])) stop("x_inter_type = 'continuous' requires a numeric or integer interaction variable.", call. = FALSE)
+      if (anyNA(model_df[[x_inter]])) leo_stop("x_inter_type = 'continuous' requires a numeric or integer interaction variable.")
     }
 
     rhs_main <- unique(c("exposure", paste0("`", x_inter, "`"), if (length(covariates) > 0) paste0("`", covariates, "`") else character(0)))
@@ -970,9 +1016,9 @@ leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, eve
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Additive Interaction", col = "blue")
   # interactionR stays in Suggests, so keep runtime checks and explicit namespace calls.
-  if (!requireNamespace("interactionR", quietly = TRUE)) stop("leo_cox_add_interaction() requires package 'interactionR'. Please install it first.", call. = FALSE)
-  if (!is.character(x_inter) || length(x_inter) != 1) stop("x_inter must be a single column name.", call. = FALSE)
-  if (!x_inter %in% names(df)) stop("x_inter must exist in df.", call. = FALSE)
+  if (!requireNamespace("interactionR", quietly = TRUE)) leo_stop("leo_cox_add_interaction() requires package 'interactionR'. Please install it first.")
+  if (!is.character(x_inter) || length(x_inter) != 1) leo_stop("x_inter must be a single column name.")
+  if (!x_inter %in% names(df)) leo_stop("x_inter must exist in df.")
   reference_strategy <- match.arg(reference_group)
 
   model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
@@ -986,11 +1032,12 @@ leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, eve
     event_value = event_value,
     verbose = verbose
   )
-  if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering.", call. = FALSE)
-  if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
+  if (prep$n_after_followup == 0) leo_stop("No rows remain after follow-up filtering.")
+  if (nrow(prep$data) == 0) leo_stop("No rows remain after complete-case filtering.")
   if (prep$n_removed_complete_case > 0) {
     leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before additive interaction analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox_add_interaction(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
   }
+  .analyze_log_spec(exposure = x_exp, outcome = y_out[1], interaction = x_inter, model_names = names(model_list), verbose = verbose)
 
   result_rows <- list()
   fit_main <- list()
@@ -998,20 +1045,30 @@ leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, eve
   formula_main <- stats::setNames(character(length(model_list)), names(model_list))
   formula_inter <- stats::setNames(character(length(model_list)), names(model_list))
   backend <- list()
-  for (model_name in names(model_list)) {
+  model_total <- length(model_list)
+  for (model_index in seq_along(model_list)) {
+    model_name <- names(model_list)[model_index]
     covariates <- if (is.null(model_list[[model_name]])) character(0) else setdiff(model_list[[model_name]], x_inter)
+    .analyze_log_step(
+      scope = "Model",
+      index = model_index,
+      total = model_total,
+      label = model_name,
+      detail = if (length(covariates) == 0) "crude model" else paste0("covariates = ", paste(covariates, collapse = ", ")),
+      verbose = verbose
+    )
     leo.basic::leo_log("Fitting additive interaction in {model_name} with binary {x_exp} and {x_inter}{if (length(covariates) > 0) paste0(' adjusted for ', paste(covariates, collapse = ', ')) else ''}.", verbose = verbose)
     model_df <- prep$data[, c("event", "time", "exposure", x_inter, covariates), drop = FALSE]
 
     exposure_factor <- if (is.factor(model_df$exposure)) droplevels(model_df$exposure) else droplevels(factor(model_df$exposure))
-    if (nlevels(exposure_factor) != 2) stop("x_exp must contain exactly 2 levels after filtering for leo_cox_add_interaction().", call. = FALSE)
+    if (nlevels(exposure_factor) != 2) leo_stop("x_exp must contain exactly 2 levels after filtering for leo_cox_add_interaction().")
     interaction_factor <- if (is.factor(model_df[[x_inter]])) droplevels(model_df[[x_inter]]) else droplevels(factor(model_df[[x_inter]]))
-    if (nlevels(interaction_factor) != 2) stop("x_inter must contain exactly 2 levels after filtering for leo_cox_add_interaction().", call. = FALSE)
+    if (nlevels(interaction_factor) != 2) leo_stop("x_inter must contain exactly 2 levels after filtering for leo_cox_add_interaction().")
 
     exposure_bin <- as.integer(exposure_factor == levels(exposure_factor)[2])
     interaction_bin <- as.integer(interaction_factor == levels(interaction_factor)[2])
     joint_counts <- table(exposure_bin, interaction_bin)
-    if (!all(dim(joint_counts) == c(2, 2)) || any(joint_counts == 0)) stop("All four joint exposure groups must be present after filtering for leo_cox_add_interaction().", call. = FALSE)
+    if (!all(dim(joint_counts) == c(2, 2)) || any(joint_counts == 0)) leo_stop("All four joint exposure groups must be present after filtering for leo_cox_add_interaction().")
 
     analysis_df <- data.frame(
       event = model_df$event,
@@ -1037,7 +1094,7 @@ leo_cox_add_interaction <- function(df, y_out, x_exp, x_inter, x_cov = NULL, eve
       beta2 <- coef_names[coef_names == x_inter]
       beta3 <- coef_names[coef_names %in% c(paste0(x_exp, ":", x_inter), paste0(x_inter, ":", x_exp))]
       if (length(beta1) != 1 || length(beta2) != 1 || length(beta3) != 1) {
-        stop("Failed to recover additive interaction coefficients from the fitted Cox model. Available coefficients: ", paste(coef_names, collapse = ", "), call. = FALSE)
+        leo_stop("Failed to recover additive interaction coefficients from the fitted Cox model. Available coefficients: ", paste(coef_names, collapse = ", "))
       }
       b1 <- stats::coef(fit_inter_current)[beta1]
       b2 <- stats::coef(fit_inter_current)[beta2]
@@ -1213,16 +1270,20 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
                              add_interaction = TRUE, add_heterogeneity = FALSE, verbose = TRUE) {
   t0 <- Sys.time()
   if (verbose) cli::cat_rule("Cox Subgroup", col = "blue")
-  if (!is.character(x_subgroup) || length(x_subgroup) < 1) stop("x_subgroup must be a character vector of subgroup column names.", call. = FALSE)
-  if (!all(x_subgroup %in% names(df))) stop("All x_subgroup columns must exist in df.", call. = FALSE)
-  if (!x_exp_type %in% c("auto", "continuous", "categorical")) stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
-  if (!x_subgroup_type %in% c("auto", "continuous", "categorical")) stop("x_subgroup_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
+  if (!is.character(x_subgroup) || length(x_subgroup) < 1) leo_stop("x_subgroup must be a character vector of subgroup column names.")
+  if (!all(x_subgroup %in% names(df))) leo_stop("All x_subgroup columns must exist in df.")
+  if (!x_exp_type %in% c("auto", "continuous", "categorical")) leo_stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.")
+  if (!x_subgroup_type %in% c("auto", "continuous", "categorical")) leo_stop("x_subgroup_type must be one of 'auto', 'continuous', or 'categorical'.")
 
   base_models <- .normalize_model_list(x_cov, df_colnames = names(df))
+  .analyze_log_spec(exposure = x_exp, outcome = y_out[1], subgroup_names = x_subgroup, model_names = names(base_models), verbose = verbose)
   subgroup_rows <- list()
   interaction_fits <- list()
-  subgroup_index <- 1L
-  for (subgroup_var in x_subgroup) {
+  display_index <- 1L
+  subgroup_total <- length(x_subgroup)
+  for (subgroup_index in seq_along(x_subgroup)) {
+    subgroup_var <- x_subgroup[[subgroup_index]]
+    .analyze_log_step(scope = "Subgroup", index = subgroup_index, total = subgroup_total, label = subgroup_var, verbose = verbose)
     subgroup_models <- lapply(base_models, function(covariates) setdiff(if (is.null(covariates)) character(0) else covariates, subgroup_var))
     prep_models <- lapply(subgroup_models, function(covariates) unique(c(covariates, subgroup_var)))
     prep <- .prepare_cox_regression_data(
@@ -1236,33 +1297,49 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
     )
     if (prep$n_after_followup == 0 || nrow(prep$data) == 0) next
     subgroup_type <- .check_var_type(prep$data[[subgroup_var]], var_name = subgroup_var, var_type = x_subgroup_type, verbose = verbose)
-    if (subgroup_type != "categorical") stop("Subgroup analysis requires a categorical grouping variable. Convert ", subgroup_var, " to factor() first if needed.", call. = FALSE)
+    if (subgroup_type != "categorical") leo_stop("Subgroup analysis requires a categorical grouping variable. Convert ", subgroup_var, " to factor() first if needed.")
     prep$data[[subgroup_var]] <- droplevels(factor(prep$data[[subgroup_var]]))
     interaction_fit <- NULL
+    interaction_is_unstable <- FALSE
     if (add_interaction) {
+      interaction_warn <- character()
       interaction_fit <- tryCatch(
-        leo_cox_interaction(
-          df = df,
-          y_out = y_out,
-          x_exp = x_exp,
-          x_inter = subgroup_var,
-          x_cov = subgroup_models,
-          event_value = event_value,
-          min_followup_time = min_followup_time,
-          x_exp_type = x_exp_type,
-          x_inter_type = "categorical",
-          verbose = FALSE
+        withCallingHandlers(
+          leo_cox_interaction(
+            df = df,
+            y_out = y_out,
+            x_exp = x_exp,
+            x_inter = subgroup_var,
+            x_cov = subgroup_models,
+            event_value = event_value,
+            min_followup_time = min_followup_time,
+            x_exp_type = x_exp_type,
+            x_inter_type = "categorical",
+            verbose = FALSE
+          ),
+          warning = function(w) {
+            if (grepl("Loglik converged before variable|coefficient may be infinite", conditionMessage(w))) {
+              interaction_warn <<- unique(c(interaction_warn, conditionMessage(w)))
+              invokeRestart("muffleWarning")
+            }
+          }
         ),
         error = function(e) {
           leo.basic::leo_log("Skipping interaction test for subgroup '{subgroup_var}': {e$message}", level = "warning", verbose = verbose)
           return(NULL)
         }
       )
+      interaction_is_unstable <- length(interaction_warn) > 0
+      if (verbose && interaction_is_unstable) cli::cli_alert_warning("Interaction test for subgroup {.val {subgroup_var}} triggered separation/convergence warning(s); reported interaction P values should be interpreted cautiously.")
     }
     interaction_fits[[subgroup_var]] <- interaction_fit
-    for (subgroup_level in levels(prep$data[[subgroup_var]])) {
+    subgroup_levels <- levels(prep$data[[subgroup_var]])
+    level_total <- length(subgroup_levels)
+    for (level_index in seq_along(subgroup_levels)) {
+      subgroup_level <- subgroup_levels[[level_index]]
       sub_df <- prep$data[prep$data[[subgroup_var]] == subgroup_level, c("event", "time", "exposure", unique(unlist(subgroup_models, use.names = FALSE))), drop = FALSE]
       if (nrow(sub_df) == 0) next
+      .analyze_log_step(scope = "Level", index = level_index, total = level_total, label = as.character(subgroup_level), detail = paste0("n = ", nrow(sub_df)), context = subgroup_var, verbose = verbose)
       if (length(unique(stats::na.omit(sub_df$event))) < 2) {
         leo.basic::leo_log("Skipping subgroup '{subgroup_var} = {subgroup_level}' because the outcome has fewer than 2 observed states.", level = "warning", verbose = verbose)
         next
@@ -1271,25 +1348,77 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
         leo.basic::leo_log("Skipping subgroup '{subgroup_var} = {subgroup_level}' because exposure has fewer than 2 observed values.", level = "warning", verbose = verbose)
         next
       }
-      fit_sub <- tryCatch(
-        leo_cox(
-          df = sub_df,
-          y_out = c("event", "time"),
-          x_exp = "exposure",
-          x_cov = subgroup_models,
-          event_value = 1,
-          min_followup_time = min_followup_time,
-          x_exp_type = x_exp_type,
-          simplify = FALSE,
-          verbose = FALSE
-        ),
-        error = function(e) {
-          leo.basic::leo_log("Skipping subgroup '{subgroup_var} = {subgroup_level}' because Cox fitting failed: {e$message}", level = "warning", verbose = verbose)
-          return(NULL)
+      zero_count_levels <- character()
+      if (is.factor(sub_df$exposure) || is.character(sub_df$exposure) || is.logical(sub_df$exposure)) {
+        sub_df$exposure <- droplevels(factor(sub_df$exposure))
+        exposure_counts <- stats::aggregate(
+          event ~ exposure,
+          data = data.frame(exposure = sub_df$exposure, event = sub_df$event),
+          FUN = function(x) c(case_n = sum(x == 1, na.rm = TRUE), control_n = sum(x == 0, na.rm = TRUE))
+        )
+        exposure_counts <- do.call(data.frame, exposure_counts)
+        zero_count_levels <- as.character(exposure_counts$exposure[exposure_counts$event.case_n == 0 | exposure_counts$event.control_n == 0])
+        if (verbose && length(zero_count_levels) > 0) cli::cli_alert_warning("Subgroup level {.val {subgroup_var} = {subgroup_level}} has zero events or zero non-events in exposure level(s): {.val {paste(zero_count_levels, collapse = ', ')}}")
+      }
+      subgroup_models_fit <- Map(function(model_name, covariates) {
+        covariates <- covariates[covariates %in% names(sub_df)]
+        keep_covariates <- covariates[vapply(sub_df[covariates], function(x) length(unique(stats::na.omit(x))) > 1, logical(1))]
+        drop_covariates <- setdiff(covariates, keep_covariates)
+        if (verbose && length(drop_covariates) > 0) cli::cli_alert_warning("Subgroup level {.val {subgroup_var} = {subgroup_level}}: dropped constant covariate(s) from {.val {model_name}}: {.val {paste(drop_covariates, collapse = ', ')}}")
+        keep_covariates
+      }, names(subgroup_models), subgroup_models)
+      names(subgroup_models_fit) <- names(subgroup_models)
+      subgroup_model_rows <- lapply(names(subgroup_models_fit), function(model_name) {
+        fit_warn <- character()
+        fit_sub <- tryCatch(
+          withCallingHandlers(
+            leo_cox(
+              df = sub_df,
+              y_out = c("event", "time"),
+              x_exp = "exposure",
+              x_cov = stats::setNames(list(subgroup_models_fit[[model_name]]), model_name),
+              event_value = 1,
+              min_followup_time = min_followup_time,
+              x_exp_type = x_exp_type,
+              simplify = FALSE,
+              verbose = FALSE
+            ),
+            warning = function(w) {
+              if (grepl("Loglik converged before variable|coefficient may be infinite", conditionMessage(w))) {
+                fit_warn <<- unique(c(fit_warn, conditionMessage(w)))
+                invokeRestart("muffleWarning")
+              }
+            }
+          ),
+          error = function(e) {
+            leo.basic::leo_log("Skipping {.val {model_name}} in subgroup '{subgroup_var} = {subgroup_level}' because Cox fitting failed: {e$message}", level = "warning", verbose = verbose)
+            return(NULL)
+          }
+        )
+        if (is.null(fit_sub)) return(NULL)
+        sub_rows <- fit_sub$result_tidy
+        estimable_rows <- sub_rows$exposure_class == "Continuous" | sub_rows$row_id != 1L
+        non_estimable <- (estimable_rows & sub_rows$level %in% zero_count_levels) |
+          (estimable_rows &
+             (!is.finite(sub_rows$hr) |
+              !is.finite(sub_rows$hr_ci_l) |
+              !is.finite(sub_rows$hr_ci_u) |
+              ((sub_rows$hr == 0 | sub_rows$hr_ci_l == 0) & is.infinite(sub_rows$hr_ci_u))))
+        if (verbose && length(fit_warn) > 0 && !any(non_estimable)) cli::cli_alert_warning("Subgroup level {.val {subgroup_var} = {subgroup_level}} in {.val {model_name}} triggered convergence warning(s), but exposure estimates remained finite.")
+        if (any(non_estimable)) {
+          if (verbose) cli::cli_alert_warning("Subgroup level {.val {subgroup_var} = {subgroup_level}} in {.val {model_name}} has non-estimable exposure level(s): {.val {paste(unique(as.character(sub_rows$level[non_estimable])), collapse = ', ')}}")
+          sub_rows$hr[non_estimable] <- NA_real_
+          sub_rows$hr_ci_l[non_estimable] <- NA_real_
+          sub_rows$hr_ci_u[non_estimable] <- NA_real_
+          sub_rows$p_value[non_estimable] <- NA_real_
+          sub_rows$beta[non_estimable] <- NA_real_
+          sub_rows$se[non_estimable] <- NA_real_
         }
-      )
-      if (is.null(fit_sub)) next
-      sub_rows <- fit_sub$result_tidy
+        sub_rows
+      })
+      subgroup_model_rows <- Filter(Negate(is.null), subgroup_model_rows)
+      if (length(subgroup_model_rows) == 0) next
+      sub_rows <- do.call(rbind, subgroup_model_rows)
       sub_rows$exposure <- x_exp
       sub_rows$outcome <- y_out[1]
       sub_rows$level[is.na(sub_rows$level) & sub_rows$exposure_class == "Continuous"] <- "Per unit increase"
@@ -1297,43 +1426,61 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
       sub_rows$subgroup_level <- as.character(subgroup_level)
       sub_rows$subgroup_n <- nrow(sub_df)
       sub_rows$row_key <- paste(subgroup_var, subgroup_level, sub_rows$row_id, sep = "___")
-      sub_rows$display_id <- seq.int(from = subgroup_index, length.out = nrow(sub_rows))
-      subgroup_index <- subgroup_index + nrow(sub_rows)
-      sub_rows$p_interaction_display <- if (is.null(interaction_fit)) NA_character_ else interaction_fit$result$`P for interaction`[match(sub_rows$model, interaction_fit$result$Model)]
+      sub_rows$display_id <- seq.int(from = display_index, length.out = nrow(sub_rows))
+      display_index <- display_index + nrow(sub_rows)
+      sub_rows$p_interaction_display <- NA_character_
+      if (!is.null(interaction_fit)) {
+        sub_rows$p_interaction_display <- interaction_fit$result$`P for interaction`[match(sub_rows$model, interaction_fit$result$Model)]
+      }
       sub_rows$p_heterogeneity <- NA_real_
       subgroup_rows[[paste0(subgroup_var, "___", subgroup_level)]] <- sub_rows
     }
   }
-  if (length(subgroup_rows) == 0) stop("No subgroup results were generated.", call. = FALSE)
+  if (length(subgroup_rows) == 0) leo_stop("No subgroup results were generated.")
   result_df <- do.call(rbind, subgroup_rows)
   rownames(result_df) <- NULL
 
   if (add_heterogeneity) {
     for (model_name in unique(result_df$model)) {
       for (subgroup_var in unique(result_df$subgroup)) {
-        for (row_id in unique(result_df$row_id[result_df$subgroup == subgroup_var])) {
-          idx <- which(result_df$model == model_name & result_df$subgroup == subgroup_var & result_df$row_id == row_id)
-          idx <- idx[is.finite(result_df$hr[idx]) & is.finite(result_df$p_value[idx]) & !is.na(result_df$p_value[idx]) & !grepl("(Ref)", result_df$exposure[idx], fixed = TRUE)]
+        block_idx <- which(result_df$model == model_name & result_df$subgroup == subgroup_var)
+        if (length(block_idx) == 0) next
+        block_class <- unique(result_df$exposure_class[block_idx])
+        if (length(block_class) != 1) next
+        level_keys <- if (block_class == "Continuous") {
+          unique(result_df$level[block_idx])
+        } else {
+          unique(result_df$level[block_idx][result_df$row_id[block_idx] != 1L])
+        }
+        for (level_key in level_keys) {
+          idx <- block_idx[result_df$level[block_idx] == level_key]
+          idx <- idx[is.finite(result_df$beta[idx]) &
+                       is.finite(result_df$se[idx]) &
+                       result_df$se[idx] > 0]
           if (length(idx) < 2) next
-          hetero_res <- utils::capture.output(
-            hetero_obj <- leo_heterogeneity_p(
-              hrs = result_df$hr[idx],
-              p_values = result_df$p_value[idx],
-              subgroup_names = result_df$subgroup_level[idx]
-            )
+          hetero_obj <- leo_heterogeneity_p(
+            betas = result_df$beta[idx],
+            ses = result_df$se[idx],
+            subgroup_names = result_df$subgroup_level[idx],
+            verbose = FALSE
           )
           result_df$p_heterogeneity[idx] <- hetero_obj$p_value_heterogeneity
+        }
+        if (length(block_class) == 1 && block_class %in% c("Continuous", "Binary")) {
+          block_vals <- unique(stats::na.omit(result_df$p_heterogeneity[block_idx]))
+          if (length(block_vals) == 1) result_df$p_heterogeneity[block_idx] <- block_vals
         }
       }
     }
   }
 
   result <- result_df[, c("subgroup", "subgroup_level", "subgroup_n", "model", "exposure", "outcome", "level", "case_n", "control_n", "person_year"), drop = FALSE]
-  result$HR <- round(result_df$hr, 3)
+  result$level <- ifelse(result_df$exposure_class == "Continuous", result_df$level, ifelse(result_df$row_id == 1L, paste0(result_df$level, " (Ref)"), result_df$level))
+  result$HR <- ifelse(is.na(result_df$hr), "NA", sprintf("%.3f", round(result_df$hr, 3)))
   result$`95% CI` <- ifelse(is.na(result_df$hr_ci_l) | is.na(result_df$hr_ci_u), "NA", paste0(sprintf("%.3f", round(result_df$hr_ci_l, 3)), ", ", sprintf("%.3f", round(result_df$hr_ci_u, 3))))
-  result$`P value` <- vapply(result_df$p_value, .format_p_value, character(1))
-  if (add_interaction) result$`P for interaction` <- ifelse(is.na(result_df$p_interaction_display), "NA", result_df$p_interaction_display)
-  if (add_heterogeneity) result$`P for heterogeneity` <- vapply(result_df$p_heterogeneity, .format_p_value, character(1))
+  result$`P value` <- ifelse(is.na(result_df$p_value), "NA", vapply(result_df$p_value, .format_p_value, character(1)))
+  if (add_interaction) result$`P for interaction` <- ifelse(is.na(result_df$p_interaction_display), "NA", as.character(result_df$p_interaction_display))
+  if (add_heterogeneity) result$`P for heterogeneity` <- ifelse(is.na(result_df$p_heterogeneity), "NA", vapply(result_df$p_heterogeneity, .format_p_value, character(1)))
   names(result)[1:10] <- c("Subgroup", "Level", "N", "Model", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
   rownames(result) <- NULL
 
@@ -1341,6 +1488,7 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
   if (length(interaction_out) == 1) interaction_out <- interaction_out[[1]]
   out <- structure(list(
     result = result,
+    result_tidy = result_df,
     interaction = interaction_out
   ), class = "leo_cox_subgroup")
   leo.basic::leo_log("Cox subgroup analysis completed for {x_exp} across {length(x_subgroup)} subgroup variable(s).", level = "success", verbose = verbose)
@@ -1355,33 +1503,68 @@ leo_cox_subgroup <- function(df, y_out, x_exp, x_subgroup, x_cov = NULL,
 #' @param style One of `"wide"` or `"tidy"`.
 #' @export
 leo_cox_subgroup_format <- function(x, style = "wide") {
-  if (!inherits(x, "leo_cox_subgroup")) stop("x must be a leo_cox_subgroup result.", call. = FALSE)
-  if (!style %in% c("wide", "tidy")) stop("style must be one of 'wide' or 'tidy'.", call. = FALSE)
+  if (!inherits(x, "leo_cox_subgroup")) leo_stop("x must be a leo_cox_subgroup result.")
+  if (!style %in% c("wide", "tidy")) leo_stop("style must be one of 'wide' or 'tidy'.")
   switch(style,
     wide = {
-      result_long <- x$result
-      base_cols <- c("Subgroup", "Level", "N", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
-      model_ids <- unique(result_long$Model)
-      result_wide <- result_long[result_long$Model == model_ids[1], base_cols, drop = FALSE]
-      for (model_id in model_ids) {
-        model_df <- result_long[result_long$Model == model_id, c("Subgroup", "Level", "HR", "95% CI", "P value"), drop = FALSE]
-        rename_cols <- c("Subgroup", "Level", paste(model_id, "HR"), paste(model_id, "95% CI"), paste(model_id, "P value"))
-        if ("P for interaction" %in% names(result_long)) {
-          model_df$`P for interaction` <- result_long$`P for interaction`[result_long$Model == model_id]
-          rename_cols <- c(rename_cols, paste(model_id, "P for interaction"))
+      if (!is.null(x$result_tidy)) {
+        result_tidy <- x$result_tidy
+        result_long <- result_tidy[, c("display_id", "row_key", "subgroup", "subgroup_level", "subgroup_n", "model", "exposure", "outcome", "level", "case_n", "control_n", "person_year"), drop = FALSE]
+        result_long$level <- ifelse(result_tidy$exposure_class == "Continuous", result_tidy$level, ifelse(result_tidy$row_id == 1L, paste0(result_tidy$level, " (Ref)"), result_tidy$level))
+        result_long$HR <- ifelse(is.na(result_tidy$hr), "NA", sprintf("%.3f", round(result_tidy$hr, 3)))
+        result_long$`95% CI` <- ifelse(is.na(result_tidy$hr_ci_l) | is.na(result_tidy$hr_ci_u), "NA", paste0(sprintf("%.3f", round(result_tidy$hr_ci_l, 3)), ", ", sprintf("%.3f", round(result_tidy$hr_ci_u, 3))))
+        result_long$`P value` <- ifelse(is.na(result_tidy$p_value), "NA", vapply(result_tidy$p_value, .format_p_value, character(1)))
+        if ("p_interaction_display" %in% names(result_tidy)) result_long$`P for interaction` <- ifelse(is.na(result_tidy$p_interaction_display), "NA", as.character(result_tidy$p_interaction_display))
+        if ("p_heterogeneity" %in% names(result_tidy)) result_long$`P for heterogeneity` <- ifelse(is.na(result_tidy$p_heterogeneity), "NA", vapply(result_tidy$p_heterogeneity, .format_p_value, character(1)))
+        names(result_long)[1:12] <- c("Display ID", "Row key", "Subgroup", "Level", "N", "Model", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
+        base_cols <- c("Display ID", "Row key", "Subgroup", "Level", "N", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
+        join_cols <- "Row key"
+        model_ids <- unique(result_long$Model)
+        result_wide <- result_long[result_long$Model == model_ids[1], base_cols, drop = FALSE]
+        for (model_id in model_ids) {
+          model_df <- result_long[result_long$Model == model_id, c(join_cols, "HR", "95% CI", "P value"), drop = FALSE]
+          rename_cols <- c(join_cols, paste(model_id, "HR"), paste(model_id, "95% CI"), paste(model_id, "P value"))
+          if ("P for interaction" %in% names(result_long)) {
+            model_df$`P for interaction` <- result_long$`P for interaction`[result_long$Model == model_id]
+            rename_cols <- c(rename_cols, paste(model_id, "P for interaction"))
+          }
+          if ("P for heterogeneity" %in% names(result_long)) {
+            model_df$`P for heterogeneity` <- result_long$`P for heterogeneity`[result_long$Model == model_id]
+            rename_cols <- c(rename_cols, paste(model_id, "P for heterogeneity"))
+          }
+          names(model_df) <- rename_cols
+          result_wide <- merge(result_wide, model_df, by = join_cols, all.x = TRUE, sort = FALSE)
         }
-        if ("P for heterogeneity" %in% names(result_long)) {
-          model_df$`P for heterogeneity` <- result_long$`P for heterogeneity`[result_long$Model == model_id]
-          rename_cols <- c(rename_cols, paste(model_id, "P for heterogeneity"))
+        result_wide <- result_wide[order(result_wide$`Display ID`), , drop = FALSE]
+        result_wide <- result_wide[, setdiff(names(result_wide), c("Display ID", "Row key")), drop = FALSE]
+        rownames(result_wide) <- NULL
+        result_wide
+      } else {
+        result_long <- x$result
+        base_cols <- c("Subgroup", "Level", "N", "Exposure", "Outcome", "Exposure level", "Case N", "Control N", "Person-years")
+        join_cols <- c("Subgroup", "Level", "Exposure", "Outcome", "Exposure level")
+        model_ids <- unique(result_long$Model)
+        result_wide <- result_long[result_long$Model == model_ids[1], base_cols, drop = FALSE]
+        for (model_id in model_ids) {
+          model_df <- result_long[result_long$Model == model_id, c(join_cols, "HR", "95% CI", "P value"), drop = FALSE]
+          rename_cols <- c(join_cols, paste(model_id, "HR"), paste(model_id, "95% CI"), paste(model_id, "P value"))
+          if ("P for interaction" %in% names(result_long)) {
+            model_df$`P for interaction` <- result_long$`P for interaction`[result_long$Model == model_id]
+            rename_cols <- c(rename_cols, paste(model_id, "P for interaction"))
+          }
+          if ("P for heterogeneity" %in% names(result_long)) {
+            model_df$`P for heterogeneity` <- result_long$`P for heterogeneity`[result_long$Model == model_id]
+            rename_cols <- c(rename_cols, paste(model_id, "P for heterogeneity"))
+          }
+          names(model_df) <- rename_cols
+          result_wide <- merge(result_wide, model_df, by = join_cols, all.x = TRUE, sort = FALSE)
         }
-        names(model_df) <- rename_cols
-        result_wide <- merge(result_wide, model_df, by = c("Subgroup", "Level"), all.x = TRUE, sort = FALSE)
+        rownames(result_wide) <- NULL
+        result_wide
       }
-      rownames(result_wide) <- NULL
-      result_wide
     },
     tidy = {
-      x$result
+      if (!is.null(x$result_tidy)) x$result_tidy else x$result
     }
   )
 }
@@ -1390,13 +1573,17 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #'
 #' `r lifecycle::badge('experimental')`
 #'
-#' Performs causal mediation analysis for survival outcomes via `regmedint::regmedint()`.
-#' Fits mediator model `x_med ~ x_exp + x_cov` and outcome model
-#' `time ~ x_exp + x_med + x_cov` (with optional `x_exp:x_med` interaction).
+#' Performs causal mediation analysis for survival outcomes via either
+#' `regmedint::regmedint()` or `mediation::mediate()`, depending on `method`.
+#' Both engines fit a mediator model `x_med ~ x_exp + x_cov` and an outcome
+#' model `time ~ x_exp + x_med + x_cov` (with optional `x_exp:x_med`
+#' interaction), but they report different effect families.
 #'
-#' `yreg = "auto"` uses the observed event proportion in the post-filter,
-#' complete-case analysis set: Cox for rare outcomes (<=10% events), AFT otherwise.
-#' This 10% threshold is an empirical rare-event approximation rule.
+#' For `method = "regmedint"`, `yreg = "auto"` uses the observed event
+#' proportion in the post-filter, complete-case analysis set: Cox for rare
+#' outcomes (<=10% events), AFT otherwise. This 10% threshold is an empirical
+#' rare-event approximation rule. For `method = "mediation"`, `yreg = "auto"`
+#' fits a standard `survival::survreg(dist = "weibull")` outcome model.
 #'
 #' @param df Data frame with outcome, time, exposure, mediator, and covariates.
 #' @param y_out `c(event, time)` column names.
@@ -1405,34 +1592,55 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #' @param x_cov Covariate column names, or `NULL`.
 #' @param min_followup_time Minimum follow-up time filter.
 #' @param event_value Value indicating an event.
-#' @param x_exp_a0 Reference value of `x_exp`. Defaults to first factor level;
-#'   **required if x_exp is character (not factor)**. For a binary factor
-#'   exposure, either use the default contrast or supply `x_exp_a0` and
-#'   `x_exp_a1` together. For numeric `x_exp`, if exactly two unique observed
-#'   values remain after filtering, they are used as the default contrast;
-#'   otherwise, supply `x_exp_a0` and `x_exp_a1` explicitly.
-#' @param x_exp_a1 Contrasted value of `x_exp`. Defaults to second factor level;
-#'   **required if x_exp is character (not factor)**. For a binary factor
-#'   exposure, either use the default contrast or supply `x_exp_a0` and
-#'   `x_exp_a1` together. For numeric `x_exp`, if exactly two unique observed
-#'   values remain after filtering, they are used as the default contrast;
-#'   otherwise, supply `x_exp_a0` and `x_exp_a1` explicitly.
-#' @param x_med_cde Value of `x_med` for CDE evaluation. Defaults to second factor
-#'   level (binary) or median (continuous); **required if x_med is character (not factor)**.
-#'   For logistic mediators, use the original observed mediator value rather than
-#'   an internal 0/1 recode unless the observed values are themselves 0/1.
-#' @param x_cov_cond Covariate values for effect evaluation. Named list/vector for
-#'   non-numeric covariates; defaults to medians. Required for factor/binary covariates.
 #' @param mreg Mediator model: `"auto"`, `"linear"`, or `"logistic"`.
-#' @param yreg Outcome model: `"auto"`, `"survCox"`, `"survAFT_weibull"`, or `"survAFT_exp"`.
-#' @param interaction Include `x_exp:x_med` interaction? If `TRUE`, the outcome model adds `x_exp:x_med`,
-#'   i.e. `time ~ x_exp + x_med + x_exp:x_med + x_cov`.
+#' @param yreg Outcome model selector. For `method = "regmedint"`, supports
+#'   `"auto"`, `"survCox"`, `"survAFT_weibull"`, and `"survAFT_exp"`. For
+#'   `method = "mediation"`, supports only `"auto"` and internally fits
+#'   `survival::survreg(dist = "weibull")`.
+#' @param method Mediation engine: `"regmedint"` (counterfactual mediation with
+#'   `regmedint`) or `"mediation"` (average-effect mediation with the
+#'   `mediation` package). Defaults to `"mediation"`.
+#' @param simplify Return style. Use `FALSE` to keep the full object, `"wide"` to
+#'   return the display table directly, `"tidy"` to return the detailed table,
+#'   or `TRUE` as a shortcut for `"wide"`.
+#' @param x_exp_a0,x_exp_a1 Exposure contrast values used for mediation
+#'   evaluation. For binary factors, defaults to the first and second observed
+#'   levels. If `x_exp` is character, supply both explicitly. For numeric
+#'   `x_exp`, the two observed values are used only when exactly two unique
+#'   values remain after filtering; otherwise, supply both explicitly.
+#' @param x_cov_cond Covariate values for effect evaluation. Named list/vector for
+#'   non-numeric covariates; defaults to medians. For `method = "regmedint"`,
+#'   explicit values are required when `x_cov` contains factor covariates or
+#'   binary numeric covariates. For `method = "mediation"`, this is optional;
+#'   if omitted, `mediation::mediate()` reports effects averaged over the
+#'   observed covariate distribution.
+#' @param interaction Include `x_exp:x_med` interaction in the outcome model?
+#'   If `NULL`, defaults to `TRUE` for `method = "regmedint"` and `FALSE` for
+#'   `method = "mediation"`. Users may still set `TRUE` or `FALSE` explicitly
+#'   to override the engine-specific default.
+#' @param x_med_cde Mediator value used for CDE evaluation when
+#'   `method = "regmedint"`. Defaults to the second observed level for binary
+#'   mediators or the median for continuous mediators. If `x_med` is character,
+#'   supply `x_med_cde` explicitly. Ignored when `method = "mediation"`.
+#' @param mediation_boot Optional override for `mediation::mediate(boot = )`.
+#'   `NULL` uses the current wrapper default matching `mediate()`, i.e. `FALSE`.
+#' @param mediation_sims Optional override for `mediation::mediate(sims = )`.
+#'   `NULL` uses the current wrapper default matching `mediate()`, i.e. `1000`.
+#' @param mediation_boot_ci_type Optional override for
+#'   `mediation::mediate(boot.ci.type = )`. Only used when
+#'   `mediation_boot = TRUE`; choose `"perc"` or `"bca"`. `NULL` uses `"perc"`.
+#' @param mediation_use_speed Optional override for
+#'   `mediation::mediate(use_speed = )`. Only used when
+#'   `mediation_boot = TRUE`; `NULL` uses `FALSE`. Setting it to `TRUE`
+#'   requires package `speedglm`.
 #' @param verbose Print progress messages.
 #'
-#' @return `leo_cox_mediation` object with `$result`, `$result_detail`, `$evaluation`, `$fit`.
+#' @return When `simplify = FALSE`, a `leo_cox_mediation` object with `$result`,
+#'   `$result_detail`, `$result_tidy`, `$evaluation`, and engine metadata. When
+#'   `simplify = "wide"` or `"tidy"`, the corresponding data frame directly.
 #' @export
 #' @examples
-#' if (requireNamespace("regmedint", quietly = TRUE)) {
+#' if (requireNamespace("mediation", quietly = TRUE)) {
 #'   set.seed(123)
 #'   n <- 200
 #'   age <- rnorm(n, 60, 8)
@@ -1448,13 +1656,13 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #'   res_med <- leo_cox_mediation(
 #'     df = med_df, y_out = c("outcome", "outcome_censor"),
 #'     x_exp = "exposure", x_med = "mediator", x_cov = "age",
-#'     verbose = FALSE
+#'     mediation_sims = 100, verbose = FALSE
 #'   )
 #'   res_med$result
 #' }
 #'
 #' # Continuous exposure requires x_exp_a0 and x_exp_a1
-#' if (requireNamespace("regmedint", quietly = TRUE)) {
+#' if (requireNamespace("mediation", quietly = TRUE)) {
 #'   set.seed(123)
 #'   n <- 200
 #'   cont_df <- data.frame(
@@ -1465,27 +1673,127 @@ leo_cox_subgroup_format <- function(x, style = "wide") {
 #'   res_cont <- leo_cox_mediation(
 #'     df = cont_df, y_out = c("outcome", "outcome_censor"),
 #'     x_exp = "exposure", x_med = "mediator", x_cov = "age",
-#'     x_exp_a0 = -1, x_exp_a1 = 1, verbose = FALSE
+#'     x_exp_a0 = -1, x_exp_a1 = 1, mediation_sims = 100, verbose = FALSE
 #'   )
 #'   res_cont$result
 #' }
 leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
                               event_value = 1, min_followup_time = 0,
+                              mreg = c("auto", "linear", "logistic"),
+                              yreg = c("auto", "survCox", "survAFT_weibull", "survAFT_exp"),
+                              method = c("mediation", "regmedint"),
+                              simplify = FALSE,
+                              # shared evaluation parameters
                               x_exp_a0 = NULL, x_exp_a1 = NULL,
-                              x_med_cde = NULL, x_cov_cond = NULL,
-                              mreg = c("auto", "linear", "logistic"), 
-                              yreg = c("auto", "survCox", "survAFT_weibull", "survAFT_exp"), 
-                              interaction = TRUE, verbose = TRUE) {
+                              x_cov_cond = NULL,
+                              # shared model specification
+                              interaction = NULL,
+                              # params for regmedint
+                              x_med_cde = NULL,
+                              # params for mediation
+                              mediation_boot = NULL,
+                              mediation_sims = NULL,
+                              mediation_boot_ci_type = NULL,
+                              mediation_use_speed = NULL,
+                              verbose = TRUE) {
 
   # initialization and validation ----
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Cox Mediation", col = "blue")
-  if (!requireNamespace("regmedint", quietly = TRUE)) stop("leo_cox_mediation() requires package 'regmedint'. Please install it first.", call. = FALSE)
-  if (!is.character(x_med) || length(x_med) != 1) stop("x_med must be a single column name.", call. = FALSE)
-  if (!x_med %in% names(df)) stop("x_med must exist in df.", call. = FALSE)
+  if (!is.character(x_med) || length(x_med) != 1) leo_stop("x_med must be a single column name.")
+  if (!x_med %in% names(df)) leo_stop("x_med must exist in df.")
+  if (missing(method)) method <- "mediation"
+  if (!is.character(method) || length(method) != 1L || is.na(method)) {
+    leo_stop("method must be either 'regmedint' or 'mediation'.")
+  }
+  method <- trimws(method)
+  if (!method %in% c("regmedint", "mediation")) leo_stop("method must be either 'regmedint' or 'mediation'.")
   mreg <- match.arg(mreg, c("auto", "linear", "logistic"))
-  yreg <- match.arg(yreg)
+  if (missing(yreg)) yreg <- "auto"
+  if (!is.character(yreg) || length(yreg) != 1L || is.na(yreg)) {
+    leo_stop("yreg must be one of 'auto', 'survCox', 'survAFT_weibull', or 'survAFT_exp'.")
+  }
+  yreg <- trimws(yreg)
+  if (identical(yreg, "survreg")) {
+    leo_stop("`yreg = 'survreg'` is not a public option. When `method = 'mediation'`, keep `yreg = 'auto'`; the engine internally fits `survival::survreg(dist = 'weibull')`.")
+  }
+  if (!yreg %in% c("auto", "survCox", "survAFT_weibull", "survAFT_exp")) {
+    leo_stop("yreg must be one of 'auto', 'survCox', 'survAFT_weibull', or 'survAFT_exp'.")
+  }
+  simplify_use <- if (isTRUE(simplify)) {
+    "wide"
+  } else if (identical(simplify, FALSE)) {
+    FALSE
+  } else if (is.character(simplify) && length(simplify) == 1L && simplify %in% c("wide", "tidy")) {
+    simplify
+  } else {
+    leo_stop("simplify must be FALSE, TRUE, 'wide', or 'tidy'.")
+  }
+  if (method == "regmedint" && !requireNamespace("regmedint", quietly = TRUE)) {
+    leo_stop("leo_cox_mediation(method = 'regmedint') requires package 'regmedint'. Please install it first.")
+  }
+  if (method == "mediation" && !requireNamespace("mediation", quietly = TRUE)) {
+    leo_stop("leo_cox_mediation(method = 'mediation') requires package 'mediation'. Please install it first.")
+  }
+  if (!is.null(interaction) && (!is.logical(interaction) || length(interaction) != 1L || is.na(interaction))) {
+    leo_stop("interaction must be TRUE, FALSE, or NULL.")
+  }
+  interaction_use <- if (is.null(interaction)) method == "regmedint" else isTRUE(interaction)
+  if (method == "mediation" && isTRUE(interaction_use)) {
+    warning(
+      "For `method = 'mediation'`, `interaction = TRUE` allows treatment-specific effects in `mediation::mediate()`, but the current leo_cox_mediation() wrapper still reports averaged ACME/ADE/ATE/PM only. Treatment-specific d0/d1, z0/z1, and n0/n1 are not exposed in the returned object yet; use `mediation::mediate()` directly if you need them.",
+      call. = FALSE
+    )
+  }
+  if (!is.null(mediation_boot) && (!is.logical(mediation_boot) || length(mediation_boot) != 1L || is.na(mediation_boot))) {
+    leo_stop("mediation_boot must be TRUE, FALSE, or NULL.")
+  }
+  if (!is.null(mediation_sims)) {
+    mediation_sims_num <- suppressWarnings(as.numeric(mediation_sims))
+    if (length(mediation_sims_num) != 1L || is.na(mediation_sims_num) || mediation_sims_num < 1 || abs(mediation_sims_num - round(mediation_sims_num)) > 1e-8) {
+      leo_stop("mediation_sims must be a single positive integer or NULL.")
+    }
+    mediation_sims <- as.integer(round(mediation_sims_num))
+  }
+  if (!is.null(mediation_boot_ci_type)) {
+    if (!is.character(mediation_boot_ci_type) || length(mediation_boot_ci_type) != 1L || is.na(mediation_boot_ci_type)) {
+      leo_stop("mediation_boot_ci_type must be 'perc', 'bca', or NULL.")
+    }
+    mediation_boot_ci_type <- trimws(mediation_boot_ci_type)
+    if (!mediation_boot_ci_type %in% c("perc", "bca")) {
+      leo_stop("mediation_boot_ci_type must be either 'perc' or 'bca'.")
+    }
+  }
+  if (!is.null(mediation_use_speed) && (!is.logical(mediation_use_speed) || length(mediation_use_speed) != 1L || is.na(mediation_use_speed))) {
+    leo_stop("mediation_use_speed must be TRUE, FALSE, or NULL.")
+  }
+  if (!is.null(mediation_boot_ci_type) && !isTRUE(mediation_boot)) {
+    leo_stop("mediation_boot_ci_type requires mediation_boot = TRUE.")
+  }
+  if (!is.null(mediation_use_speed) && !isTRUE(mediation_boot)) {
+    leo_stop("mediation_use_speed requires mediation_boot = TRUE.")
+  }
+  if (method == "regmedint" && any(!vapply(list(mediation_boot, mediation_sims, mediation_boot_ci_type, mediation_use_speed), is.null, logical(1)))) {
+    leo_stop("mediation_boot, mediation_sims, mediation_boot_ci_type, and mediation_use_speed are only available when method = 'mediation'.")
+  }
+  if (method == "mediation" && yreg != "auto") {
+    leo_stop("When `method = 'mediation'`, `yreg` must be 'auto'. The mediation engine internally fits `survival::survreg(dist = 'weibull')`.")
+  }
+  if (method == "mediation" && isTRUE(mediation_use_speed) && !requireNamespace("speedglm", quietly = TRUE)) {
+    leo_stop("mediation_use_speed = TRUE requires package 'speedglm'. Please install it first or keep mediation_use_speed = FALSE.")
+  }
+  if (method == "mediation" && !is.null(x_med_cde)) {
+    leo.basic::leo_log("`x_med_cde` is ignored when `method = 'mediation'` as `mediation::mediate()` does not report CDE-based outputs.", level = "warning", verbose = verbose)
+  }
+  mediation_boot_use <- if (is.null(mediation_boot)) FALSE else isTRUE(mediation_boot)
+  mediation_sims_use <- if (is.null(mediation_sims)) 1000L else mediation_sims
+  mediation_boot_ci_type_use <- if (isTRUE(mediation_boot_use)) {
+    if (is.null(mediation_boot_ci_type)) "perc" else mediation_boot_ci_type
+  } else {
+    NA_character_
+  }
+  mediation_use_speed_use <- if (is.null(mediation_use_speed)) FALSE else isTRUE(mediation_use_speed)
 
   # helper functions ----
   format_num <- function(x) sprintf("%.3f", round(x, 3))
@@ -1501,7 +1809,16 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
     factor(x_chr, levels = level_order)
   }
   build_cvar_matrix <- function(cov_df, covariates, x_cov_cond) {
-    if (length(covariates) == 0) return(list(covariate_df = NULL, cvar_use = NULL, c_cond_use = NULL, c_cond_label = NA_character_))
+    if (length(covariates) == 0) {
+      return(list(
+        covariate_df = NULL,
+        covariate_model_df = NULL,
+        cvar_use = NULL,
+        c_cond_use = NULL,
+        c_cond_label = NA_character_,
+        c_cond_model_df = NULL
+      ))
+    }
     cov_model_df <- cov_df
     binary_numeric_covariates <- covariates[vapply(cov_df, function(x) {
       if (!(is.numeric(x) || is.integer(x))) return(FALSE)
@@ -1516,52 +1833,67 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
     cov_formula <- stats::reformulate(covariates)
     cov_matrix <- stats::model.matrix(cov_formula, data = cov_model_df)
     cov_matrix <- cov_matrix[, colnames(cov_matrix) != "(Intercept)", drop = FALSE]
+    if (ncol(cov_matrix) > 0) {
+      safe_cvar <- make.names(colnames(cov_matrix), unique = TRUE)
+      colnames(cov_matrix) <- safe_cvar
+    }
+    cvar_use <- colnames(cov_matrix)
     if (is.null(x_cov_cond)) {
+      if (identical(method, "mediation")) {
+        return(list(
+          covariate_df = as.data.frame(cov_matrix, check.names = FALSE),
+          covariate_model_df = cov_model_df,
+          cvar_use = cvar_use,
+          c_cond_use = if (length(cvar_use) > 0) stats::setNames(rep(NA_real_, length(cvar_use)), cvar_use) else NULL,
+          c_cond_label = NA_character_,
+          c_cond_model_df = NULL
+        ))
+      }
       if (!all(vapply(cov_df, function(x) is.numeric(x) || is.integer(x), logical(1)))) {
-        stop("Please supply x_cov_cond explicitly when x_cov contains non-numeric covariates for leo_cox_mediation().", call. = FALSE)
+        leo_stop("Please supply x_cov_cond explicitly when x_cov contains non-numeric covariates for leo_cox_mediation().")
       }
       if (length(binary_numeric_covariates) > 0) {
-        stop(
+        leo_stop(
           "Please supply x_cov_cond explicitly when x_cov contains binary numeric covariates (",
           paste(binary_numeric_covariates, collapse = ", "),
-          "), because the default median can create impossible evaluation values such as 0.5.",
-          call. = FALSE
+          "), because the default median can create impossible evaluation values such as 0.5."
         )
       }
       c_cond_model_df <- as.data.frame(as.list(vapply(cov_df, stats::median, numeric(1), na.rm = TRUE)), stringsAsFactors = FALSE)
+      names(c_cond_model_df) <- covariates
       c_cond_label <- paste(paste0(covariates, "=", format_num(unlist(c_cond_model_df[1, covariates, drop = FALSE]))), collapse = "; ")
     } else if (is.numeric(x_cov_cond) && is.null(names(x_cov_cond))) {
       if (!all(vapply(cov_df, function(x) is.numeric(x) || is.integer(x), logical(1)))) {
-        stop("For non-numeric covariates, x_cov_cond must be a named list or named vector using original covariate values.", call. = FALSE)
+        leo_stop("For non-numeric covariates, x_cov_cond must be a named list or named vector using original covariate values.")
       }
-      if (length(x_cov_cond) != length(covariates)) stop("x_cov_cond must have the same length as the selected covariates.", call. = FALSE)
+      if (length(x_cov_cond) != length(covariates)) leo_stop("x_cov_cond must have the same length as the selected covariates.")
       c_cond_model_df <- as.data.frame(as.list(as.numeric(x_cov_cond)), stringsAsFactors = FALSE)
       names(c_cond_model_df) <- covariates
       c_cond_label <- paste(paste0(covariates, "=", format_num(as.numeric(x_cov_cond))), collapse = "; ")
     } else {
       c_cond_list <- if (is.list(x_cov_cond)) x_cov_cond else as.list(x_cov_cond)
       if (is.null(names(c_cond_list)) || any(names(c_cond_list) == "")) {
-        stop("Named x_cov_cond values are required when supplying covariate-specific evaluation settings.", call. = FALSE)
+        leo_stop("Named x_cov_cond values are required when supplying covariate-specific evaluation settings.")
       }
       if (!all(covariates %in% names(c_cond_list))) {
-        stop("Named x_cov_cond must include every selected covariate.", call. = FALSE)
+        leo_stop("Named x_cov_cond must include every selected covariate.")
       }
       c_cond_model_df <- cov_model_df[1, covariates, drop = FALSE]
       c_cond_label_parts <- character(0)
       for (covariate in covariates) {
         value <- c_cond_list[[covariate]]
-        if (length(value) != 1 || is.na(value[1])) stop("x_cov_cond value for ", covariate, " must be a single non-missing value.", call. = FALSE)
+        if (length(value) != 1 || is.na(value[1])) leo_stop("x_cov_cond value for ", covariate, " must be a single non-missing value.")
         value <- value[1]
         if (is.factor(cov_model_df[[covariate]])) {
           value_chr <- as.character(value)
           if (!value_chr %in% levels(cov_model_df[[covariate]])) {
-            stop("x_cov_cond value for ", covariate, " must match one of the observed factor levels.", call. = FALSE)
+            leo_stop("x_cov_cond value for ", covariate, " must match one of the observed factor levels.")
           }
           c_cond_model_df[[covariate]] <- factor(value_chr, levels = levels(cov_model_df[[covariate]]))
           c_cond_label_parts <- c(c_cond_label_parts, paste0(covariate, "=", value_chr))
         } else {
           value_num <- suppressWarnings(as.numeric(value))
-          if (length(value_num) != 1 || is.na(value_num)) stop("x_cov_cond value for ", covariate, " must be numeric.", call. = FALSE)
+          if (length(value_num) != 1 || is.na(value_num)) leo_stop("x_cov_cond value for ", covariate, " must be numeric.")
           c_cond_model_df[[covariate]] <- value_num
           c_cond_label_parts <- c(c_cond_label_parts, paste0(covariate, "=", format_num(value_num)))
         }
@@ -1570,26 +1902,41 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
     }
     c_cond_matrix <- stats::model.matrix(cov_formula, data = c_cond_model_df)
     c_cond_matrix <- c_cond_matrix[, colnames(c_cond_matrix) != "(Intercept)", drop = FALSE]
-    cvar_use <- colnames(cov_matrix)
+    if (ncol(c_cond_matrix) > 0) {
+      colnames(c_cond_matrix) <- make.names(colnames(c_cond_matrix), unique = TRUE)
+    }
     c_cond_use <- as.numeric(c_cond_matrix[1, cvar_use, drop = TRUE])
     names(c_cond_use) <- cvar_use
     return(list(
       covariate_df = as.data.frame(cov_matrix, check.names = FALSE),
+      covariate_model_df = cov_model_df,
       cvar_use = cvar_use,
       c_cond_use = c_cond_use,
-      c_cond_label = c_cond_label
+      c_cond_label = c_cond_label,
+      c_cond_model_df = c_cond_model_df
     ))
   }
 
   # data preparation and yreg selection ----
   model_list <- .normalize_model_list(x_cov, df_colnames = names(df))
+  .analyze_log_spec(exposure = x_exp, outcome = y_out[1], mediator = x_med, model_names = names(model_list), method = method, verbose = verbose)
 
   # main loop ----
   result_rows <- list()
   fit_results <- list()
   evaluation_rows <- list()
-  for (model_name in names(model_list)) {
+  model_total <- length(model_list)
+  for (model_index in seq_along(model_list)) {
+    model_name <- names(model_list)[model_index]
     covariates <- if (is.null(model_list[[model_name]])) character(0) else model_list[[model_name]]
+    .analyze_log_step(
+      scope = "Model",
+      index = model_index,
+      total = model_total,
+      label = model_name,
+      detail = if (length(covariates) == 0) "crude model" else paste0("covariates = ", paste(covariates, collapse = ", ")),
+      verbose = verbose
+    )
     prep_covariates <- unique(c(covariates, x_med))
     prep <- .prepare_cox_regression_data(
       df = df,
@@ -1600,76 +1947,82 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
       event_value = event_value,
       verbose = verbose
     )
-    if (prep$n_after_followup == 0) stop("No rows remain after follow-up filtering for ", model_name, ".", call. = FALSE)
-    if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering for ", model_name, ".", call. = FALSE)
+    if (prep$n_after_followup == 0) leo_stop("No rows remain after follow-up filtering for ", model_name, ".")
+    if (nrow(prep$data) == 0) leo_stop("No rows remain after complete-case filtering for ", model_name, ".")
     if (prep$n_removed_complete_case > 0) {
       leo.basic::leo_log(
         "For {model_name}, if you want to keep more rows, consider imputing missing values before Cox mediation analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_cox_mediation(df = {df_name}_imputed, ...)`.",
-        level = "warning",
-        verbose = verbose
+        level = "warning", verbose = verbose
       )
     }
     model_df <- prep$data[, c("event", "time", "exposure", x_med, covariates), drop = FALSE]
     event_rate <- sum(model_df$event == 1, na.rm = TRUE) / nrow(model_df)
-    yreg_use <- if (yreg == "auto") {
-      if (is.finite(event_rate) && event_rate <= 0.1) "survCox" else "survAFT_weibull"
-    } else {
-      yreg
-    }
-    if (yreg == "auto") {
+    if (method == "regmedint") {
+      yreg_use <- if (yreg == "auto") {
+        if (is.finite(event_rate) && event_rate <= 0.1) "survCox" else "survAFT_weibull"
+      } else {
+        yreg
+      }
+      outcome_distribution <- NA_character_
+      if (yreg == "auto") {
+        leo.basic::leo_log(
+          "In {model_name}, observed event proportion is {format_num(100 * event_rate)}%; auto-selecting `yreg = '{yreg_use}'` for leo_cox_mediation().",
+          verbose = verbose
+        )
+      }
+      if (identical(yreg_use, "survCox") && is.finite(event_rate) && event_rate > 0.1) {
+        leo.basic::leo_log(
+          "Observed event proportion is {format_num(100 * event_rate)}% in {model_name}. `regmedint` with `yreg = 'survCox'` relies on the rare-event approximation, so interpret the mediation estimates with caution when the outcome is not rare.",
+          level = "warning", verbose = verbose
+        )
+      }
+    } else if (method == "mediation") {
+      yreg_use <- "survreg"
+      outcome_distribution <- "weibull"
       leo.basic::leo_log(
-        "In {model_name}, observed event proportion is {format_num(100 * event_rate)}%; auto-selecting `yreg = '{yreg_use}'` for leo_cox_mediation().",
+        "In {model_name}, `method = 'mediation'` uses the standard `survival::survreg(dist = 'weibull')` route for survival outcomes.",
         verbose = verbose
       )
     }
-    if (identical(yreg_use, "survCox") && is.finite(event_rate) && event_rate > 0.1) {
-      warning(
-        "Observed event proportion is ", format_num(100 * event_rate),
-        "% in ", model_name,
-        ". `regmedint` with `yreg = 'survCox'` relies on the rare-event approximation, so interpret the mediation estimates with caution when the outcome is not rare.",
-        call. = FALSE
-      )
-    }
+
     a0_use <- x_exp_a0
     a1_use <- x_exp_a1
     m_cde_use <- x_med_cde
-    m_cde_internal_use <- x_med_cde
-    m_cde_output_use <- x_med_cde
+    m_cde_internal_use <- NA
+    m_cde_output_use <- NA
     exposure_contrast_display <- NULL
-    mediator_reference_display <- NULL
+    mediator_reference_display <- NA_character_
 
     ## exposure processing ----
     exposure_raw <- model_df$exposure
     if (is.factor(exposure_raw) || is.character(exposure_raw) || is.logical(exposure_raw)) {
       exposure_factor <- normalize_factor_like(exposure_raw)
-      if (nlevels(exposure_factor) != 2) stop("leo_cox_mediation() currently supports binary factor exposures or numeric exposures.", call. = FALSE)
+      if (nlevels(exposure_factor) != 2) leo_stop("leo_cox_mediation() currently supports binary factor exposures or numeric exposures.")
       if (is.character(exposure_raw) && (is.null(x_exp_a0) || is.null(x_exp_a1))) {
-        stop(
+        leo_stop(
           "x_exp is stored as character. Please explicitly specify x_exp_a0 (reference level) and x_exp_a1 (contrasted level). ",
           "Observed levels: ", paste(levels(exposure_factor), collapse = ", "),
-          ". Alternatively, convert x_exp to a factor with `factor(x, levels = c(reference, contrasted))`.",
-          call. = FALSE
+          ". Alternatively, convert x_exp to a factor with `factor(x, levels = c(reference, contrasted))`."
         )
       }
       model_df$exposure <- as.integer(exposure_factor == levels(exposure_factor)[2])
       exposure_levels <- levels(exposure_factor)
       map_exposure_level <- function(value, arg_name) {
         if (length(value) != 1 || is.na(value[1])) {
-          stop(arg_name, " must be a single non-missing value coded as 0/1 or matching one of the observed exposure levels.", call. = FALSE)
+          leo_stop(arg_name, " must be a single non-missing value coded as 0/1 or matching one of the observed exposure levels.")
         }
         value <- value[1]
         if (is.numeric(value) && length(value) == 1 && !is.na(value) && value %in% c(0, 1)) return(as.numeric(value))
         value_chr <- as.character(value)
         if (value_chr %in% exposure_levels) return(match(value_chr, exposure_levels) - 1L)
-        stop(
+        leo_stop(
           "For binary factor exposures, ", arg_name,
           " must be coded as 0/1 or match one of the observed exposure levels: ",
-          paste(exposure_levels, collapse = ", "), ".",
-          call. = FALSE
+          paste(exposure_levels, collapse = ", "), "."
         )
       }
       if (xor(is.null(a0_use), is.null(a1_use))) {
-        stop("Please provide both x_exp_a0 and x_exp_a1 together when overriding the default exposure contrast for a binary factor exposure.", call. = FALSE)
+        leo_stop("Please provide both x_exp_a0 and x_exp_a1 together when overriding the default exposure contrast for a binary factor exposure.")
       }
       if (is.null(a0_use)) a0_use <- 0
       if (is.null(a1_use)) a1_use <- 1
@@ -1678,18 +2031,18 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
       exposure_contrast_display <- paste0(exposure_levels[a0_use + 1], " -> ", exposure_levels[a1_use + 1])
     } else {
       model_df$exposure <- suppressWarnings(as.numeric(exposure_raw))
-      if (anyNA(model_df$exposure)) stop("Exposure must be numeric or a binary factor.", call. = FALSE)
+      if (anyNA(model_df$exposure)) leo_stop("Exposure must be numeric or a binary factor.")
       unique_exposure <- sort(unique(stats::na.omit(model_df$exposure)))
       if (length(unique_exposure) == 2 && is.null(a0_use) && is.null(a1_use)) {
         a0_use <- unique_exposure[1]
         a1_use <- unique_exposure[2]
       }
-      if (is.null(a0_use) || is.null(a1_use)) stop("Please provide both x_exp_a0 and x_exp_a1 for Cox mediation when x_exp is not a binary factor.", call. = FALSE)
+      if (is.null(a0_use) || is.null(a1_use)) leo_stop("Please provide both x_exp_a0 and x_exp_a1 for Cox mediation when x_exp is not a binary factor.")
       exposure_contrast_display <- paste0(format_num(a0_use), " -> ", format_num(a1_use))
     }
-    if (!is.numeric(a0_use) || length(a0_use) != 1 || is.na(a0_use)) stop("x_exp_a0 must be a single numeric value.", call. = FALSE)
-    if (!is.numeric(a1_use) || length(a1_use) != 1 || is.na(a1_use)) stop("x_exp_a1 must be a single numeric value.", call. = FALSE)
-    if (isTRUE(all.equal(a0_use, a1_use))) stop("x_exp_a0 and x_exp_a1 must be different for Cox mediation analysis.", call. = FALSE)
+    if (!is.numeric(a0_use) || length(a0_use) != 1 || is.na(a0_use)) leo_stop("x_exp_a0 must be a single numeric value.")
+    if (!is.numeric(a1_use) || length(a1_use) != 1 || is.na(a1_use)) leo_stop("x_exp_a1 must be a single numeric value.")
+    if (isTRUE(all.equal(a0_use, a1_use))) leo_stop("x_exp_a0 and x_exp_a1 must be different for Cox mediation analysis.")
 
     ## mediator processing ----
     mediator_raw <- model_df[[x_med]]
@@ -1698,11 +2051,10 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
       if (is.factor(mediator_raw) || is.character(mediator_raw) || is.logical(mediator_raw)) {
         mediator_levels <- levels(normalize_factor_like(mediator_raw))
         if (length(mediator_levels) != 2) {
-          stop(
+          leo_stop(
             "Automatic mediator detection currently supports binary factors or numeric mediators. ",
             "For multi-level categorical mediators, please recode x_med to a scientifically justified binary mediator, ",
-            "or keep an ordered score as numeric and set mreg = 'linear'.",
-            call. = FALSE
+            "or keep an ordered score as numeric and set mreg = 'linear'."
           )
         }
         mediator_mode_use <- "logistic"
@@ -1734,18 +2086,16 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
         mediator_factor <- normalize_factor_like(mediator_raw)
       }
       if (nlevels(mediator_factor) != 2) {
-        stop(
+        leo_stop(
           "Mediator must have exactly 2 levels when mreg = 'logistic'. ",
-          "For ordered score-like mediators such as integer severity indices, keep x_med numeric and use mreg = 'linear'.",
-          call. = FALSE
+          "For ordered score-like mediators such as integer severity indices, keep x_med numeric and use mreg = 'linear'."
         )
       }
-      if (is.character(mediator_raw) && is.null(x_med_cde)) {
-        stop(
+      if (method == "regmedint" && is.character(mediator_raw) && is.null(x_med_cde)) {
+        leo_stop(
           "x_med is stored as character. Please explicitly specify x_med_cde (the mediator value for CDE evaluation). ",
           "Observed levels: ", paste(levels(mediator_factor), collapse = ", "),
-          ". Alternatively, convert x_med to a factor with `factor(x, levels = ...)`.",
-          call. = FALSE
+          ". Alternatively, convert x_med to a factor with `factor(x, levels = ...)`."
         )
       }
       model_df[[x_med]] <- as.integer(mediator_factor == levels(mediator_factor)[2])
@@ -1755,84 +2105,150 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
         if (is.logical(mediator_raw)) return(level_chr %in% c("TRUE", "T", "true", "1"))
         level_chr
       }
-      map_mediator_level <- function(value) {
-        if (length(value) != 1 || is.na(value[1])) {
-          stop("x_med_cde must be a single non-missing value matching one of the observed mediator levels.", call. = FALSE)
+      if (method == "regmedint") {
+        map_mediator_level <- function(value) {
+          if (length(value) != 1 || is.na(value[1])) {
+            leo_stop("x_med_cde must be a single non-missing value matching one of the observed mediator levels.")
+          }
+          value <- value[1]
+          value_chr <- as.character(value)
+          if (value_chr %in% mediator_levels) {
+            level_index <- match(value_chr, mediator_levels)
+            return(list(
+              internal = unname(level_index - 1L),
+              output = mediator_level_output(mediator_levels[level_index])
+            ))
+          }
+          if (identical(mediator_levels, c("0", "1")) && is.numeric(value) && !is.na(value) && value %in% c(0, 1)) {
+            return(list(
+              internal = unname(as.numeric(value)),
+              output = unname(as.numeric(value))
+            ))
+          }
+          leo_stop(
+            "x_med_cde must match one of the observed mediator levels when mreg = 'logistic': ",
+            paste(mediator_levels, collapse = ", "), "."
+          )
         }
-        value <- value[1]
-        value_chr <- as.character(value)
-        if (value_chr %in% mediator_levels) {
-          level_index <- match(value_chr, mediator_levels)
-          return(list(
-            internal = unname(level_index - 1L),
-            output = mediator_level_output(mediator_levels[level_index])
-          ))
-        }
-        if (identical(mediator_levels, c("0", "1")) && is.numeric(value) && !is.na(value) && value %in% c(0, 1)) {
-          return(list(
-            internal = unname(as.numeric(value)),
-            output = unname(as.numeric(value))
-          ))
-        }
-        stop(
-          "x_med_cde must match one of the observed mediator levels when mreg = 'logistic': ",
-          paste(mediator_levels, collapse = ", "), ".",
-          call. = FALSE
-        )
+        if (is.null(m_cde_use)) m_cde_use <- mediator_level_output(mediator_levels[2])
+        mediator_mapping <- map_mediator_level(m_cde_use)
+        m_cde_internal_use <- mediator_mapping$internal
+        m_cde_output_use <- mediator_mapping$output
+        mediator_reference_display <- mediator_levels[m_cde_internal_use + 1]
       }
-      if (is.null(m_cde_use)) m_cde_use <- mediator_level_output(mediator_levels[2])
-      mediator_mapping <- map_mediator_level(m_cde_use)
-      m_cde_internal_use <- mediator_mapping$internal
-      m_cde_output_use <- mediator_mapping$output
-      mediator_reference_display <- mediator_levels[m_cde_internal_use + 1]
     } else {
       if (is.factor(mediator_raw) || is.character(mediator_raw) || is.logical(mediator_raw)) {
-        stop(
+        leo_stop(
           "Mediator must be truly numeric when mreg = 'linear'. ",
-          "If x_med is binary, use mreg = 'auto' or 'logistic'; if it is a multi-level categorical mediator, recode it to a justified binary mediator before using the current function.",
-          call. = FALSE
+          "If x_med is binary, use mreg = 'auto' or 'logistic'; if it is a multi-level categorical mediator, recode it to a justified binary mediator before using the current function."
         )
       }
       model_df[[x_med]] <- suppressWarnings(as.numeric(mediator_raw))
-      if (anyNA(model_df[[x_med]])) stop("Mediator must be numeric when mreg = 'linear'.", call. = FALSE)
-      if (is.null(m_cde_use)) m_cde_use <- stats::median(model_df[[x_med]], na.rm = TRUE)
-      if (!is.numeric(m_cde_use) || length(m_cde_use) != 1 || is.na(m_cde_use)) stop("x_med_cde must be a single numeric value.", call. = FALSE)
-      m_cde_internal_use <- m_cde_use
-      m_cde_output_use <- m_cde_use
-      mediator_reference_display <- format_num(m_cde_output_use)
+      if (anyNA(model_df[[x_med]])) leo_stop("Mediator must be numeric when mreg = 'linear'.")
+      if (method == "regmedint") {
+        if (is.null(m_cde_use)) m_cde_use <- stats::median(model_df[[x_med]], na.rm = TRUE)
+        if (!is.numeric(m_cde_use) || length(m_cde_use) != 1 || is.na(m_cde_use)) leo_stop("x_med_cde must be a single numeric value.")
+        m_cde_internal_use <- m_cde_use
+        m_cde_output_use <- m_cde_use
+        mediator_reference_display <- format_num(m_cde_output_use)
+      }
     }
 
     ## covariate matrix ----
     cov_build <- build_cvar_matrix(model_df[, covariates, drop = FALSE], covariates, x_cov_cond)
     reg_df <- model_df[, c("event", "time", "exposure", x_med), drop = FALSE]
-    if (!is.null(cov_build$covariate_df)) reg_df <- cbind(reg_df, cov_build$covariate_df)
 
-    ## regmedint fitting ----
+    ## fitting ----
     leo.basic::leo_log("Fitting mediation {model_name} with mediator {x_med}{if (length(covariates) > 0) paste0(' adjusted for ', paste(covariates, collapse = ', ')) else ''}.", verbose = verbose)
-    fit_results[[model_name]] <- regmedint::regmedint(
-      data = reg_df,
-      yvar = "time",
-      avar = "exposure",
-      mvar = x_med,
-      cvar = cov_build$cvar_use,
-      eventvar = "event",
-      a0 = a0_use,
-      a1 = a1_use,
-      m_cde = m_cde_internal_use,
-      c_cond = cov_build$c_cond_use,
-      mreg = mediator_mode_use,
-      yreg = yreg_use,
-      interaction = interaction,
-      casecontrol = FALSE,
-      na_omit = FALSE
-    )
+    if (method == "regmedint") {
+      if (!is.null(cov_build$covariate_df)) reg_df <- cbind(reg_df, cov_build$covariate_df)
+      fit_results[[model_name]] <- regmedint::regmedint(
+        data = reg_df,
+        yvar = "time",
+        avar = "exposure",
+        mvar = x_med,
+        cvar = cov_build$cvar_use,
+        eventvar = "event",
+        a0 = a0_use,
+        a1 = a1_use,
+        m_cde = m_cde_internal_use,
+        c_cond = cov_build$c_cond_use,
+        mreg = mediator_mode_use,
+        yreg = yreg_use,
+        interaction = interaction_use,
+        casecontrol = FALSE,
+        na_omit = FALSE
+      )
+      med_summary <- summary(fit_results[[model_name]], exponentiate = TRUE)
+      med_coef <- as.data.frame(coef(med_summary))
+      names(med_coef) <- gsub("\\(", ".", gsub("\\)", "", names(med_coef)))
+      med_coef$effect <- rownames(med_coef)
+      rownames(med_coef) <- NULL
+    } else if (method == "mediation") {
+      med_df <- reg_df
+      names(med_df)[names(med_df) == x_med] <- "mediator"
+      if (!is.null(cov_build$covariate_model_df)) med_df <- cbind(med_df, cov_build$covariate_model_df)
+      mediator_terms <- c("exposure", if (length(covariates) > 0) paste0("`", covariates, "`"))
+      mediator_formula <- stats::as.formula(
+        paste("mediator ~", paste(mediator_terms, collapse = " + "))
+      )
+      Surv <- survival::Surv
+      outcome_terms <- c(if (interaction_use) "exposure * mediator" else "exposure + mediator", if (length(covariates) > 0) paste0("`", covariates, "`"))
+      outcome_formula <- stats::as.formula(
+        paste("Surv(time, event) ~", paste(outcome_terms, collapse = " + ")),
+        env = environment()
+      )
+      mediator_fit <- if (identical(mediator_mode_use, "logistic")) {
+        stats::glm(formula = mediator_formula, data = med_df, family = stats::binomial())
+      } else {
+        stats::lm(formula = mediator_formula, data = med_df)
+      }
+      outcome_fit <- survival::survreg(formula = outcome_formula, data = med_df, dist = outcome_distribution)
+      mediator_fit$call$formula <- mediator_formula
+      outcome_fit$call$formula <- outcome_formula
+      outcome_fit$call$dist <- outcome_distribution
+      mediate_args <- list(
+        model.m = mediator_fit,
+        model.y = outcome_fit,
+        sims = mediation_sims_use,
+        boot = mediation_boot_use,
+        treat = "exposure",
+        mediator = "mediator",
+        covariates = if (length(covariates) > 0 && !is.null(cov_build$c_cond_model_df)) as.list(cov_build$c_cond_model_df[1, covariates, drop = FALSE]) else NULL,
+        control.value = a0_use,
+        treat.value = a1_use,
+        long = FALSE
+      )
+      if (isTRUE(mediation_boot_use)) {
+        # Keep mediation::mediate() bootstrap progress visible. `verbose` in
+        # leo_cox_mediation() only controls leo_log messages, so do not change
+        # the inference path just to suppress "Running nonparametric bootstrap".
+        mediate_args$outcome <- "time"
+        mediate_args$boot.ci.type <- mediation_boot_ci_type_use
+        mediate_args$use_speed <- mediation_use_speed_use
+      }
+      mediation_fit <- do.call(mediation::mediate, mediate_args)
+      fit_results[[model_name]] <- list(
+        mediator_model = mediator_fit,
+        outcome_model = outcome_fit,
+        mediation_model = mediation_fit
+      )
+      med_coef <- data.frame(
+        effect = c("acme", "ade", "ate", "pm"),
+        est = c(mediation_fit$d.avg, mediation_fit$z.avg, mediation_fit$tau.coef, mediation_fit$n.avg),
+        lower = c(mediation_fit$d.avg.ci[1], mediation_fit$z.avg.ci[1], mediation_fit$tau.ci[1], mediation_fit$n.avg.ci[1]),
+        upper = c(mediation_fit$d.avg.ci[2], mediation_fit$z.avg.ci[2], mediation_fit$tau.ci[2], mediation_fit$n.avg.ci[2]),
+        p = c(mediation_fit$d.avg.p, mediation_fit$z.avg.p, mediation_fit$tau.p, mediation_fit$n.avg.p),
+        exp.est = NA_real_,
+        exp.lower = NA_real_,
+        exp.upper = NA_real_,
+        stringsAsFactors = FALSE
+      )
+    } else {
+      leo_stop("method must be either 'regmedint' or 'mediation'.")
+    }
 
     ## result extraction and pm stability ----
-    med_summary <- summary(fit_results[[model_name]], exponentiate = TRUE)
-    med_coef <- as.data.frame(coef(med_summary))
-    names(med_coef) <- gsub("\\(", ".", gsub("\\)", "", names(med_coef)))
-    med_coef$effect <- rownames(med_coef)
-    rownames(med_coef) <- NULL
     med_coef$model <- model_name
     med_coef$exposure <- x_exp
     med_coef$mediator <- x_med
@@ -1845,6 +2261,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
     med_coef$followup_total <- med_coef$person_year
     med_coef$mreg <- mediator_mode_use
     med_coef$yreg <- yreg_use
+    med_coef$outcome_distribution <- outcome_distribution
     med_coef$x_exp_a0 <- a0_use
     med_coef$x_exp_a1 <- a1_use
     med_coef$x_med_cde <- m_cde_output_use
@@ -1852,7 +2269,9 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
     med_coef$exposure_contrast_label <- exposure_contrast_display
     med_coef$mediator_reference_label <- mediator_reference_display
     med_coef$x_cov_cond <- cov_build$c_cond_label
-    te_row <- med_coef$effect == "te"
+    med_coef$method <- method
+    te_code <- if (method == "regmedint") "te" else "ate" # total effect or average total effect
+    te_row <- med_coef$effect == te_code
     te_ci_includes_null <- FALSE
     pm_note <- NA_character_
     if (sum(te_row, na.rm = TRUE) == 1L) {
@@ -1864,8 +2283,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
         pm_note <- "Total effect 95% CI includes the null value; proportion mediated (pm) may be unstable and should be interpreted cautiously."
         leo.basic::leo_log(
           "Total effect 95% CI includes the null value in {model_name}; proportion mediated (`pm`) may be unstable and should be interpreted cautiously.",
-          level = "warning",
-          verbose = verbose
+          level = "warning", verbose = verbose
         )
       }
     }
@@ -1893,9 +2311,15 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
       x_med_cde_internal = m_cde_internal_use,
       mreg = mediator_mode_use,
       yreg = yreg_use,
+      outcome_distribution = outcome_distribution,
+      method = method,
+      mediation_boot = if (method == "mediation") mediation_boot_use else NA,
+      mediation_sims = if (method == "mediation") mediation_sims_use else NA_integer_,
+      mediation_boot_ci_type = if (method == "mediation") mediation_boot_ci_type_use else NA_character_,
+      mediation_use_speed = if (method == "mediation") mediation_use_speed_use else NA,
       pm_unstable = te_ci_includes_null,
       pm_note = pm_note,
-      interaction = interaction,
+      interaction = interaction_use,
       covariates = if (length(covariates) > 0) paste(covariates, collapse = ", ") else NA_character_,
       x_cov_cond = cov_build$c_cond_label,
       stringsAsFactors = FALSE
@@ -1905,46 +2329,90 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
   # result assembly ----
   result_detail <- do.call(rbind, result_rows)
   rownames(result_detail) <- NULL
-  effect_labels <- c(
-    cde = "Controlled direct effect",
-    pnde = "Pure natural direct effect",
-    tnie = "Total natural indirect effect",
-    tnde = "Total natural direct effect",
-    pnie = "Pure natural indirect effect",
-    te = "Total effect",
-    pm = "Proportion mediated"
-  )
+  if (method == "regmedint") {
+    effect_labels <- c(
+      cde = "Controlled direct effect",
+      pnde = "Pure natural direct effect",
+      tnie = "Total natural indirect effect",
+      tnde = "Total natural direct effect",
+      pnie = "Pure natural indirect effect",
+      te = "Total effect",
+      pm = "Proportion mediated"
+    )
+    effect_roles <- c(
+      cde = "controlled_direct",
+      pnde = "direct",
+      tnie = "indirect",
+      tnde = "direct",
+      pnie = "indirect",
+      te = "total",
+      pm = "proportion"
+    )
+    result_detail$effect_scale <- ifelse(
+      result_detail$effect == "pm",
+      "Proportion",
+      ifelse(result_detail$yreg == "survCox", "Hazard ratio", "Time ratio")
+    )
+    result_detail$mediator_reference <- ifelse(
+      result_detail$effect == "cde",
+      ifelse(is.na(result_detail$mediator_reference_label), format_num(result_detail$x_med_cde), result_detail$mediator_reference_label),
+      NA_character_
+    )
+  } else if (method == "mediation") {
+    effect_labels <- c(
+      acme = "Average causal mediation effect (ACME)",
+      ade = "Average direct effect (ADE)",
+      ate = "Average total effect (ATE)",
+      pm = "Proportion mediated"
+    )
+    effect_roles <- c(
+      acme = "indirect",
+      ade = "direct",
+      ate = "total",
+      pm = "proportion"
+    )
+    result_detail$effect_scale <- ifelse(result_detail$effect == "pm", "Proportion", "Time difference")
+    result_detail$mediator_reference <- NA_character_
+  } else {
+    leo_stop("method must be either 'regmedint' or 'mediation'.")
+  }
   result_detail$effect_label <- unname(effect_labels[result_detail$effect])
-  result_detail$effect_scale <- ifelse(
-    result_detail$effect == "pm",
-    "Proportion",
-    ifelse(result_detail$yreg == "survCox", "Hazard ratio", "Time ratio")
-  )
-  result_detail$exposure_contrast <- ifelse(is.na(result_detail$exposure_contrast_label), paste0(result_detail$x_exp_a0, " -> ", result_detail$x_exp_a1), result_detail$exposure_contrast_label)
-  result_detail$mediator_reference <- ifelse(
-    result_detail$effect == "cde",
-    ifelse(is.na(result_detail$mediator_reference_label), format_num(result_detail$x_med_cde), result_detail$mediator_reference_label),
-    NA_character_
+  result_detail$effect_role <- unname(effect_roles[result_detail$effect])
+  result_detail$covariate_profile <- result_detail$x_cov_cond
+  result_detail$exposure_contrast <- ifelse(
+    is.na(result_detail$exposure_contrast_label),
+    paste0(result_detail$x_exp_a0, " -> ", result_detail$x_exp_a1),
+    result_detail$exposure_contrast_label
   )
   result_detail$exposure_contrast_label <- NULL
   result_detail$mediator_reference_label <- NULL
   result_detail$control_n <- NULL
   result_detail$person_year <- NULL
-  result <- result_detail[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "non_event_n", "followup_total", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mreg", "yreg"), drop = FALSE]
-  result$Estimate <- ifelse(result$effect == "pm", round(result$est, 3), round(result$exp.est, 3))
-  result$`95% CI` <- ifelse(
-    result$effect == "pm",
-    paste0(sprintf("%.3f", round(result$lower, 3)), ", ", sprintf("%.3f", round(result$upper, 3))),
-    paste0(sprintf("%.3f", round(result$exp.lower, 3)), ", ", sprintf("%.3f", round(result$exp.upper, 3)))
-  )
+  result <- result_detail[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "covariate_profile", "mediator_reference", "n", "case_n", "non_event_n", "followup_total", "est", "lower", "upper", "p", "exp.est", "exp.lower", "exp.upper", "mreg", "yreg"), drop = FALSE]
+  is_ratio_scale <- result$effect_scale %in% c("Hazard ratio", "Time ratio")
+  estimate_value <- ifelse(result$effect == "pm" | !is_ratio_scale, result$est, result$exp.est)
+  ci_lower <- ifelse(result$effect == "pm" | !is_ratio_scale, result$lower, result$exp.lower)
+  ci_upper <- ifelse(result$effect == "pm" | !is_ratio_scale, result$upper, result$exp.upper)
+  result$Estimate <- round(estimate_value, 3)
+  result$`95% CI` <- paste0(sprintf("%.3f", round(ci_lower, 3)), ", ", sprintf("%.3f", round(ci_upper, 3)))
   result$`P value` <- vapply(result$p, .format_p_value, character(1))
-  result <- result[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "mediator_reference", "n", "case_n", "non_event_n", "followup_total", "Estimate", "95% CI", "P value", "mreg", "yreg"), drop = FALSE]
-  names(result) <- c("Model", "Effect code", "Effect", "Scale", "Exposure", "Mediator", "Outcome", "Exposure contrast", "Mediator reference", "N", "Case N", "Non-event N", "Total follow-up", "Estimate", "95% CI", "P value", "Mediator model", "Outcome model")
+  result <- result[, c("model", "effect", "effect_label", "effect_scale", "exposure", "mediator", "outcome", "exposure_contrast", "covariate_profile", "mediator_reference", "n", "case_n", "non_event_n", "followup_total", "Estimate", "95% CI", "P value", "mreg", "yreg"), drop = FALSE]
+  names(result) <- c("Model", "Effect code", "Effect", "Scale", "Exposure", "Mediator", "Outcome", "Exposure contrast", "Covariate profile", "Mediator reference", "N", "Case N", "Non-event N", "Total follow-up", "Estimate", "95% CI", "P value", "Mediator model", "Outcome model")
   evaluation <- do.call(rbind, evaluation_rows)
   rownames(evaluation) <- NULL
-  out <- structure(list(result = result, result_detail = result_detail, result_tidy = result_detail, evaluation = evaluation, fit = fit_results), class = "leo_cox_mediation")
+  out <- structure(
+    list(
+      result = result,
+      result_detail = result_detail,
+      result_tidy = result_detail,
+      evaluation = evaluation,
+      method = method
+    ),
+    class = c(paste0("leo_cox_mediation_", method), "leo_cox_mediation")
+  )
   leo.basic::leo_log("Cox mediation analysis completed for {x_exp} -> {x_med} -> {y_out[1]} with {length(model_list)} model(s).", level = "success", verbose = verbose)
   if (verbose) leo.basic::leo_time_elapsed(t0)
+  if (is.character(simplify_use)) return(if (identical(simplify_use, "wide")) result else result_detail)
   return(out)
 }
 
@@ -1968,11 +2436,16 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
 #' @param font_family Optional graphics font family. Use generic families such as
 #'   `"sans"`, `"serif"`, or `"mono"` for the most robust cross-device output.
 #'
-#' @return For `leo_cox_mediation()`, a `leo_cox_mediation` object containing a display table in `$result`, a detailed mediation table in `$result_detail`, an evaluation summary in `$evaluation`, and fitted `regmedint` objects in `$fit`. For `leo_cox_mediation_plot()`, an invisible `recordedplot` object after drawing the pathway figure on the active graphics device.
+#' @return For `leo_cox_mediation()`, a `leo_cox_mediation` object containing a
+#'   display table in `$result`, a detailed mediation table in
+#'   `$result_detail`, the tidy row-level table in `$result_tidy`, and an
+#'   evaluation summary in `$evaluation`. For `leo_cox_mediation_plot()`, an
+#'   invisible `recordedplot` object after drawing the pathway figure on the
+#'   active graphics device.
 #' @export
 #' @rdname leo_cox_mediation
 #' @examples
-#' if (requireNamespace("regmedint", quietly = TRUE)) {
+#' if (requireNamespace("mediation", quietly = TRUE)) {
 #'   set.seed(123)
 #'   n <- 200
 #'   age <- rnorm(n, 60, 8)
@@ -1990,7 +2463,7 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
 #'   res_med <- leo_cox_mediation(
 #'     df = med_df, y_out = c("outcome", "outcome_censor"),
 #'     x_exp = "exposure", x_med = "mediator", x_cov = "age",
-#'     verbose = FALSE
+#'     mediation_sims = 100, verbose = FALSE
 #'   )
 #'   # with default labels and note
 #'   leo_cox_mediation_plot(
@@ -2010,36 +2483,68 @@ leo_cox_mediation <- function(df, y_out, x_exp, x_med, x_cov = NULL,
 #' }
 leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure", mediator_label = "Mediator", outcome_label = "Outcome",
                                    language = c("en", "zh"), palette = c("jama", "jco", "lancet", "nejm"), add_note = TRUE, font_family = NULL) {
-  if (!inherits(x, "leo_cox_mediation")) stop("x must be a `leo_cox_mediation` object returned by leo_cox_mediation().", call. = FALSE)
-  if (!is.data.frame(x$result)) stop("x$result is missing or malformed.", call. = FALSE)
+  if (!inherits(x, "leo_cox_mediation")) leo_stop("x must be a `leo_cox_mediation` object returned by leo_cox_mediation().")
+  if (!is.data.frame(x$result)) leo_stop("x$result is missing or malformed.")
   language <- match.arg(language)
   palette <- match.arg(palette)
-  if (!is.logical(add_note) || length(add_note) != 1L || is.na(add_note)) stop("add_note must be TRUE or FALSE.", call. = FALSE)
+  if (!is.logical(add_note) || length(add_note) != 1L || is.na(add_note)) leo_stop("add_note must be TRUE or FALSE.")
 
   model_names <- unique(x$result$Model)
-  if (length(model_names) == 0) stop("No mediation results are available for plotting.", call. = FALSE)
+  if (length(model_names) == 0) leo_stop("No mediation results are available for plotting.")
   if (is.null(model)) model <- tail(model_names, 1)
-  if (!model %in% model_names) stop("model must match one of the fitted models in x$result.", call. = FALSE)
+  if (!model %in% model_names) leo_stop("model must match one of the fitted models in x$result.")
 
   plot_df <- x$result[x$result$Model == model, , drop = FALSE]
-  needed_effects <- c("te", "tnie", "pm", "pnde")
-  if (!all(needed_effects %in% plot_df$`Effect code`)) stop("The selected model must contain te, tnie, pm, and pnde rows.", call. = FALSE)
-  te_row <- plot_df[plot_df$`Effect code` == "te", , drop = FALSE]
-  tnie_row <- plot_df[plot_df$`Effect code` == "tnie", , drop = FALSE]
-  pm_row <- plot_df[plot_df$`Effect code` == "pm", , drop = FALSE]
-  pnde_row <- plot_df[plot_df$`Effect code` == "pnde", , drop = FALSE]
+  method <- if (!is.null(x$method) && length(x$method) == 1L) {
+    as.character(x$method)
+  } else if (inherits(x, "leo_cox_mediation_mediation")) {
+    "mediation"
+  } else if (all(c("acme", "ade", "ate", "pm") %in% plot_df$`Effect code`)) {
+    "mediation"
+  } else {
+    "regmedint"
+  }
+  effect_map <- if (identical(method, "mediation")) {
+    c(total = "ate", indirect = "acme", proportion = "pm", direct = "ade")
+  } else {
+    c(total = "te", indirect = "tnie", proportion = "pm", direct = "pnde")
+  }
+  if (!all(unname(effect_map) %in% plot_df$`Effect code`)) {
+    leo_stop("The selected model does not contain the effect rows required for the chosen mediation engine.")
+  }
+  te_row <- plot_df[plot_df$`Effect code` == effect_map[["total"]], , drop = FALSE]
+  tnie_row <- plot_df[plot_df$`Effect code` == effect_map[["indirect"]], , drop = FALSE]
+  pm_row <- plot_df[plot_df$`Effect code` == effect_map[["proportion"]], , drop = FALSE]
+  pnde_row <- plot_df[plot_df$`Effect code` == effect_map[["direct"]], , drop = FALSE]
   pm_ci <- suppressWarnings(as.numeric(trimws(strsplit(pm_row$`95% CI`, ",", fixed = TRUE)[[1]])))
   if (length(pm_ci) != 2 || anyNA(pm_ci)) pm_ci <- c(NA_real_, NA_real_)
   evaluation_df <- x$evaluation
   evaluation_row <- if (is.data.frame(evaluation_df)) evaluation_df[evaluation_df$model == model, , drop = FALSE] else NULL
   pm_unstable_flag <- is.data.frame(evaluation_row) && nrow(evaluation_row) == 1L && isTRUE(evaluation_row$pm_unstable[1])
-  scale_tag <- if (identical(te_row$Scale, "Hazard ratio")) "HR" else if (identical(te_row$Scale, "Time ratio")) "TR" else "Ratio"
+  scale_tag <- if (identical(te_row$Scale, "Hazard ratio")) {
+    "HR"
+  } else if (identical(te_row$Scale, "Time ratio")) {
+    "TR"
+  } else if (identical(te_row$Scale, "Time difference")) {
+    "Time difference"
+  } else {
+    "Ratio"
+  }
   exposure_contrast_label <- as.character(te_row$`Exposure contrast`[1])
+  covariate_profile_label <- if (is.data.frame(evaluation_row) && nrow(evaluation_row) == 1L) {
+    as.character(evaluation_row$x_cov_cond[1])
+  } else if ("Covariate profile" %in% names(plot_df)) {
+    as.character(plot_df$`Covariate profile`[1])
+  } else {
+    NA_character_
+  }
   mediator_reference_label <- if (is.data.frame(evaluation_row) && nrow(evaluation_row) == 1L) {
     as.character(evaluation_row$mediator_reference[1])
   } else {
     as.character(stats::na.omit(plot_df$`Mediator reference`)[1])
   }
+  covariate_note_zh <- if (!is.na(covariate_profile_label) && nzchar(covariate_profile_label)) paste0("\n协变量条件: ", covariate_profile_label) else ""
+  covariate_note_en <- if (!is.na(covariate_profile_label) && nzchar(covariate_profile_label)) paste0("\nCovariate profile: ", covariate_profile_label) else ""
 
   if (is.null(font_family) || !nzchar(font_family)) font_family <- "sans"
   device_font_family <- if (font_family %in% c("sans", "serif", "mono")) font_family else ""
@@ -2053,19 +2558,41 @@ leo_cox_mediation_plot <- function(x, model = NULL, exposure_label = "Exposure",
   )
 
   if (language == "zh") {
-    top_label <- sprintf("间接效应 (TNIE, %s): %.3f", scale_tag, tnie_row$Estimate)
+    indirect_code <- if (identical(method, "mediation")) "ACME" else "TNIE"
+    direct_code <- if (identical(method, "mediation")) "ADE" else "PNDE"
+    total_code <- if (identical(method, "mediation")) "ATE" else "TE"
+    top_label <- sprintf("间接效应 (%s, %s): %.3f", indirect_code, scale_tag, tnie_row$Estimate)
     pm_label <- if (all(is.finite(pm_ci))) sprintf("中介比例: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]) else sprintf("中介比例: %.1f%%", 100 * pm_row$Estimate)
     if (add_note && pm_unstable_flag) pm_label <- paste0(pm_label, "\n总效应 CI 跨空值，需谨慎解释")
-    direct_label <- sprintf("直接效应 (PNDE, %s): %.3f", scale_tag, pnde_row$Estimate)
-    total_label <- sprintf("总效应 (TE, %s): %.3f", scale_tag, te_row$Estimate)
-    context_label <- if (add_note) sprintf("暴露对比: %s\nCDE 中介参考值: %s", exposure_contrast_label, mediator_reference_label) else ""
+    direct_label <- sprintf("直接效应 (%s, %s): %.3f", direct_code, scale_tag, pnde_row$Estimate)
+    total_label <- sprintf("总效应 (%s, %s): %.3f", total_code, scale_tag, te_row$Estimate)
+    context_label <- if (add_note) {
+      if (identical(method, "mediation")) {
+        paste0(sprintf("暴露对比: %s", exposure_contrast_label), covariate_note_zh)
+      } else {
+        paste0(sprintf("暴露对比: %s\nCDE 中介参考值: %s", exposure_contrast_label, mediator_reference_label), covariate_note_zh)
+      }
+    } else {
+      ""
+    }
   } else {
-    top_label <- sprintf("Indirect effect (TNIE, %s): %.3f", scale_tag, tnie_row$Estimate)
+    indirect_code <- if (identical(method, "mediation")) "ACME" else "TNIE"
+    direct_code <- if (identical(method, "mediation")) "ADE" else "PNDE"
+    total_code <- if (identical(method, "mediation")) "ATE" else "TE"
+    top_label <- sprintf("Indirect effect (%s, %s): %.3f", indirect_code, scale_tag, tnie_row$Estimate)
     pm_label <- if (all(is.finite(pm_ci))) sprintf("Proportion mediated: %.1f%%\n(95%% CI %.1f%%, %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2]) else sprintf("Proportion mediated: %.1f%%", 100 * pm_row$Estimate)
     if (add_note && pm_unstable_flag) pm_label <- paste0(pm_label, "\nTE 95% CI includes the null; interpret cautiously")
-    direct_label <- sprintf("Direct effect (PNDE, %s): %.3f", scale_tag, pnde_row$Estimate)
-    total_label <- sprintf("Total effect (TE, %s): %.3f", scale_tag, te_row$Estimate)
-    context_label <- if (add_note) sprintf("Exposure contrast: %s\nCDE mediator reference: %s", exposure_contrast_label, mediator_reference_label) else ""
+    direct_label <- sprintf("Direct effect (%s, %s): %.3f", direct_code, scale_tag, pnde_row$Estimate)
+    total_label <- sprintf("Total effect (%s, %s): %.3f", total_code, scale_tag, te_row$Estimate)
+    context_label <- if (add_note) {
+      if (identical(method, "mediation")) {
+        paste0(sprintf("Exposure contrast: %s", exposure_contrast_label), covariate_note_en)
+      } else {
+        paste0(sprintf("Exposure contrast: %s\nCDE mediator reference: %s", exposure_contrast_label, mediator_reference_label), covariate_note_en)
+      }
+    } else {
+      ""
+    }
   }
 
   label_cex <- if (language == "zh") 1.12 else 1.05
@@ -2227,33 +2754,44 @@ leo_linear <- function(df, y_out, x_exp, x_cov = NULL, x_exp_type = "auto", verb
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Linear Regression", col = "blue")
-  if (!is.character(y_out) || length(y_out) != 1) stop("y_out must be a single column name.", call. = FALSE)
-  if (!x_exp_type %in% c("auto", "continuous", "categorical")) stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
+  if (!is.character(y_out) || length(y_out) != 1) leo_stop("y_out must be a single column name.")
+  if (!x_exp_type %in% c("auto", "continuous", "categorical")) leo_stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.")
 
   prep <- .prepare_regression_data(df = df, y_cols = y_out, x_exp = x_exp, x_cov = x_cov)
-  if (prep$n_total == 0) stop("df contains no rows.", call. = FALSE)
-  if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
-  if (!is.numeric(prep$data[[y_out]]) && !is.integer(prep$data[[y_out]])) stop("y_out must be numeric for linear regression.", call. = FALSE)
+  if (prep$n_total == 0) leo_stop("df contains no rows.")
+  if (nrow(prep$data) == 0) leo_stop("No rows remain after complete-case filtering.")
+  if (!is.numeric(prep$data[[y_out]]) && !is.integer(prep$data[[y_out]])) leo_stop("y_out must be numeric for linear regression.")
   if (prep$n_removed_complete_case > 0) {
     leo.basic::leo_log("Complete-case filtering removed {prep$n_removed_complete_case} row(s) with missing values across exposure/outcome/model covariates{if (length(prep$missing_vars) > 0) paste0(': ', paste(prep$missing_vars, collapse = ', ')) else ''}.", level = "warning", verbose = verbose)
     leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before linear analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_linear(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
   }
   exposure_type <- .check_var_type(prep$data$exposure, var_name = prep$exposure_name, var_type = x_exp_type, verbose = verbose)
   leo.basic::leo_log("Linear data prepared: total = {prep$n_total}, after complete-case filter = {prep$n_after_complete_case}.", verbose = verbose)
+  .analyze_log_spec(exposure = prep$exposure_name, outcome = y_out, model_names = names(prep$models), verbose = verbose)
 
   model_results <- list()
   fit_results <- list()
-  for (model_name in names(prep$models)) {
+  model_total <- length(prep$models)
+  for (model_index in seq_along(prep$models)) {
+    model_name <- names(prep$models)[model_index]
     covariates <- if (is.null(prep$models[[model_name]])) character(0) else prep$models[[model_name]]
+    .analyze_log_step(
+      scope = "Model",
+      index = model_index,
+      total = model_total,
+      label = model_name,
+      detail = if (length(covariates) == 0) "crude model" else paste0("covariates = ", paste(covariates, collapse = ", ")),
+      verbose = verbose
+    )
     leo.basic::leo_log("Fitting {model_name} with {if (length(covariates) == 0) 'no covariates (crude model)' else paste(covariates, collapse = ', ')}.", verbose = verbose)
 
     model_df <- prep$data[, c(y_out, "exposure", covariates), drop = FALSE]
     if (exposure_type == "categorical") {
       model_df$exposure <- droplevels(factor(model_df$exposure))
-      if (nlevels(model_df$exposure) < 2) stop("x_exp must contain at least 2 exposure levels after filtering.", call. = FALSE)
+      if (nlevels(model_df$exposure) < 2) leo_stop("x_exp must contain at least 2 exposure levels after filtering.")
     } else {
       if (is.character(model_df$exposure) || is.factor(model_df$exposure) || is.logical(model_df$exposure)) {
-        stop("x_exp_type = 'continuous' requires a numeric or integer exposure.", call. = FALSE)
+        leo_stop("x_exp_type = 'continuous' requires a numeric or integer exposure.")
       }
       model_df$exposure <- suppressWarnings(as.numeric(model_df$exposure))
     }
@@ -2307,7 +2845,7 @@ leo_linear <- function(df, y_out, x_exp, x_cov = NULL, x_exp_type = "auto", verb
     if (length(levels_x) > 1) {
       exposure_rows <- tidy_fit[tidy_fit$term != "(Intercept)", , drop = FALSE]
       exposure_rows <- exposure_rows[seq_len(length(levels_x) - 1L), , drop = FALSE]
-      if (nrow(exposure_rows) != length(levels_x) - 1L) stop("Failed to recover categorical exposure coefficients from the linear model.", call. = FALSE)
+      if (nrow(exposure_rows) != length(levels_x) - 1L) leo_stop("Failed to recover categorical exposure coefficients from the linear model.")
       result_df$beta[-1] <- exposure_rows$estimate
       result_df$beta_ci_l[-1] <- exposure_rows$conf.low
       result_df$beta_ci_u[-1] <- exposure_rows$conf.high
@@ -2341,8 +2879,8 @@ leo_linear <- function(df, y_out, x_exp, x_cov = NULL, x_exp_type = "auto", verb
 #' @param style One of `"wide"`, `"tidy"`, or `"gtsummary"`.
 #' @export
 leo_linear_format <- function(x, style = "wide") {
-  if (!inherits(x, "leo_linear")) stop("x must be a leo_linear result.", call. = FALSE)
-  if (!style %in% c("wide", "tidy", "gtsummary")) stop("style must be one of 'wide', 'tidy', or 'gtsummary'.", call. = FALSE)
+  if (!inherits(x, "leo_linear")) leo_stop("x must be a leo_linear result.")
+  if (!style %in% c("wide", "tidy", "gtsummary")) leo_stop("style must be one of 'wide', 'tidy', or 'gtsummary'.")
   switch(style,
     wide = {
       if (!is.null(x$result)) return(x$result)
@@ -2377,9 +2915,9 @@ leo_linear_format <- function(x, style = "wide") {
       result_out
     },
     gtsummary = {
-      if (is.null(x$fit) || length(x$fit) == 0) stop("x does not contain fitted models required for style = 'gtsummary'.", call. = FALSE)
+      if (is.null(x$fit) || length(x$fit) == 0) leo_stop("x does not contain fitted models required for style = 'gtsummary'.")
       if (!requireNamespace("gtsummary", quietly = TRUE) || !requireNamespace("broom.helpers", quietly = TRUE)) {
-        stop("style = 'gtsummary' requires packages 'gtsummary' and 'broom.helpers'.", call. = FALSE)
+        leo_stop("style = 'gtsummary' requires packages 'gtsummary' and 'broom.helpers'.")
       }
       tbls <- lapply(x$fit, function(fit) gtsummary::tbl_regression(fit))
       if (length(tbls) == 1) return(tbls[[1]])
@@ -2458,12 +2996,12 @@ leo_logistic <- function(df, y_out, x_exp, x_cov = NULL, case_value = 1, x_exp_t
   t0 <- Sys.time()
   df_name <- deparse(substitute(df))
   if (verbose) cli::cat_rule("Logistic Regression", col = "blue")
-  if (!is.character(y_out) || length(y_out) != 1) stop("y_out must be a single column name.", call. = FALSE)
-  if (!x_exp_type %in% c("auto", "continuous", "categorical")) stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.", call. = FALSE)
+  if (!is.character(y_out) || length(y_out) != 1) leo_stop("y_out must be a single column name.")
+  if (!x_exp_type %in% c("auto", "continuous", "categorical")) leo_stop("x_exp_type must be one of 'auto', 'continuous', or 'categorical'.")
 
   prep <- .prepare_regression_data(df = df, y_cols = y_out, x_exp = x_exp, x_cov = x_cov)
-  if (prep$n_total == 0) stop("df contains no rows.", call. = FALSE)
-  if (nrow(prep$data) == 0) stop("No rows remain after complete-case filtering.", call. = FALSE)
+  if (prep$n_total == 0) leo_stop("df contains no rows.")
+  if (nrow(prep$data) == 0) leo_stop("No rows remain after complete-case filtering.")
   if (prep$n_removed_complete_case > 0) {
     leo.basic::leo_log("Complete-case filtering removed {prep$n_removed_complete_case} row(s) with missing values across exposure/outcome/model covariates{if (length(prep$missing_vars) > 0) paste0(': ', paste(prep$missing_vars, collapse = ', ')) else ''}.", level = "warning", verbose = verbose)
     leo.basic::leo_log("If you want to keep more rows, consider imputing missing values before logistic analysis, e.g. `{df_name}_imputed <- leo_impute_na({df_name}, method = \"mean\")` or `{df_name}_imputed <- leo_impute_na({df_name}, method = \"rf\")`, then rerun `leo_logistic(df = {df_name}_imputed, ...)`.", level = "warning", verbose = verbose)
@@ -2471,28 +3009,39 @@ leo_logistic <- function(df, y_out, x_exp, x_cov = NULL, case_value = 1, x_exp_t
 
   outcome_raw <- prep$data[[y_out]]
   outcome_values <- unique(stats::na.omit(as.character(outcome_raw)))
-  if (length(outcome_values) != 2) stop("y_out must contain exactly 2 non-missing values for logistic regression.", call. = FALSE)
+  if (length(outcome_values) != 2) leo_stop("y_out must contain exactly 2 non-missing values for logistic regression.")
   outcome <- ifelse(is.na(outcome_raw), NA_integer_, as.integer(as.character(outcome_raw) == as.character(case_value)))
-  if (length(unique(stats::na.omit(outcome))) != 2) stop("case_value must match one of the two observed values in y_out.", call. = FALSE)
+  if (length(unique(stats::na.omit(outcome))) != 2) leo_stop("case_value must match one of the two observed values in y_out.")
 
   logistic_df <- prep$data
   logistic_df$outcome <- outcome
   exposure_type <- .check_var_type(logistic_df$exposure, var_name = prep$exposure_name, var_type = x_exp_type, verbose = verbose)
   leo.basic::leo_log("Logistic data prepared: total = {prep$n_total}, after complete-case filter = {prep$n_after_complete_case}.", verbose = verbose)
+  .analyze_log_spec(exposure = prep$exposure_name, outcome = y_out, model_names = names(prep$models), verbose = verbose)
 
   model_results <- list()
   fit_results <- list()
-  for (model_name in names(prep$models)) {
+  model_total <- length(prep$models)
+  for (model_index in seq_along(prep$models)) {
+    model_name <- names(prep$models)[model_index]
     covariates <- if (is.null(prep$models[[model_name]])) character(0) else prep$models[[model_name]]
+    .analyze_log_step(
+      scope = "Model",
+      index = model_index,
+      total = model_total,
+      label = model_name,
+      detail = if (length(covariates) == 0) "crude model" else paste0("covariates = ", paste(covariates, collapse = ", ")),
+      verbose = verbose
+    )
     leo.basic::leo_log("Fitting {model_name} with {if (length(covariates) == 0) 'no covariates (crude model)' else paste(covariates, collapse = ', ')}.", verbose = verbose)
 
     model_df <- logistic_df[, c("outcome", "exposure", covariates), drop = FALSE]
     if (exposure_type == "categorical") {
       model_df$exposure <- droplevels(factor(model_df$exposure))
-      if (nlevels(model_df$exposure) < 2) stop("x_exp must contain at least 2 exposure levels after filtering.", call. = FALSE)
+      if (nlevels(model_df$exposure) < 2) leo_stop("x_exp must contain at least 2 exposure levels after filtering.")
     } else {
       if (is.character(model_df$exposure) || is.factor(model_df$exposure) || is.logical(model_df$exposure)) {
-        stop("x_exp_type = 'continuous' requires a numeric or integer exposure.", call. = FALSE)
+        leo_stop("x_exp_type = 'continuous' requires a numeric or integer exposure.")
       }
       model_df$exposure <- suppressWarnings(as.numeric(model_df$exposure))
     }
@@ -2556,7 +3105,7 @@ leo_logistic <- function(df, y_out, x_exp, x_cov = NULL, case_value = 1, x_exp_t
     if (length(levels_x) > 1) {
       exposure_rows <- tidy_fit[tidy_fit$term != "(Intercept)", , drop = FALSE]
       exposure_rows <- exposure_rows[seq_len(length(levels_x) - 1L), , drop = FALSE]
-      if (nrow(exposure_rows) != length(levels_x) - 1L) stop("Failed to recover categorical exposure coefficients from the logistic model.", call. = FALSE)
+      if (nrow(exposure_rows) != length(levels_x) - 1L) leo_stop("Failed to recover categorical exposure coefficients from the logistic model.")
       result_df$or[-1] <- exposure_rows$estimate
       result_df$or_ci_l[-1] <- exposure_rows$conf.low
       result_df$or_ci_u[-1] <- exposure_rows$conf.high
@@ -2591,8 +3140,8 @@ leo_logistic <- function(df, y_out, x_exp, x_cov = NULL, case_value = 1, x_exp_t
 #' @param style One of `"wide"`, `"tidy"`, or `"gtsummary"`.
 #' @export
 leo_logistic_format <- function(x, style = "wide") {
-  if (!inherits(x, "leo_logistic")) stop("x must be a leo_logistic result.", call. = FALSE)
-  if (!style %in% c("wide", "tidy", "gtsummary")) stop("style must be one of 'wide', 'tidy', or 'gtsummary'.", call. = FALSE)
+  if (!inherits(x, "leo_logistic")) leo_stop("x must be a leo_logistic result.")
+  if (!style %in% c("wide", "tidy", "gtsummary")) leo_stop("style must be one of 'wide', 'tidy', or 'gtsummary'.")
   switch(style,
     wide = {
       if (!is.null(x$result)) return(x$result)
@@ -2627,9 +3176,9 @@ leo_logistic_format <- function(x, style = "wide") {
       result_out
     },
     gtsummary = {
-      if (is.null(x$fit) || length(x$fit) == 0) stop("x does not contain fitted models required for style = 'gtsummary'.", call. = FALSE)
+      if (is.null(x$fit) || length(x$fit) == 0) leo_stop("x does not contain fitted models required for style = 'gtsummary'.")
       if (!requireNamespace("gtsummary", quietly = TRUE) || !requireNamespace("broom.helpers", quietly = TRUE)) {
-        stop("style = 'gtsummary' requires packages 'gtsummary' and 'broom.helpers'.", call. = FALSE)
+        leo_stop("style = 'gtsummary' requires packages 'gtsummary' and 'broom.helpers'.")
       }
       tbls <- lapply(x$fit, function(fit) gtsummary::tbl_regression(fit, exponentiate = TRUE))
       if (length(tbls) == 1) return(tbls[[1]])

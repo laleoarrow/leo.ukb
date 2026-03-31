@@ -1,6 +1,6 @@
 ---
 title: "Survival Analysis Step 3.0: Mediation Analysis"
-description: "Learn how to choose settings, fit models, and interpret survival mediation analysis in leo.ukb."
+description: "Learn the default mediation workflow in leo.ukb, from design choices to ACME/ADE/ATE interpretation for survival outcomes."
 output:
   rmarkdown::html_vignette:
     highlight: default
@@ -20,29 +20,68 @@ knitr::opts_chunk$set(
   warning = FALSE
 )
 suppressPackageStartupMessages(library(leo.ukb))
-has_regmedint <- requireNamespace("regmedint", quietly = TRUE)
-if (!has_regmedint) {
+has_mediation <- requireNamespace("mediation", quietly = TRUE)
+if (!has_mediation) {
   knitr::opts_chunk$set(eval = FALSE)
 }
+fmt_num <- function(x, digits = 3) {
+  if (length(x) == 0 || all(is.na(x))) return("NA")
+  sprintf(paste0("%.", digits, "f"), x[1])
+}
+fmt_pct <- function(x, digits = 1) {
+  if (length(x) == 0 || all(is.na(x))) return("NA")
+  sprintf(paste0("%.", digits, "f%%"), 100 * x[1])
+}
+effect_row <- function(res, code) {
+  if (is.null(res)) return(data.frame())
+  dplyr::filter(res$result, `Effect code` == code)
+}
+effect_value <- function(res, code, column = "Estimate") {
+  row <- effect_row(res, code)
+  if (!nrow(row) || !column %in% names(row)) return(NA_real_)
+  row[[column]][1]
+}
+effect_text <- function(res, code, column = "95% CI") {
+  row <- effect_row(res, code)
+  if (!nrow(row) || !column %in% names(row)) return("NA")
+  as.character(row[[column]][1])
+}
+eval_value <- function(res, column) {
+  if (is.null(res) || !column %in% names(res$evaluation)) return(NA)
+  res$evaluation[[column]][1]
+}
+res_med <- NULL
+res_med_profile <- NULL
+res_med_boot <- NULL
+res_med_inter <- NULL
+mediation_warning <- NA_character_
 ```
 
 # What this step is for
 
-This tutorial is the Step 3.0 survival-analysis article in `leo.ukb`. After a
-main Cox model and any subgroup or interaction work, a different question may
-arise:
+This article is the default Step 3 survival-mediation tutorial in `leo.ukb`.
+By the time we arrive here, the main association has usually been established
+already, and sometimes Step 2 interaction work has been done as well. The next
+question is more mechanistic:
 
-> does part of the exposure-outcome association operate through a mediator?
+> how much of the exposure-outcome association is compatible with operating
+> through a mediator?
 
-That is a mediation question, not a subgroup question and not an interaction
-question.
+That sounds simple, but there are really two tasks hidden inside it:
+
+1. choose a mediation engine that matches the scientific question
+2. read the output on the right scale instead of translating everything back
+   into a hazard-ratio story by habit
+
+This Step 3.0 tutorial starts with the package default, which is now
+`method = "mediation"`.
 
 ```{r, echo = FALSE, results = "asis"}
-if (!has_regmedint) {
+if (!has_mediation) {
   cat(
-    "> Note: regmedint is not installed in the current build environment, ",
-    "so the example code below is shown but not executed. Install regmedint ",
-    "locally to run the full tutorial.\n\n",
+    "> Note: package `mediation` is not installed in the current build environment, ",
+    "so the code is shown but not executed. Install `mediation` locally to run ",
+    "the full tutorial.\n\n",
     sep = ""
   )
 }
@@ -50,28 +89,52 @@ if (!has_regmedint) {
 
 # First separate mediation from interaction
 
-The current survival-analysis workflow in `leo.ukb` answers three different
-questions:
-
-1. Step 1: is there a main exposure-outcome association?
-2. Step 2: does that association differ across groups, and on which scale?
-3. Step 3.0: is part of that association transmitted through a mediator?
-
-This distinction matters because:
-
-- interaction is about **effect heterogeneity**
-- mediation is about a **pathway decomposition**
-
-In other words, mediation does not replace Step 1 or Step 2. It builds on
-them.
-
-# Start from the data and analytic roles
-
-We use a synthetic example with a rare event, a binary exposure, a binary
-mediator, and several covariates.
+Step 2 asked whether an association differed across groups. Step 3 asks
+whether one association can be decomposed into pathway pieces. Those are not
+the same scientific question.
 
 ```{r}
-set.seed(20260323)
+decision_table <- data.frame(
+  Step = c("Step 2", "Step 3.0"),
+  Main_question = c(
+    "Does the exposure-outcome association differ across strata?",
+    "Is part of the exposure-outcome association compatible with operating through a mediator?"
+  ),
+  Typical_output = c(
+    "Interaction P value, subgroup HRs, additive-interaction measures",
+    "ACME, ADE, ATE, proportion mediated"
+  ),
+  Core_idea = c(
+    "Effect heterogeneity",
+    "Pathway decomposition"
+  ),
+  check.names = FALSE
+)
+
+knitr::kable(
+  decision_table,
+  caption = "Step 2 and Step 3 answer different questions"
+)
+```
+
+That distinction matters because a mediation result is not a dressed-up
+interaction test. Once the two ideas are mixed, the interpretation usually
+starts drifting.
+
+# Build one teaching cohort and inspect the roles first
+
+We will use a synthetic cohort with:
+
+- a binary exposure
+- a binary mediator
+- two numeric covariates for the first model
+- one categorical covariate reserved for the `x_cov_cond` section
+
+The survival outcome is simulated from event time and censoring time, not from
+a simple Bernoulli draw, so the tutorial stays aligned with time-to-event data.
+
+```{r}
+set.seed(20260329)
 n <- 500
 age <- rnorm(n, 60, 8)
 bmi <- rnorm(n, 26, 4)
@@ -100,28 +163,25 @@ med_df <- data.frame(
 )
 ```
 
-Before fitting anything, look at the analytic roles explicitly.
-
 ```{r}
 dplyr::glimpse(med_df)
 ```
 
-Table: Analytic roles in the Step 3 teaching data frame
+Table: Analytic roles in the Step 3.0 teaching data frame
 
-| Variable | Type | Step 3 role |
+| Variable | Type | Role in Step 3.0 |
 | --- | --- | --- |
-| `outcome` | Binary event indicator | Incident outcome event |
-| `outcome_censor` | Follow-up time | Incident outcome follow-up time |
-| `exposure` | Binary exposure | Exposure to be decomposed |
-| `mediator` | Binary mediator | Candidate pathway variable |
-| `age` | Continuous covariate | Adjustment covariate |
-| `bmi` | Continuous covariate | Adjustment covariate |
-| `smoking` | Binary covariate | Example covariate that requires explicit `x_cov_cond` |
+| `outcome` | Binary event indicator | Incident event |
+| `outcome_censor` | Follow-up time | Event-time outcome |
+| `exposure` | Binary factor | Exposure to decompose |
+| `mediator` | Binary factor | Candidate pathway variable |
+| `age` | Continuous covariate | Numeric adjustment covariate |
+| `bmi` | Continuous covariate | Numeric adjustment covariate |
+| `smoking` | Binary factor | Teaching example for explicit `x_cov_cond` |
 
-# Inspect the analysis-ready data before fitting
-
-As in Step 1 and Step 2, it helps to inspect the analysis-ready cohort before
-moving to the model.
+Before fitting the model, look at the data the way you would in a methods
+meeting: not just "does the code run?", but "does the analytic story make
+sense?"
 
 ```{r}
 knitr::kable(utils::head(med_df, 6))
@@ -150,338 +210,289 @@ knitr::kable(
 )
 ```
 
-These simple checks already answer three important questions:
+Three quick lessons come from these tables:
 
-- is the event rate low enough that `yreg = "auto"` will reasonably choose the
-  Cox path?
-- does the mediator distribution differ across exposure groups in a direction
-  consistent with a possible pathway?
-- do the covariates look interpretable enough to define a reproducible
-  evaluation setting later?
+- the outcome really is time-to-event, not merely binary incidence
+- the mediator differs by exposure in a direction that makes a pathway story
+  plausible
+- the event rate is low here, but the default mediation route still does not
+  become a Cox decomposition; it remains a `survreg`-based mediation analysis
 
-# Choose the mediation setup before fitting
+# Know what the default route is actually fitting
 
-Mediation analysis is easier to defend when the design choices are explicit
-before the model is run.
+`leo_cox_mediation()` now defaults to `method = "mediation"`. For survival
+outcomes, that means:
 
 ```{r}
-setup_table <- data.frame(
+default_route <- data.frame(
   Component = c(
-    "Exposure contrast",
-    "Mediator type",
+    "Mediation engine",
     "Outcome model",
-    "Covariate evaluation profile"
+    "Scale for non-PM rows",
+    "Interaction default",
+    "Effect family"
   ),
-  Current_rule = c(
-    "Binary factor by default, or numeric with explicit x_exp_a0 and x_exp_a1",
-    "Binary mediator -> logistic; continuous/score-like mediator -> linear",
-    "yreg = 'auto' uses survCox when event rate <= 10%, otherwise survAFT_weibull",
-    "x_cov_cond should be explicit when x_cov contains non-numeric or binary numeric variables"
+  Current_setting = c(
+    "`mediation::mediate()`",
+    "`survival::survreg(dist = 'weibull')`",
+    "Time difference",
+    "`interaction = NULL` resolves to `FALSE`",
+    "ACME / ADE / ATE / PM"
   ),
   Why_it_matters = c(
-    "All direct and indirect effects are defined relative to this comparison",
-    "The mediator model determines how the pathway is represented",
-    "The final ratio scale depends on the actual outcome model",
-    "The decomposition is always evaluated at a specific covariate profile"
-  )
+    "This route reports average mediation effects rather than TE/TNIE/PNDE",
+    "The analysis is a parametric survival mediation model, not a Cox mediation model",
+    "Negative values imply shorter event-free time, positive values imply longer event-free time",
+    "The wrapper stays on the simpler average-effect path unless you explicitly override it",
+    "These are the names you should write and interpret in Step 3.0"
+  ),
+  check.names = FALSE
 )
 
 knitr::kable(
-  setup_table,
-  caption = "Choose the mediation setup before fitting"
+  default_route,
+  caption = "What the default mediation route means in practice"
 )
 ```
 
-# Know the method boundary before fitting
+One subtle point deserves emphasis. The internal survival model is currently
+`survival::survreg(dist = "weibull")` because that is the supported and stable
+route for `method = "mediation"` inside the wrapper. That is a modeling choice,
+not a blanket claim that every UK Biobank endpoint is exactly Weibull-shaped.
 
-`leo_cox_mediation()` currently wraps `regmedint::regmedint()` and keeps two
-model settings parallel:
+# Fit the first model with the package default
 
-- `mreg` controls the mediator model, i.e. `x_med ~ x_exp + x_cov`
-- `yreg` controls the outcome model, i.e. `time ~ x_exp + x_med + x_cov`
-- when `interaction = TRUE`, the outcome model becomes
-  `time ~ x_exp + x_med + x_exp:x_med + x_cov`
-
-The current wrapper is most appropriate when:
-
-- the outcome is time-to-event
-- the exposure is binary, or numeric with explicit `x_exp_a0` and `x_exp_a1`
-- the mediator is binary or continuous
-- the temporal ordering is scientifically defensible
-
-Two boundaries are especially important in UK Biobank-style analyses that rely
-heavily on baseline measurements:
-
-1. if the final `yreg` (the outcome-model setting here) is `survCox`, the
-   decomposition relies on the rare-event approximation; in plain terms, this
-   means the split is easier to defend as an approximate result when events are
-   relatively rare, rather than as an exact estimate
-2. if exposure and mediator are measured at the same baseline visit, the
-   data usually cannot show that exposure came before mediator, so the result
-   is better written as decomposition evidence that is consistent with an
-   assumed pathway; without external evidence on temporal ordering, it should
-   not be written up as a strong causal claim
-
-# Fit the simplest mediation workflow
-
-As in the Cox tutorials, define the adjustment hierarchy first.
+We start with the simplest defensible version: numeric covariates only,
+default engine, default interaction handling.
 
 ```{r}
-med_models <- list(
-  "Model A" = c("age"),
-  "Model B" = c("age", "bmi")
-)
-
 res_med <- leo_cox_mediation(
   df = med_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "exposure",
   x_med = "mediator",
-  x_cov = med_models,
+  x_cov = c("age", "bmi"),
   verbose = FALSE
 )
 
 res_med$result
 ```
 
-# How to read the result table
-
-The mediation output is easier to read if you separate the columns into roles:
-
-- `Effect code` and `Effect` identify which decomposition quantity is being
-  shown
-- `Scale` reminds you that `pm` is a proportion, whereas the other rows are
-  ratio measures
-- `Exposure contrast` shows the `x_exp_a0 -> x_exp_a1` comparison
-- `Mediator reference` is populated for the `cde` row and echoed in
-  `$evaluation`
-- `Mediator model` and `Outcome model` show the actual `mreg` and `yreg`
-  selected
-
-The scientific point is simple:
-
-> mediation estimates are not free-floating numbers; they are conditional on a
-> chosen exposure contrast, mediator reference, covariate profile, and model
-> pair
-
-# Teach the core settings in `leo.ukb` language
-
-`regmedint` uses a compact set of evaluation settings and model settings.
-`leo_cox_mediation()` keeps the same scientific meaning while presenting them
-in more readable `leo.ukb` language.
-
-| Question | `leo.ukb` parameter | What it means in practice |
-|---|---|---|
-| Which exposure contrast is being compared? | `x_exp_a0`, `x_exp_a1` | The exposure comparison used to define the mediation effect, such as `Low risk -> High risk` or `8.0 -> 9.0`. |
-| At what mediator value is the controlled direct effect evaluated? | `x_med_cde` | The mediator reference value used for `cde`. |
-| Under what covariate profile are the effects evaluated? | `x_cov_cond` | The covariate setting at which the effects are computed. |
-| How is the mediator modeled? | `mreg` | The mediator model for `x_med ~ x_exp + x_cov`. |
-| How is the survival outcome modeled? | `yreg` | The outcome model for `time ~ x_exp + x_med + x_cov`. |
-| Should the outcome model include `x_exp:x_med`? | `interaction` | If `TRUE`, the outcome model allows the effect of `x_exp` to vary with `x_med`. |
-
-In other words:
-
-- `x_exp_a0`, `x_exp_a1`, `x_med_cde`, and `x_cov_cond` define **where** the
-  mediation effects are evaluated
-- `mreg`, `yreg`, and `interaction` define **which models** generate that
-  decomposition
-
-# How `mreg = "auto"` behaves
-
-The current `leo.ukb` rule is:
-
-- binary factor / character / logical mediator -> `logistic`
-- two-valued integer-like numeric mediator such as `0/1` -> `logistic`
-- numeric mediator with more than two observed values, or non-integer
-  two-valued coding such as `0.2/0.8` -> `linear`
-- multi-level categorical mediator stored as factor -> not currently supported
-
-This is the practical interpretation:
-
-- use `auto` freely for binary mediators
-- use `auto` for true continuous biomarkers
-- for ordered scores, such as a low-grade inflammation index from `-7` to `7`,
-  keep the variable numeric and usually let it behave as a continuous mediator
-- if the scientific question is threshold-based, dichotomize first and then
-  use a logistic mediator model
-
-# Decode the abbreviations before interpreting anything
-
 ```{r}
-data.frame(
-  `Effect code` = c("cde", "pnde", "tnie", "tnde", "pnie", "te", "pm"),
-  Meaning = c(
-    "Controlled direct effect",
-    "Pure natural direct effect",
-    "Total natural indirect effect",
-    "Total natural direct effect",
-    "Pure natural indirect effect",
-    "Total effect",
-    "Proportion mediated"
-  ),
-  `Practical reading` = c(
-    "Direct effect when the mediator is fixed at the chosen reference value.",
-    "Direct pathway not operating through the mediator.",
-    "Indirect pathway operating through the mediator.",
-    "Direct pathway allowing the mediator to vary naturally.",
-    "Indirect pathway under the pure natural definition.",
-    "Overall exposure-outcome effect.",
-    "Share of the total effect attributed to the mediator pathway."
-  )
-)
-```
-
-For most applied readers, three rows are especially important:
-
-- `te`: how large the overall association is
-- `tnie`: how large the mediator pathway appears to be
-- `pm`: what fraction of the total effect may be operating through the mediator
-
-# Turn the result into a clinically readable summary
-
-```{r}
-key_rows <- dplyr::filter(
+dplyr::select(
   res_med$result,
-  Model == "Model B",
-  `Effect code` %in% c("te", "tnie", "pm")
-)
-key_rows
-
-te_row <- dplyr::filter(key_rows, `Effect code` == "te")
-tnie_row <- dplyr::filter(key_rows, `Effect code` == "tnie")
-pm_row <- dplyr::filter(key_rows, `Effect code` == "pm")
-pm_ci <- as.numeric(trimws(strsplit(pm_row$`95% CI`, ",", fixed = TRUE)[[1]]))
-ratio_label <- if (te_row$`Outcome model` == "survCox") "HR" else "TR"
-ratio_noun <- if (te_row$`Outcome model` == "survCox") "hazard" else "time"
-te_pct <- 100 * (te_row$Estimate - 1)
-pm_pct <- 100 * pm_row$Estimate
-
-data.frame(
-  Quantity = c("Total effect", "Indirect effect through inflammation", "Proportion mediated"),
-  `Model B summary` = c(
-    sprintf("%s %.3f (%s)", ratio_label, te_row$Estimate, te_row$`95% CI`),
-    sprintf("%s %.3f (%s)", ratio_label, tnie_row$Estimate, tnie_row$`95% CI`),
-    sprintf("%.1f%% (%.1f%% to %.1f%%)", 100 * pm_row$Estimate, 100 * pm_ci[1], 100 * pm_ci[2])
-  )
+  `Effect code`, Scale, `Exposure contrast`, Estimate, `95% CI`, `P value`
 )
 ```
 
-Because the event rate in this example is only
-`r sprintf("%.1f%%", 100 * mean(med_df$outcome))`, `yreg = "auto"` selected
-`survCox`, so the ratio scale is a hazard ratio.
-
-In manuscript-style language, the Model B result can be read as:
-
-- the `High risk` group has an overall `r ratio_noun` ratio that is about
-  `r sprintf("%.1f", abs(te_pct))`%
-  `r if (te_pct >= 0) "higher" else "lower"` than the `Low risk` group
-  (`te = `r sprintf("%.3f", te_row$Estimate)``)
-- the inflammation pathway contributes only a modest indirect effect
-  (`tnie = `r sprintf("%.3f", tnie_row$Estimate)``)
-- the point estimate for the proportion mediated is `r sprintf("%.1f%%", pm_pct)`,
-  suggesting that part of the overall association could be operating through
-  the inflammation pathway
-
-The critical scientific qualifier is uncertainty. Here the confidence interval
-for `pm` is wide and crosses zero, so the careful interpretation is not
-"mediation has been established", but:
-
-> the estimates are compatible with partial mediation through inflammation, but
-> the pathway effect remains too imprecise to support a strong mechanistic
-> claim on its own
-
-# Inspect the evaluation settings directly
-
-`leo_cox_mediation()` keeps a compact evaluation summary in `$evaluation`.
-
 ```{r}
-res_med$evaluation
+res_med$evaluation[, c(
+  "method", "mreg", "yreg", "outcome_distribution",
+  "interaction", "x_cov_cond", "mediation_boot", "mediation_sims"
+)]
 ```
 
-This table is especially useful when you want to audit:
+This small evaluation table is worth reading before the effect table:
 
-- which `x_exp_a0 -> x_exp_a1` contrast was used
-- which mediator reference was used for the controlled direct effect
-- which covariate profile was used for `x_cov_cond`
-- which `mreg` and `yreg` were used
-- whether the outcome model included `x_exp:x_med`
+- `method = mediation` confirms that the default route was used
+- `yreg = survreg` tells you the outcome model class that was actually fit
+- `outcome_distribution = weibull` tells you which `survreg` distribution was
+  used
+- `interaction = FALSE` shows the engine-specific default after
+  `interaction = NULL`
+- `x_cov_cond = NA` is expected in this default run, because the average-effect
+  `mediation` route does not force you to pin the decomposition to an explicit
+  named profile unless you choose to do so
 
-# Non-numeric covariates need explicit `x_cov_cond`
+# How to read ACME, ADE, ATE, and PM
 
-When the selected adjustment set contains a non-numeric covariate, the
-evaluation profile must be given explicitly. The same applies to binary
-numeric covariates such as `0/1` indicators, because the default median can
-otherwise create impossible values such as `0.5`.
+The first pass should be simple:
+
+- `ACME` is the average indirect effect
+- `ADE` is the average direct effect
+- `ATE` is the average total effect
+- `PM` is the proportion mediated
+
+The second pass is the part people skip too quickly: here the non-PM rows are
+on a **time-difference** scale, not a hazard-ratio scale.
 
 ```{r}
-res_med_smoking <- leo_cox_mediation(
+acme_row <- effect_row(res_med, "acme")
+ade_row <- effect_row(res_med, "ade")
+ate_row <- effect_row(res_med, "ate")
+pm_row <- effect_row(res_med, "pm")
+
+interpret_table <- data.frame(
+  Quantity = c("ACME", "ADE", "ATE", "PM"),
+  Estimate = c(
+    acme_row$Estimate[1],
+    ade_row$Estimate[1],
+    ate_row$Estimate[1],
+    pm_row$Estimate[1]
+  ),
+  `95% CI` = c(
+    acme_row$`95% CI`[1],
+    ade_row$`95% CI`[1],
+    ate_row$`95% CI`[1],
+    pm_row$`95% CI`[1]
+  ),
+  `How to read it` = c(
+    "Average mediated component on the time scale",
+    "Average direct component on the time scale",
+    "Average overall exposure contrast on the time scale",
+    "Share of the total effect carried by the mediator"
+  ),
+  check.names = FALSE
+)
+
+knitr::kable(
+  interpret_table,
+  caption = "The Step 3.0 effect family"
+)
+```
+
+The safest reading order is the one a good supervisor would use at the
+whiteboard:
+
+1. start with `Effect code` and `Scale`, so you know what family of quantity
+   the row is reporting
+2. check `Exposure contrast`, so you know that every row is talking about the
+   same comparison
+3. only then move to `Estimate`, `95% CI`, and `P value`
+
+In this run, the ACME is `r fmt_num(effect_value(res_med, "acme"))`, the ADE is
+`r fmt_num(effect_value(res_med, "ade"))`, and the ATE is
+`r fmt_num(effect_value(res_med, "ate"))`. Because the outcome model is
+`survreg`, these numbers describe differences on the survival-time scale:
+
+- a negative estimate is compatible with shorter event-free time
+- a positive estimate is compatible with longer event-free time
+
+That is why it is a mistake to glance at the sign and immediately translate it
+into a "higher HR" or "lower HR" story. This default route is not reporting
+hazard ratios.
+
+The same result table also carries `Case N`, `Non-event N`, and `Total follow-up`.
+Those columns are there to keep the analysis grounded: path decomposition is
+still only as trustworthy as the amount of event and follow-up information
+supporting it.
+
+The proportion mediated in this run is `r fmt_pct(effect_value(res_med, "pm"))`
+with a 95% CI of `r effect_text(res_med, "pm")`. The wrapper also checks
+whether the total-effect interval crosses the null. Here
+`r if (isTRUE(eval_value(res_med, "pm_unstable"))) "it does, so the proportion mediated is flagged as unstable and should be treated cautiously." else "it does not, so the PM is not automatically flagged as unstable."`
+
+# Add a factor covariate when you want to name the evaluation profile
+
+The default `method = "mediation"` route does not manufacture a named
+covariate profile for you. When `x_cov_cond` is omitted, the reported
+ACME/ADE/ATE/PM are averaged over the observed covariate distribution. If you
+want the decomposition anchored to a specific profile, say so explicitly.
+
+That becomes especially useful once a factor enters `x_cov`, because
+"adjusted for smoking" and "evaluated at age 60, smoking = Never" are not the
+same scientific claim.
+
+```{r}
+res_med_profile <- leo_cox_mediation(
   df = med_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "exposure",
   x_med = "mediator",
-  x_cov = "smoking",
-  x_cov_cond = list(smoking = "Never"),
+  x_cov = c("age", "smoking"),
+  x_cov_cond = list(age = 60, smoking = "Never"),
   verbose = FALSE
 )
 
-res_med_smoking$evaluation
+res_med_profile$evaluation[, c("x_cov_cond", "interaction", "method", "yreg")]
 ```
-
-This is not just more transparent. It is required whenever `x_cov` contains a
-factor or binary numeric covariate, because the evaluation profile has to map
-to a real person that the reader can reconstruct.
-
-# Continuous mediators, including score-like mediators, are also supported
-
-The same workflow can also be used with a continuous mediator.
 
 ```{r}
-med_df_cont <- dplyr::mutate(
-  med_df,
-  mediator_cont = rnorm(
-    n,
-    mean = 0.5 * as.integer(exposure == "High risk") + 0.02 * (age - 60),
-    sd = 1
-  )
+dplyr::select(
+  res_med_profile$result,
+  `Effect code`, `Covariate profile`, Estimate, `95% CI`
 )
+```
 
-res_med_cont <- leo_cox_mediation(
-  df = med_df_cont,
+This matters scientifically, not just technically. Once you add
+`smoking = "Never"` to `x_cov_cond`, the mediation effects are being reported
+for that covariate profile. That is usually much easier to defend in writing
+than a vague statement such as "adjusted for smoking."
+
+# Bootstrap is an option, not the only route
+
+`mediation::mediate()` does not require bootstrap in every run. The wrapper
+therefore exposes bootstrap controls instead of hard-coding one inference path.
+For a quick teaching run, we keep the resampling count modest.
+
+```{r}
+res_med_boot <- leo_cox_mediation(
+  df = med_df,
   y_out = c("outcome", "outcome_censor"),
   x_exp = "exposure",
-  x_med = "mediator_cont",
-  x_cov = "age",
-  mreg = "linear",
+  x_med = "mediator",
+  x_cov = c("age", "bmi"),
+  mediation_boot = TRUE,
+  mediation_sims = 80,
+  mediation_boot_ci_type = "perc",
   verbose = FALSE
 )
 
-res_med_cont$result
+res_med_boot$evaluation[, c(
+  "mediation_boot", "mediation_sims", "mediation_boot_ci_type", "mediation_use_speed"
+)]
 ```
 
-For a continuous mediator, the `cde` row shows a numeric mediator reference
-because the controlled direct effect is evaluated at `x_med_cde`.
+The teaching point is not that bootstrap is "more serious" by default. The
+teaching point is that inference settings should match the stage of the work:
 
-This is also the workflow we would usually recommend for an ordered score-like
-mediator. For example, if a low-grade inflammation index ranges from `-7` to
-`7`, the first question is scientific rather than computational:
+- a quick exploratory pass may stay with the default simulation-based route
+- a final results table may justify bootstrap and a larger `mediation_sims`
+  value
+- either way, the chosen setting should be visible in the analysis record
 
-- does the index behave like a severity score, where one-unit changes are
-  interpretable enough for a linear approximation?
-- or is the real question about a thresholded state that should be defined as
-  binary first?
+# What happens if you force interaction = TRUE?
 
-For most ordered severity scores, the cleaner first pass is to keep the score
-numeric and fit a linear mediator model.
+In the default mediation route, `interaction = NULL` resolves to `FALSE`.
+You can still force `TRUE`, but the wrapper warns you for a reason: the
+underlying `mediation` object can report treatment-specific quantities, whereas
+the current `leo_cox_mediation()` summary still reports averaged
+ACME/ADE/ATE/PM.
 
-# Add a paper-style pathway figure
+```{r}
+mediation_warning <- NA_character_
+res_med_inter <- withCallingHandlers(
+  leo_cox_mediation(
+    df = med_df,
+    y_out = c("outcome", "outcome_censor"),
+    x_exp = "exposure",
+    x_med = "mediator",
+    x_cov = c("age", "bmi"),
+    interaction = TRUE,
+    verbose = FALSE
+  ),
+  warning = function(w) {
+    mediation_warning <<- conditionMessage(w)
+    invokeRestart("muffleWarning")
+  }
+)
 
-For a single mediator, a compact pathway figure often communicates the result
-faster than a dense table alone.
+mediation_warning
+```
 
-```{r, fig.width = 8.8, fig.height = 5.8, dev.args = list(bg = "white")}
+The message is deliberate. If you truly need the treatment-specific mediation
+quantities from `mediation::mediate()`, inspect the backend object directly in
+`$fit$model_1$mediation_model`, rather than pretending that the four-row
+wrapper summary has already become a fully interaction-aware report.
+
+# Draw the pathway figure
+
+The plot wrapper is meant to give you a compact paper-style map of the current
+result.
+
+```{r}
 leo_cox_mediation_plot(
   x = res_med,
-  model = "Model B",
   exposure_label = "Metabolic\nrisk",
   mediator_label = "Inflammation",
   outcome_label = "Incident\noutcome",
@@ -490,95 +501,49 @@ leo_cox_mediation_plot(
 )
 ```
 
-This figure is useful because it keeps the main teaching elements in one
-place:
+The note below the plot is not decoration. It anchors three things that should
+never be left implicit:
 
-- left box: the exposure contrast
-- middle box: the proposed mediator
-- right box: the incident outcome
-- top text: the indirect pathway through the mediator
-- middle text: the estimated proportion of the total effect attributed to that
-  pathway
-- bottom text: the direct pathway not explained by the mediator
-
-One subtle but important point is that the mediated pathway shown here is the
-full `X -> M -> Y` pathway. The figure does not print a separate `M -> Y`
-coefficient because `regmedint` reports causal decomposition quantities such as
-`tnie`, `pnde`, and `te`, rather than a simple product of two regression
-coefficients.
+- which exposure contrast was evaluated
+- which covariate profile was used
+- whether the proportion mediated was automatically flagged as unstable
 
 # Compare the built-in journal palettes
 
-The same fitted result can be displayed with several built-in journal-style
-palettes.
+The plotting helper keeps the geometry fixed while letting you switch the
+journal-style palette. That makes it easier to choose a style without
+rebuilding the figure by hand.
 
-```{r, fig.width = 10, fig.height = 9, fig.show = "hold", out.width = "49%", dev.args = list(bg = "white")}
+```{r, fig.width = 10, fig.height = 8}
+old_par <- graphics::par(no.readonly = TRUE)
+on.exit(graphics::par(old_par), add = TRUE)
+graphics::par(mfrow = c(2, 2), mar = c(1.2, 1.2, 2.2, 1.2))
 for (pal in c("jama", "jco", "lancet", "nejm")) {
   leo_cox_mediation_plot(
     x = res_med,
-    model = "Model B",
     exposure_label = "Metabolic\nrisk",
     mediator_label = "Inflammation",
     outcome_label = "Incident\noutcome",
     language = "en",
-    palette = pal
+    palette = pal,
+    add_note = FALSE
   )
+  graphics::title(main = pal, line = 0.2, cex.main = 1)
 }
 ```
 
-# How to interpret common result patterns
+# What Step 3.0 should leave you with
 
-In applied survival mediation analysis, the most common interpretation patterns
-are:
+For the default `method = "mediation"` route, the practical reading order is:
 
-1. `te` is clearly away from the null, `tnie` is modest, and `pm` is positive
-   but imprecise: compatible with partial mediation, but not decisive
-2. `te` and `tnie` are both clearly away from the null, and `pm` is precise:
-   stronger evidence that the pathway may explain a meaningful share of the
-   total effect
-3. `te` is weak or crosses the null: `pm` can become unstable and should be
-   treated cautiously
-4. `yreg` switches to AFT: all non-`pm` effect rows should now be interpreted
-   as time ratios rather than hazard ratios
+1. confirm that the engine is really `mediation` and the outcome model is
+   really `survreg`
+2. read ACME, ADE, ATE, and PM on the scale that is actually reported
+3. check the covariate profile used for evaluation
+4. treat PM cautiously if the total-effect interval crosses the null
+5. switch to Step 3.1 only when you genuinely need the more explicit
+   `regmedint` decomposition family
 
-This is why Step 3 is not only about producing a decomposition table. It is
-also about learning when the estimates are scientifically interpretable and
-when they are still too unstable for a strong claim.
-
-# How to write this in a paper
-
-A defensible reporting order is usually:
-
-1. report the main exposure-outcome association first
-2. then present the mediation analysis as a pathway decomposition
-3. state the exposure contrast, mediator reference, and adjustment profile
-4. report which `yreg` was used; if it was `survCox`, mention the rare-event
-   approximation and make clear that this means the decomposition is only being
-   reported as an approximate split when events are relatively rare, and if it
-   was AFT, remember that the ratio scale is a time ratio
-5. if exposure and mediator are measured at the same baseline visit, write the
-   result up as decomposition evidence that is consistent with an assumed
-   pathway, and say explicitly that the data alone do not establish exposure
-   before mediator unless temporal ordering is supported externally
-
-In other words, mediation should usually refine the biological story after the
-main Cox result is already established.
-
-# What to take away from Step 3
-
-This step should leave you with six practical rules:
-
-1. mediation asks a pathway question, not a heterogeneity question
-2. the data should be checked before fitting, just as in Step 1 and Step 2
-3. `x_exp_a0`, `x_exp_a1`, `x_med_cde`, and `x_cov_cond` define where the
-   mediation effects are evaluated
-4. `mreg` controls `x_med ~ x_exp + x_cov`, `yreg` controls
-   `time ~ x_exp + x_med + x_cov`, and `interaction = TRUE` adds
-   `x_exp:x_med` to the outcome model
-5. `yreg = "auto"` chooses `survCox` for event proportion `<= 10%` (which
-   means the decomposition then relies on the rare-event approximation and is
-   better read as approximate when events are relatively rare) and
-   `survAFT_weibull` otherwise
-6. factor mediators should not be forced into `mreg = "linear"`, and the final
-   mediation result should always be interpreted with the actual outcome model,
-   uncertainty, and the study's temporal ordering in mind
+That last point is worth being strict about. Many analyses do not need the
+advanced route. They need a clean question, a transparent default engine, and a
+calm interpretation that stays on the scale the model actually used.
