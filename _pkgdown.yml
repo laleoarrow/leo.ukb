@@ -70,6 +70,8 @@ reference:
       - leo_eGFR_v2021
       - leo_eGDR
       - leo_LGI
+      - leo_SII
+      - leo_SIRI
       - leo_TyG
       - leo_new_clinical_indicators
 

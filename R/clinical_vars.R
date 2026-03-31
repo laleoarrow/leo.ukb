@@ -17,13 +17,13 @@
 #'   \item Basics: age, BMI, gender, ethnicity, ethnicity_finer.
 #'   \item Socioeconomic: tdi, education, household_income, household_income_2, career.
 #'   \item Kidney function: eGFR_v2009, eGFR_v2021.
-#'   \item Inflammation: LGI.
+#'   \item Inflammation: LGI, SII, SIRI.
 #'   \item Insulin resistance: hba1c, hba1c_percent, eGDR, TyG.
 #'   \item Lifestyle: smoking_status, drinking_status, diet_us, physical_activity, sleep_score.
 #' }
 #'
 #' @param df A dataframe containing the required columns for calculation.
-#' @param types A vector of indicator types, options are "eGDR", "TyG", "eGFR_v2009", "eGFR_v2021", "sleep_score", "LGI"...
+#' @param types A vector of indicator types, options are "eGDR", "TyG", "eGFR_v2009", "eGFR_v2021", "sleep_score", "LGI", "SII", "SIRI"...
 #' @param type_id Logical; if `FALSE`, the function expects semantic column names (e.g. `"age"`, `"BMI"`).
 #'   If `TRUE` (default), UKB field-id style names (e.g. `"p21003_i0"`) are used.
 #' @param remove_assist Logical, whether to remove the assisting columns (default `TRUE`).
@@ -48,7 +48,7 @@
 #'   glucose = c(5.0, 5.5, 6.0)
 #' )
 #' leo.ukb::leo_new_clinical_indicators(df, types = c("eGDR", "TyG"), type_id = FALSE)
-#' @seealso \code{\link{leo_eGFR_v2009}}, \code{\link{leo_eGFR_v2021}}, \code{\link{leo_eGDR}}, \code{\link{leo_TyG}}.
+#' @seealso \code{\link{leo_eGFR_v2009}}, \code{\link{leo_eGFR_v2021}}, \code{\link{leo_eGDR}}, \code{\link{leo_TyG}}, \code{\link{leo_LGI}}, \code{\link{leo_SII}}, \code{\link{leo_SIRI}}.
 leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = TRUE, remove_assist = TRUE, remove_other = TRUE, ...) {
   t0 <- Sys.time()
   # Dictionary to map indicator types to required columns and calculation functions
@@ -96,6 +96,12 @@ leo_new_clinical_indicators <- function(df, types = c("eGDR", "TyG"), type_id = 
     "LGI" = list(required_cols      = c("crp", "wbc", "platelet", "neutrophil", "lymphocyte"),
                  required_cols_ukb  = c("p30710_i0", "p30000_i0", "p30080_i0", "p30140_i0", "p30120_i0"),
                  calc_function      = leo_LGI),
+    "SII" = list(required_cols      = c("platelet", "neutrophil", "lymphocyte"),
+                 required_cols_ukb  = c("p30080_i0", "p30140_i0", "p30120_i0"),
+                 calc_function      = leo_SII),
+    "SIRI" = list(required_cols      = c("neutrophil", "monocyte", "lymphocyte"),
+                  required_cols_ukb  = c("p30140_i0", "p30130_i0", "p30120_i0"),
+                  calc_function      = leo_SIRI),
     # Insulin Resistance ----
     "hba1c" = list(required_cols      = c("hba1c"),
                    required_cols_ukb  = c("p30750_i0"),  # HbA1c (mmol/mol, IFCC) instance 0
@@ -513,6 +519,84 @@ leo_LGI <- function(crp, wbc, plt, neutrophil, lymphocyte, ...) {
   lgi_score <- crp_score + wbc_score + plt_score + nlr_score
 
   return(lgi_score)
+}
+
+#' Calculate Systemic Immune-Inflammation Index (SII)
+#'
+#' This function calculates the systemic immune-inflammation index (SII)
+#' using peripheral blood platelet, neutrophil, and lymphocyte counts.
+#'
+#' @param platelet Numeric vector of platelet counts (×10^9/L).
+#' @param neutrophil Numeric vector of neutrophil counts (×10^9/L).
+#' @param lymphocyte Numeric vector of lymphocyte counts (×10^9/L).
+#' @param ... Reserved for future use.
+#'
+#' @return A numeric vector of SII values.
+#' @export
+#'
+#' @note
+#' Formula:
+#' \deqn{SII = \frac{neutrophil \times platelet}{lymphocyte}}
+#'
+#' UK Biobank releases these haematology counts in the same unit
+#' (×10^9/L), so no unit conversion is required before calculation.
+#' Negative values are treated as UKB haematology error codes and
+#' recoded to `NA`. Non-positive lymphocyte counts are returned as `NA`
+#' to avoid invalid ratios.
+#'
+#' Suggested UK Biobank fields (instance 0):
+#'   - Platelets:  Field 30080  (e.g. p30080_i0)
+#'   - Neutrophil: Field 30140  (e.g. p30140_i0)
+#'   - Lymphocyte: Field 30120  (e.g. p30120_i0)
+leo_SII <- function(platelet, neutrophil, lymphocyte, ...) {
+  leo.basic::leo_log("Calculating SII from platelet, neutrophil, and lymphocyte counts", level = "info")
+  platelet <- suppressWarnings(as.numeric(platelet))
+  neutrophil <- suppressWarnings(as.numeric(neutrophil))
+  lymphocyte <- suppressWarnings(as.numeric(lymphocyte))
+  platelet[platelet < 0] <- NA_real_
+  neutrophil[neutrophil < 0] <- NA_real_
+  lymphocyte[lymphocyte < 0] <- NA_real_
+  SII <- ifelse(is.na(lymphocyte) | lymphocyte <= 0, NA_real_, neutrophil * platelet / lymphocyte)
+  return(SII)
+}
+
+#' Calculate Systemic Inflammation Response Index (SIRI)
+#'
+#' This function calculates the systemic inflammation response index (SIRI)
+#' using peripheral blood neutrophil, monocyte, and lymphocyte counts.
+#'
+#' @param neutrophil Numeric vector of neutrophil counts (×10^9/L).
+#' @param monocyte Numeric vector of monocyte counts (×10^9/L).
+#' @param lymphocyte Numeric vector of lymphocyte counts (×10^9/L).
+#' @param ... Reserved for future use.
+#'
+#' @return A numeric vector of SIRI values.
+#' @export
+#'
+#' @note
+#' Formula:
+#' \deqn{SIRI = \frac{neutrophil \times monocyte}{lymphocyte}}
+#'
+#' UK Biobank releases these haematology counts in the same unit
+#' (×10^9/L), so no unit conversion is required before calculation.
+#' Negative values are treated as UKB haematology error codes and
+#' recoded to `NA`. Non-positive lymphocyte counts are returned as `NA`
+#' to avoid invalid ratios.
+#'
+#' Suggested UK Biobank fields (instance 0):
+#'   - Neutrophil: Field 30140  (e.g. p30140_i0)
+#'   - Monocyte:   Field 30130  (e.g. p30130_i0)
+#'   - Lymphocyte: Field 30120  (e.g. p30120_i0)
+leo_SIRI <- function(neutrophil, monocyte, lymphocyte, ...) {
+  leo.basic::leo_log("Calculating SIRI from neutrophil, monocyte, and lymphocyte counts", level = "info")
+  neutrophil <- suppressWarnings(as.numeric(neutrophil))
+  monocyte <- suppressWarnings(as.numeric(monocyte))
+  lymphocyte <- suppressWarnings(as.numeric(lymphocyte))
+  neutrophil[neutrophil < 0] <- NA_real_
+  monocyte[monocyte < 0] <- NA_real_
+  lymphocyte[lymphocyte < 0] <- NA_real_
+  SIRI <- ifelse(is.na(lymphocyte) | lymphocyte <= 0, NA_real_, neutrophil * monocyte / lymphocyte)
+  return(SIRI)
 }
 
 # Insulin Resistance -----
