@@ -33,8 +33,8 @@ main Cox model, the next practical question is usually:
 That question can lead to three related but different outputs:
 
 1. a formal multiplicative interaction test
-2. a subgroup table that describes the pattern of hazard ratios
-3. an additive-interaction summary for binary-binary contrasts
+2. a subgroup results table that describes the pattern of hazard ratios
+3. an additive-interaction summary for two-binary-variable contrasts
 
 The key is not to mix them up. Step 2 is where we learn how to choose the
 right one and how to read the results without over-interpreting them.
@@ -157,6 +157,12 @@ This table is the practical rule of thumb:
 - additive interaction is currently the most restrictive because `RERI`, `AP`,
   and `S` require a binary-by-binary contrast
 
+The most common classroom mistake is not a coding mistake. It is running all
+three outputs before the scientific question is clear. A safer habit is to ask
+first whether you are trying to show formal effect heterogeneity or simply
+describe the stratum-specific pattern. Once that is clear, the function choice
+usually becomes obvious.
+
 If a modifier is continuous, `leo_cox_interaction()` can still test it
 formally, but `leo_cox_subgroup()` is only appropriate after a clinically
 meaningful grouping has been defined.
@@ -238,6 +244,7 @@ res_sub_ecog <- leo_cox_subgroup(
   x_exp = "age",
   x_subgroup = "ecog_group3",
   x_cov = list("Crude" = NULL),
+  add_heterogeneity = TRUE,
   verbose = FALSE
 )
 
@@ -251,6 +258,10 @@ This subgroup table tells a more descriptive story:
 - in `ECOG2plus`, the HR is also close to null at `0.994`
 - the matching `P for interaction = 0.037` reminds us that the subgroup
   pattern should be interpreted through the formal interaction test
+- the additional `P for heterogeneity = r unique(res_sub_ecog$result$`P for heterogeneity`)[1]`
+  is a summary-statistic companion computed from the subgroup-specific
+  estimates; it helps describe how far apart the subgroup HRs are, but the
+  primary inferential line still runs through `P for interaction`
 
 In manuscript language, the safest interpretation is:
 
@@ -260,6 +271,42 @@ In manuscript language, the safest interpretation is:
 
 This is much better than writing "one subgroup was significant and the others
 were not", which is not a proper interaction argument.
+
+If a student said in a lab meeting that "`ECOG0` was significant and `ECOG1`
+was not, therefore there is interaction", a good supervisor would stop them
+immediately. Interaction is supported by the formal interaction test itself,
+with the subgroup pattern used only to help the reader see what that
+heterogeneity looks like.
+
+```{r}
+subgroup_plot_df <- res_sub_ecog$result
+subgroup_ci <- do.call(rbind, strsplit(subgroup_plot_df$`95% CI`, ", ", fixed = TRUE))
+subgroup_plot_df$HR <- as.numeric(subgroup_plot_df$HR)
+subgroup_plot_df$ci_l <- as.numeric(subgroup_ci[, 1])
+subgroup_plot_df$ci_u <- as.numeric(subgroup_ci[, 2])
+subgroup_plot_df$Level <- factor(subgroup_plot_df$Level, levels = rev(subgroup_plot_df$Level))
+
+ggplot2::ggplot(subgroup_plot_df, ggplot2::aes(x = HR, y = Level)) +
+  ggplot2::geom_vline(xintercept = 1, linetype = 2, color = "#8F8F8F") +
+  ggplot2::geom_segment(
+    ggplot2::aes(x = ci_l, xend = ci_u, y = Level, yend = Level),
+    color = "#4E79A7",
+    linewidth = 0.8
+  ) +
+  ggplot2::geom_point(size = 2.8, color = "#C44E52") +
+  ggplot2::labs(
+    x = "Hazard ratio",
+    y = NULL,
+    title = "Subgroup-specific hazard ratios for age across ECOG levels"
+  ) +
+  ggplot2::theme_minimal(base_size = 12)
+```
+
+Plots like this usually help students faster than prose alone. The `ECOG0`
+point sits visibly farther from the null line at 1, while the `ECOG1` and
+`ECOG2plus` estimates sit almost on top of it. The figure is not replacing the
+interaction test; it is helping your eye see the pattern that the formal test
+is summarizing.
 
 # Additive interaction answers a different question
 
@@ -298,6 +345,10 @@ First, the setup columns:
 - `Reference group` tells you which joint category is treated as the baseline
 - `Recode applied` tells you whether the function had to recode the binary
   variables internally so the reference structure was interpretable
+
+If `Recode applied = TRUE`, pause there before discussing `RERI` or `AP`. The
+most common additive-interaction mistake is not the formula; it is forgetting
+which joint group is actually serving as the baseline.
 
 Then the scale-specific measures:
 
@@ -355,6 +406,10 @@ So the most careful interpretation is:
 This is a good teaching result because it shows that the answer can depend on
 the scale. A significant multiplicative interaction does not guarantee a clear
 additive interaction, and vice versa.
+
+This is one of the most important habits Step 2 can teach. Interaction is not
+a single generic label. It is a scale-dependent judgment. Once the scale
+changes, the question has changed, and the answer can change with it.
 
 # How to interpret common result patterns
 

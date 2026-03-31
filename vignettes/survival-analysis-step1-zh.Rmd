@@ -124,6 +124,11 @@ knitr::kable(
 - follow-up 的量级是否合理
 - 不同协变量层次里有没有明显过稀的单元
 
+真正有经验的老师读到这里，还不会急着碰 `HR`。他会先确认这批数据到底像不像
+一个能被解释的 cohort：事件是不是太少、随访是不是太短、某些层次是不是已经
+稀疏到只能“看个方向”。这一步看起来慢，实际上是在替后面的结果解释省掉很多
+不必要的误判。
+
 # 建模前先决定 exposure 的尺度
 
 真正开始拟合之前，先决定 exposure 是按连续变量解释，还是按分类变量解释。
@@ -186,17 +191,18 @@ res_cox
 
 # 主 Cox 结果应该怎么读
 
-这张表已经很接近论文主表：
+这张表已经很接近论文主表，但教学上最好再多看两眼：
 
-- `Case N`、`Control N`、`Person-years` 告诉你用了多少信息
+- `Case N`、`Control N`、`Person-years` 先告诉你三个模型是在同一个 complete-case cohort 上比较，而不是每个模型各用一批人
 - `Class` 告诉你 exposure 是按连续还是分类处理的
-- 每个模型块里直接给 `HR`、`95% CI` 和 `P value`
+- 每个模型块里的 `HR`、`95% CI` 和 `P value` 才是最后要去读的关联证据
 
 对于连续 exposure，hazard ratio 的含义是：
 
-> exposure 每增加 1 个单位，对应的 hazard ratio 是多少
+> exposure 每增加 1 个单位，对应的相对 hazard 改变多少
 
-在这里就是年龄每增加 1 岁的 effect。
+在这里就是年龄每增加 1 岁的 effect。像 `HR = 1.011` 这样的数字，应该读成
+“相对 hazard 大约增加 1.1%”，而不是“绝对风险增加 1.1 个百分点”。
 
 如果需要 tidy 表用于后续编程，可以设置 `simplify = "tidy"` 或者
 用 `simplify = FALSE` 配合 `leo_cox_format()`：
@@ -217,14 +223,24 @@ age_model_b
 
 这个教学示例里，Model B 的估计值是 `HR = 1.011`，意味着在调整 sex 和 ECOG
 后，年龄每增加 1 岁，incident hazard 大约增加
-`r sprintf("%.1f", 100 * (age_model_b$HR - 1))`%。但它的置信区间跨过了 1，
-说明这个调整后的估计仍然不够精确，证据并不强。
+`r sprintf("%.1f", 100 * (age_model_b$HR - 1))`%。如果把它翻成更贴近日常直觉的
+比较，10 岁年龄差大约对应 `r sprintf("%.1f", 100 * (age_model_b$HR^10 - 1))`%
+的相对 hazard 差异。这个换算只是帮助建立量感，不改变模型本身仍然是“每
+1 岁”的 Cox 系数。
+
+但它的置信区间跨过了 1，说明这个调整后的估计仍然不够精确，证据并不强。
+教授带学生读这一行时，不能只盯着 `1.011` 这个点估计，而要同时承认
+“方向上像是升高，但不确定性还不小”。
 
 这正是主 Cox 结果最标准的阅读顺序：
 
 - 先看方向和效应大小
 - 再看不确定性
 - 最后再做科学上保守的解释
+
+很多初学者会把顺序读反，先问“显著不显著”，再回头看效应量。更稳的习惯正好
+相反：先问这是不是一个有意义的大小，再问这个大小稳不稳，最后才决定这句话能
+不能写进论文结论。
 
 # 什么时候切换到 tidy 输出
 
@@ -264,9 +280,14 @@ res_cox_cat
 
 这张表和年龄模型的读法不一样：
 
-- `ECOG0` 是参考组
+- `Exposure` 列里的 `ECOG0 (Ref)` 已经明确标出了参考组，不再需要自己去猜第一行是谁
 - 其他每一行都表示某个 level 相对 `ECOG0` 的比较
+- `Level` 列保留原始分层标签，后续做筛选、拼表或画图时会更稳
 - 所以这里不再是“每增加 1 单位”，而是 “level vs reference”
+
+如果把这张表当课堂练习来读，正确顺序通常是：先把参考组盯牢，再顺着每一行问
+“这一层比参考组高多少”“这个高多少稳不稳”“有没有可能只是稀疏数据带来的夸张
+点估计”。这样读，表格就不只是结果陈列，而是在训练你的判断力。
 
 ```{r}
 ecog_tidy <- leo_cox(
@@ -283,6 +304,36 @@ dplyr::select(
   Model, Exposure, Level, HR, `95% CI`, `P value`
 )
 ```
+
+```{r}
+ecog_plot_df <- dplyr::filter(ecog_tidy, Model == "Model A", Level != "ECOG0")
+ecog_ci <- do.call(rbind, strsplit(ecog_plot_df$`95% CI`, ", ", fixed = TRUE))
+ecog_plot_df$HR <- as.numeric(ecog_plot_df$HR)
+ecog_plot_df$ci_l <- as.numeric(ecog_ci[, 1])
+ecog_plot_df$ci_u <- as.numeric(ecog_ci[, 2])
+ecog_plot_df$Level <- factor(ecog_plot_df$Level, levels = rev(ecog_plot_df$Level))
+
+ggplot2::ggplot(ecog_plot_df, ggplot2::aes(x = HR, y = Level)) +
+  ggplot2::geom_vline(xintercept = 1, linetype = 2, color = "#8F8F8F") +
+  ggplot2::geom_segment(
+    ggplot2::aes(x = ci_l, xend = ci_u, y = Level, yend = Level),
+    color = "#4E79A7",
+    linewidth = 0.8
+  ) +
+  ggplot2::geom_point(size = 2.8, color = "#C44E52") +
+  ggplot2::scale_x_log10() +
+  ggplot2::labs(
+    x = "Hazard ratio（对数尺度）",
+    y = NULL,
+    title = "Model A 中不同 ECOG 水平相对参考组的 HR"
+  ) +
+  ggplot2::theme_minimal(base_size = 12)
+```
+
+把表和图放在一起看，学生通常会更快抓到重点：点离 1 这条虚线越远，说明效应
+越偏离 null；横线越长，说明不确定性越大。所以 `ECOG2` 那一行既“偏得更远”，
+也还算“线长可接受”，而 `ECOG3` 则属于“点很大，但线也非常夸张”，这就是
+稀疏单元下最典型的高估感。
 
 在这个示例里，Model A 提示较差的 ECOG 体能状态与更高的 incident hazard
 相关：
@@ -307,6 +358,9 @@ dplyr::select(
 - 信号
 - 不确定性
 - 稀疏数据带来的假象
+
+真正成熟的结果阅读，往往不是多会背公式，而是看到一个很大的 HR 时会本能地问：
+这是真信号，还是这一层样本太少、事件太稀，结果被拉得很夸张？
 
 # 论文里 Step 1 结果应该怎么写
 

@@ -1,6 +1,6 @@
 ---
 title: "Survival Analysis Step 3.1: Mediation Case Study"
-description: "Apply survival mediation analysis in rare/common outcome and continuous/binary mediator case studies."
+description: "Move from the default mediation route to the advanced regmedint workflow for survival mediation case studies."
 output:
   rmarkdown::html_vignette:
     highlight: default
@@ -24,26 +24,50 @@ has_regmedint <- requireNamespace("regmedint", quietly = TRUE)
 if (!has_regmedint) {
   knitr::opts_chunk$set(eval = FALSE)
 }
-fmt_num <- function(x, digits = 3) sprintf(paste0("%.", digits, "f"), x)
-fmt_pct <- function(x, digits = 1) sprintf(paste0("%.", digits, "f%%"), 100 * x)
+fmt_num <- function(x, digits = 3) {
+  if (length(x) == 0 || all(is.na(x))) return("NA")
+  sprintf(paste0("%.", digits, "f"), x[1])
+}
+fmt_pct <- function(x, digits = 1) {
+  if (length(x) == 0 || all(is.na(x))) return("NA")
+  sprintf(paste0("%.", digits, "f%%"), 100 * x[1])
+}
+effect_row <- function(res, code) {
+  if (is.null(res)) return(data.frame())
+  dplyr::filter(res$result, `Effect code` == code)
+}
+effect_value <- function(res, code, column = "Estimate") {
+  row <- effect_row(res, code)
+  if (!nrow(row) || !column %in% names(row)) return(NA_real_)
+  row[[column]][1]
+}
+effect_text <- function(res, code, column = "95% CI") {
+  row <- effect_row(res, code)
+  if (!nrow(row) || !column %in% names(row)) return("NA")
+  as.character(row[[column]][1])
+}
+eval_value <- function(res, column) {
+  if (is.null(res) || !column %in% names(res$evaluation)) return(NA)
+  res$evaluation[[column]][1]
+}
 fmt_pct_ci <- function(ci_text, digits = 1) {
   ci_num <- suppressWarnings(as.numeric(trimws(strsplit(ci_text, ",", fixed = TRUE)[[1]])))
   if (length(ci_num) != 2 || anyNA(ci_num)) return(ci_text)
   paste(sprintf(paste0("%.", digits, "f%%"), 100 * ci_num), collapse = ", ")
 }
-get_effect_row <- function(res, code) {
-  dplyr::filter(res$result, `Effect code` == code)
-}
 case_summary_row <- function(res, scenario) {
-  te <- get_effect_row(res, "te")
-  tnie <- get_effect_row(res, "tnie")
-  pm <- get_effect_row(res, "pm")
+  te_code <- if ("te" %in% res$result$`Effect code`) "te" else "ate"
+  tnie_code <- if ("tnie" %in% res$result$`Effect code`) "tnie" else "acme"
+  pm_code <- "pm"
+  te <- effect_row(res, te_code)
+  tnie <- effect_row(res, tnie_code)
+  pm <- effect_row(res, pm_code)
   data.frame(
     Scenario = scenario,
-    `Event rate` = fmt_pct(res$evaluation$event_rate[1]),
-    `Outcome model` = res$evaluation$yreg[1],
-    `Total effect` = sprintf("%s (%s)", fmt_num(te$Estimate[1]), te$`95% CI`[1]),
-    `Indirect effect` = sprintf("%s (%s)", fmt_num(tnie$Estimate[1]), tnie$`95% CI`[1]),
+    `Event rate` = fmt_pct(eval_value(res, "event_rate")),
+    `Outcome model` = eval_value(res, "yreg"),
+    `Total effect` = sprintf("%s (%s)", te$Estimate[1], te$`95% CI`[1]),
+    `Indirect effect` = sprintf("%s (%s)", tnie$Estimate[1], tnie$`95% CI`[1]),
     `Proportion mediated` = sprintf("%s (%s)", fmt_pct(pm$Estimate[1]), fmt_pct_ci(pm$`95% CI`[1])),
     check.names = FALSE
   )
@@ -59,7 +83,7 @@ draw_mediation_map <- function(language = c("en", "zh")) {
   cde_label <- if (language == "en") {
     "CDE: direct effect when M is fixed at x_med_cde"
   } else {
-    "CDE：把 M 固定在 x_med_cde 时的直接效应"
+    "CDE: direct effect when M is fixed at x_med_cde"
   }
 
   graphics::plot.new()
@@ -82,46 +106,58 @@ draw_mediation_map <- function(language = c("en", "zh")) {
   graphics::text(5.0, 1.55, cde_label, cex = 0.92)
   graphics::box()
 }
+res_case1 <- NULL
+res_case2 <- NULL
+res_case3 <- NULL
 ```
 
-## Why this article exists
+## Why this advanced article exists
 
-Step 3.0 explains what mediation analysis is for. Step 3.1 is where we turn
-that into a practical workflow.
+Step 3.0 is the default path: `method = "mediation"`, average-effect outputs,
+and a careful interpretation on the time scale. Step 3.1 is for the moment
+when that default route is no longer the question you want to answer.
 
-The goal here is not just to run `leo_cox_mediation()`, but to answer five
-questions in a way that stays tied to real output:
+Move to `method = "regmedint"` when you specifically need one or more of the
+following:
 
-1. what biological question are we actually asking?
-2. how do `x_exp_a0`, `x_exp_a1`, `x_med_cde`, and `x_cov_cond` map to that question?
-3. when should `mreg = "linear"` be preferred over `mreg = "logistic"`?
-4. what changes when `yreg = "auto"` switches from `survCox` to `survAFT_weibull`?
-5. how should the scientific interpretation change across those settings?
+1. the `TE / TNIE / PNDE / PM` family rather than `ACME / ADE / ATE`
+2. a controlled direct effect evaluated at `x_med_cde`
+3. explicit `survCox` versus `survAFT_*` handling
+4. a decomposition that is written around a declared exposure contrast and a
+   declared covariate profile
+
+In other words, this is the article for the analysis that is being written
+closer to a methods section, not just to a first-pass teaching example.
 
 ```{r, echo = FALSE, results = "asis"}
 if (!has_regmedint) {
   cat(
-    "> Note: regmedint is not installed in the current build environment, ",
-    "so the code below is shown but not executed. Install regmedint locally ",
-    "to run the full case study.\n\n",
+    "> Note: package `regmedint` is not installed in the current build environment, ",
+    "so the code is shown but not executed. Install `regmedint` locally to run ",
+    "the full case study.\n\n",
     sep = ""
   )
 }
 ```
 
-## Build one reproducible scientific story, then vary the scenario
+## Keep one scientific story and vary only the analytical pressure
 
-We use a synthetic cohort with the same broad question throughout:
+The scientific question stays the same across all scenarios:
 
-> is the association between higher metabolic risk and an incident outcome partly explained by inflammation?
+> is the association between higher metabolic risk and an incident outcome
+> partly transmitted through inflammation?
 
-The scenarios differ only in how we encode the mediator and how common the
-outcome is.
+What changes across the cases is not the story, but the analytical pressure we
+put on that story:
+
+- continuous versus binary mediator
+- rare versus common outcome
+- Cox versus AFT interpretation
 
 ```{r}
-set.seed(20260324)
+set.seed(20260330)
 
-make_mediation_case <- function(n = 1500, base_log_hazard = -5.8, censor_rate = 0.06) {
+make_mediation_case <- function(n = 1200, base_log_hazard = -5.8, censor_rate = 0.06) {
   age <- rnorm(n, 60, 8)
   sex <- factor(sample(c("Female", "Male"), n, replace = TRUE))
   smoking <- factor(sample(c("Never", "Ever"), n, replace = TRUE, prob = c(0.6, 0.4)))
@@ -169,221 +205,120 @@ make_mediation_case <- function(n = 1500, base_log_hazard = -5.8, censor_rate = 
 rare_case <- make_mediation_case(base_log_hazard = -5.8, censor_rate = 0.06)
 common_case <- make_mediation_case(base_log_hazard = -4.6, censor_rate = 0.06)
 
-data.frame(
-  Scenario = c("Rare-outcome case", "Common-outcome case"),
+scenario_overview <- data.frame(
+  Scenario = c("Rare-outcome cohort", "Common-outcome cohort"),
   Participants = c(nrow(rare_case), nrow(common_case)),
   Events = c(sum(rare_case$incident_event), sum(common_case$incident_event)),
-  `Event rate` = c(fmt_pct(mean(rare_case$incident_event)), fmt_pct(mean(common_case$incident_event)))
+  `Event rate` = c(
+    sprintf("%.1f%%", 100 * mean(rare_case$incident_event)),
+    sprintf("%.1f%%", 100 * mean(common_case$incident_event))
+  )
+)
+
+knitr::kable(
+  scenario_overview,
+  caption = "The two core cohorts used in the Step 3.1 case study"
 )
 ```
 
-The rare-outcome case will let `yreg = "auto"` stay on `survCox`, because the
-post-filter, complete-case analysis set still has an event rate at or below
-10%. The common-outcome case is deliberately built to push the same scientific
-question onto the AFT path.
+## Keep the pathway sketch in mind before looking at the numbers
 
-## Case 1. A graded biomarker mediator in a rare-outcome setting
+```{r, echo = FALSE}
+draw_mediation_map("en")
+```
 
-This is the most natural scenario when inflammation is scientifically treated
-as a continuum rather than as a yes/no threshold.
+The point of this figure is not artistic. It keeps the vocabulary stable while
+the scenarios change:
+
+- `TE` is the total contrast
+- `TNIE` is the indirect pathway we usually look at first
+- `PNDE` is the direct pathway that bypasses the mediator
+- `CDE` becomes useful only after you explicitly choose `x_med_cde`
+
+That explicitness is the main difference from Step 3.0.
+
+That is why a good teacher would usually make students say the abbreviations
+out loud before talking about the numbers. If the vocabulary is still shaky,
+the interpretation of `TNIE` or `PM` is usually shaky too.
+
+## Case 1. Rare outcome, continuous mediator, explicit evaluation profile
+
+We start with the most common advanced use case: a graded biomarker mediator,
+a rare outcome, and a declared covariate profile.
 
 ```{r}
-x_med_cde_case1 <- stats::median(rare_case$inflammation_score, na.rm = TRUE)
-
 res_case1 <- leo_cox_mediation(
   df = rare_case,
   y_out = c("incident_event", "followup_years"),
   x_exp = "metabolic_risk",
   x_med = "inflammation_score",
   x_cov = c("age", "sex", "smoking"),
+  method = "regmedint",
   x_exp_a0 = 0,
   x_exp_a1 = 1,
-  x_med_cde = x_med_cde_case1,
+  x_med_cde = stats::median(rare_case$inflammation_score, na.rm = TRUE),
   x_cov_cond = list(age = 60, sex = "Female", smoking = "Never"),
   mreg = "linear",
   yreg = "auto",
-  interaction = TRUE,
   verbose = FALSE
 )
 
-case1_eval <- res_case1$evaluation
-case1_te <- get_effect_row(res_case1, "te")
-case1_tnie <- get_effect_row(res_case1, "tnie")
-case1_pm <- get_effect_row(res_case1, "pm")
-case1_te_ci <- case1_te[["95% CI"]][1]
-case1_tnie_ci <- case1_tnie[["95% CI"]][1]
-case1_pm_ci <- case1_pm[["95% CI"]][1]
-```
-
-### Read the evaluation settings before reading the effects
-
-```{r}
 res_case1$evaluation[, c(
   "exposure_contrast", "x_exp_a0", "x_exp_a1",
-  "mediator_reference", "x_med_cde", "x_cov_cond",
-  "mreg", "yreg", "interaction"
+  "x_med_cde", "x_cov_cond", "mreg", "yreg", "interaction"
 )]
 ```
 
-This one table already answers the three user-facing evaluation questions:
-
-- `x_exp_a0 = 0`, `x_exp_a1 = 1` means we are comparing `Lower risk -> Higher risk`
-- `x_med_cde = `r fmt_num(case1_eval$x_med_cde[1])`` means the controlled direct effect is being evaluated at the median inflammation score
-- `x_cov_cond = age=60; sex=Female; smoking=Never` means the reported effects are evaluated for that covariate profile, not as a profile-free population average
-
-In plain language, the CDE here asks:
-
-> if two otherwise similar 60-year-old never-smoking women differed only in
-> metabolic-risk status, but both were fixed at an inflammation score of
-> `r fmt_num(case1_eval$x_med_cde[1])`, how different would their outcome risk be?
-
-### Keep one simple map of the effect names in mind
-
-```{r, echo = FALSE}
-knitr::kable(
-  data.frame(
-    Code = c("TE", "TNIE", "PNDE", "PM", "CDE", "TNDE", "PNIE"),
-    `Full name` = c(
-      "Total Effect",
-      "Total Natural Indirect Effect",
-      "Pure Natural Direct Effect",
-      "Proportion Mediated",
-      "Controlled Direct Effect",
-      "Total Natural Direct Effect",
-      "Pure Natural Indirect Effect"
-    ),
-    `How to read it` = c(
-      "the overall association",
-      "the part that travels through the mediator",
-      "the part that does not travel through the mediator",
-      "the share of the total effect attributed to the mediator pathway",
-      "the direct effect when the mediator is fixed at x_med_cde",
-      "an alternative natural direct-effect definition",
-      "an alternative natural indirect-effect definition"
-    ),
-    check.names = FALSE
-  ),
-  align = c("l", "l", "l")
-)
-```
-
-For most papers, the first pass is usually `TE`, `TNIE`, `PNDE`, and `PM`.
-`CDE` becomes important when the scientific question is explicitly about fixing
-the mediator at a chosen level.
-
-That is also why `Mediator reference` appears only in the `cde` row: only the
-controlled direct effect needs a fixed mediator value.
-
-```{r, echo = FALSE, fig.width = 7.5, fig.height = 4.6}
-draw_mediation_map("en")
-```
-
-### Visualize the biology before over-interpreting the decomposition
-
-First look at whether the mediator really behaves like a graded biomarker across
-the two exposure groups.
-
-```{r, fig.width = 7.2, fig.height = 5.2}
-ggplot2::ggplot(
-  rare_case,
-  ggplot2::aes(x = metabolic_risk, y = inflammation_score, fill = metabolic_risk)
-) +
-  ggplot2::geom_violin(trim = FALSE, alpha = 0.35, color = NA) +
-  ggplot2::geom_boxplot(width = 0.16, outlier.alpha = 0.15, color = "#1f1f1f") +
-  ggplot2::scale_fill_manual(values = c("#5B8FF9", "#D14A61")) +
-  ggplot2::labs(
-    title = "Inflammation score is shifted upward in the higher-risk group",
-    x = "Metabolic risk group",
-    y = "Inflammation score"
-  ) +
-  ggplot2::theme_minimal(base_size = 12) +
-  ggplot2::theme(legend.position = "none")
-```
-
-Now look at the crude joint pattern that motivates keeping `interaction = TRUE`
-in the outcome model.
-
-```{r, fig.width = 7.4, fig.height = 5.1}
-joint_event_case1 <- dplyr::summarise(
-  dplyr::group_by(rare_case, metabolic_risk, inflammation_group),
-  n = dplyr::n(),
-  event_rate = mean(incident_event),
-  .groups = "drop"
-)
-
-ggplot2::ggplot(
-  joint_event_case1,
-  ggplot2::aes(x = inflammation_group, y = event_rate, fill = metabolic_risk)
-) +
-  ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.7), width = 0.62) +
-  ggplot2::geom_text(
-    ggplot2::aes(label = paste0(fmt_pct(event_rate), "\n(n=", n, ")")),
-    position = ggplot2::position_dodge(width = 0.7),
-    vjust = -0.15,
-    size = 3.3
-  ) +
-  ggplot2::scale_fill_manual(values = c("#5B8FF9", "#D14A61")) +
-  ggplot2::scale_y_continuous(
-    labels = function(x) paste0(round(100 * x), "%"),
-    limits = c(0, max(joint_event_case1$event_rate) * 1.18)
-  ) +
-  ggplot2::labs(
-    title = "The highest crude event rate appears in the higher-risk plus higher-inflammation stratum",
-    x = "Inflammation group",
-    y = "Observed event rate",
-    fill = "Metabolic risk"
-  ) +
-  ggplot2::theme_minimal(base_size = 12)
-```
-
-That figure does not prove interaction by itself, but it shows why the default
-`interaction = TRUE` is often a sensible first pass: it avoids forcing the
-effect of metabolic risk to be identical at every inflammation level.
-
-### Interpret the actual mediation result, not an imagined one
+One useful subtlety appears already: because `interaction = NULL` resolves to
+`TRUE` for `method = "regmedint"`, the advanced route is more interaction-ready
+by default than the Step 3.0 route. If your scientific question does not want
+that, say so explicitly with `interaction = FALSE`.
 
 ```{r}
-dplyr::filter(res_case1$result, `Effect code` %in% c("te", "tnie", "pm"))
+res_case1$result[res_case1$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ]
 ```
 
-Because this rare-outcome scenario stayed on `survCox`, the ratio scale is a
-hazard ratio.
-
-In this fitted example:
-
-- the total effect was `r fmt_num(case1_te$Estimate[1])` (`r case1_te_ci`), meaning the higher-risk group had a substantially higher incident hazard overall
-- the indirect pathway through the continuous inflammation score was `r fmt_num(case1_tnie$Estimate[1])` (`r case1_tnie_ci`), so the mediator pathway itself still points in the same harmful direction
-- the estimated proportion mediated was `r fmt_pct(case1_pm$Estimate[1])` (`r case1_pm_ci`), suggesting that inflammation may explain a sizeable share of the total association in this synthetic cohort
-
-Here the `pm` confidence interval stays above `0`, so this particular simulated
-example is more consistent with a positive mediated share than with a null
-mediated contribution.
-
-Scientifically, that is the pattern we would describe as:
-
-> higher metabolic risk is associated with both a higher inflammation burden
-> and a higher incident hazard, and the mediation decomposition is compatible
-> with inflammation carrying a meaningful part of that pathway.
-
-The pathway figure makes the same result easier to communicate in a paper or
-slide deck.
-
-```{r, fig.width = 8.6, fig.height = 5.8, dev.args = list(bg = "white")}
-leo_cox_mediation_plot(
-  x = res_case1,
-  exposure_label = "Metabolic\nrisk",
-  mediator_label = "Inflammation\nscore",
-  outcome_label = "Incident\noutcome",
-  language = "en",
-  palette = "jama"
+```{r}
+dplyr::select(
+  res_case1$result[res_case1$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ],
+  `Effect code`, Scale, `Exposure contrast`, `Covariate profile`,
+  `Mediator reference`, Estimate, `95% CI`
 )
 ```
 
-## Case 2. The same biology, but a thresholded binary mediator
+This is the teaching readout:
 
-Sometimes the scientific question is about a thresholded inflammatory state
-rather than a graded biomarker. The model then changes from `mreg = "linear"`
-to `mreg = "logistic"`.
+- the total effect is `r fmt_num(effect_value(res_case1, "te"))`
+  (`r effect_text(res_case1, "te")`)
+- the indirect effect `TNIE` is `r fmt_num(effect_value(res_case1, "tnie"))`
+  (`r effect_text(res_case1, "tnie")`)
+- the proportion mediated is `r fmt_pct(effect_value(res_case1, "pm"))`
+  (`r fmt_pct_ci(effect_text(res_case1, "pm"))`)
+
+Because `yreg = survCox` here, these non-PM rows are read on the hazard-ratio
+scale. In plain language, this case says that the higher-risk exposure contrast
+is associated with higher hazard overall, and a meaningful part of that
+contrast is compatible with flowing through the inflammation pathway.
+
+The disciplined reading order is therefore not "estimate first." It is:
+contrast first, profile second, scale third, estimate fourth. That is the
+difference between merely printing the advanced route and actually teaching it.
+
+Put differently, if a student begins with "the TNIE is ..." but cannot yet say
+who is being compared, under which profile, and on which scale, the answer is
+not methodologically complete. The value of the advanced route is not that it
+has more symbols; it is that the comparison is specified more honestly.
+
+The scientific boundary is just as important as the estimate. This Cox-based
+decomposition is most comfortable when the event remains relatively rare; in
+this scenario the event rate is `r fmt_pct(eval_value(res_case1, "event_rate"))`,
+which is why `yreg = "auto"` stays on `survCox`.
+
+## Case 2. Same rare outcome, but now the mediator is binary
+
+Many biomarker papers eventually dichotomize a mediator for clinical
+communication. Once you do that, the main new obligation is to define
+`x_med_cde` in the observed mediator coding.
 
 ```{r}
 res_case2 <- leo_cox_mediation(
@@ -392,42 +327,51 @@ res_case2 <- leo_cox_mediation(
   x_exp = "metabolic_risk",
   x_med = "inflammation_group",
   x_cov = c("age", "sex", "smoking"),
+  method = "regmedint",
   x_exp_a0 = 0,
   x_exp_a1 = 1,
   x_med_cde = "Higher inflammation",
   x_cov_cond = list(age = 60, sex = "Female", smoking = "Never"),
   mreg = "logistic",
   yreg = "auto",
-  interaction = TRUE,
   verbose = FALSE
 )
 
-case2_tnie <- get_effect_row(res_case2, "tnie")
-case2_pm <- get_effect_row(res_case2, "pm")
+res_case2$evaluation[, c(
+  "exposure_contrast", "x_med_cde", "mediator_reference",
+  "mreg", "yreg", "interaction"
+)]
+```
 
-dplyr::bind_rows(
-  case_summary_row(res_case1, "Case 1: rare outcome + continuous mediator"),
-  case_summary_row(res_case2, "Case 2: rare outcome + binary mediator")
+```{r}
+res_case2$result[res_case2$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ]
+```
+
+```{r}
+dplyr::select(
+  res_case2$result[res_case2$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ],
+  `Effect code`, `Mediator reference`, Estimate, `95% CI`
 )
 ```
 
-The scientific lesson is not that binary mediators are wrong. It is that the
-mediator encoding should match the question. For logistic mediators, `x_med_cde`
-should now be given as the original observed mediator level, not an internal
-`0/1` recode:
+Here the `CDE` row becomes more tangible than in the continuous-mediator case,
+because it now answers a concrete question such as:
 
-- in Case 1, the indirect pathway was `r fmt_num(case1_tnie$Estimate[1])` on the hazard-ratio scale, with `pm` estimated at `r fmt_pct(case1_pm$Estimate[1])`
-- in Case 2, the same broad story became much weaker and less precise (`tnie` = `r fmt_num(case2_tnie$Estimate[1])`, `pm` = `r fmt_pct(case2_pm$Estimate[1])`)
+> if two otherwise similar participants were both fixed at the "Higher
+> inflammation" mediator level, how different would their direct exposure
+> contrast look?
 
-That is a useful teaching contrast. If the biology is genuinely graded, turning
-the mediator into a yes/no label can discard pathway information. If the real
-question is threshold-based, however, the binary mediator may be the better
-scientific choice even if it is statistically less efficient.
+That is why `x_med_cde` belongs in the advanced route. It is not a nuisance
+parameter. It is part of the scientific question.
 
-## Case 3. The same pathway question, but with a more common outcome
+For the same reason, `x_med_cde` should never be written vaguely. The mediator
+level at which it is fixed is part of the biological or clinical scenario you
+are claiming to describe.
 
-Now keep the same exposure-mediator story and only make the event more common.
-This is where `yreg = "auto"` becomes important.
+## Case 3. A commoner outcome pushes the same question onto the AFT path
+
+Now we keep the biological story, return to the continuous mediator, but make
+the event common enough that `yreg = "auto"` no longer stays on Cox.
 
 ```{r}
 res_case3 <- leo_cox_mediation(
@@ -436,62 +380,96 @@ res_case3 <- leo_cox_mediation(
   x_exp = "metabolic_risk",
   x_med = "inflammation_score",
   x_cov = c("age", "sex", "smoking"),
+  method = "regmedint",
   x_exp_a0 = 0,
   x_exp_a1 = 1,
   x_med_cde = stats::median(common_case$inflammation_score, na.rm = TRUE),
   x_cov_cond = list(age = 60, sex = "Female", smoking = "Never"),
   mreg = "linear",
   yreg = "auto",
-  interaction = TRUE,
   verbose = FALSE
 )
 
-case3_te <- get_effect_row(res_case3, "te")
-case3_tnie <- get_effect_row(res_case3, "tnie")
-case3_pm <- get_effect_row(res_case3, "pm")
-
-res_case3$evaluation[, c("event_rate", "mreg", "yreg", "interaction", "x_cov_cond")]
-dplyr::filter(res_case3$result, `Effect code` %in% c("te", "tnie", "pm"))
+res_case3$evaluation[, c("event_rate", "yreg", "outcome_distribution", "interaction")]
 ```
 
-Here the event rate was `r fmt_pct(res_case3$evaluation$event_rate[1])`, so
-`yreg = "auto"` switched to `r res_case3$evaluation$yreg[1]`.
-
-That changes the interpretation scale:
-
-- `te` = `r fmt_num(case3_te$Estimate[1])` is now a time ratio, not a hazard ratio
-- because the time ratio is below 1, the higher-risk group has *shorter* event-free time
-- `tnie` = `r fmt_num(case3_tnie$Estimate[1])` means the inflammation pathway is also pointing toward shorter event-free time
-
-This is the same biological story on a different model scale. The key practical
-point is that the wording must change with `yreg`:
-
-- `survCox`: talk about higher or lower hazard
-- `survAFT_weibull`: talk about shorter or longer event-free time
-
-## Put the three scenarios side by side
+```{r}
+res_case3$result[res_case3$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ]
+```
 
 ```{r}
-dplyr::bind_rows(
-  case_summary_row(res_case1, "Case 1: rare outcome + continuous mediator"),
-  case_summary_row(res_case2, "Case 2: rare outcome + binary mediator"),
-  case_summary_row(res_case3, "Case 3: common outcome + continuous mediator")
+dplyr::select(
+  res_case3$result[res_case3$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ],
+  `Effect code`, Scale, `Outcome model`, Estimate, `95% CI`
 )
 ```
 
-This comparison is useful because it separates three different decisions:
+This is the place where many readers get turned around. Once `yreg = auto`
+switches to `survAFT_weibull`, the non-PM rows are now read as **time ratios**:
 
-1. how to define the mediator scientifically
-2. how much information is lost when a graded mediator is dichotomized
-3. how the interpretation scale changes when the outcome is no longer rare
+- `TR > 1` is compatible with longer event-free time
+- `TR < 1` is compatible with shorter event-free time
 
-## Key practical takeaways
+So the numerical summary has not become "wrong" or "inconsistent." It is
+answering the same scientific question on a different outcome-model scale.
 
-If you only keep six practical rules from Step 3.1, make them these:
+## Put the three cases side by side
 
-1. choose `x_exp_a0` and `x_exp_a1` to match the exposure contrast you would actually write in a Results section
-2. choose `x_med_cde` to represent the mediator level at which you want the controlled direct effect to be interpreted; for continuous biomarkers, the median is often a clean first choice
-3. choose `x_cov_cond` to represent a real covariate profile, especially when `x_cov` includes factor variables
-4. use `mreg = "linear"` when the mediator is scientifically graded, and `mreg = "logistic"` when the mediator question is genuinely threshold-based
-5. let `yreg = "auto"` protect you from using `survCox` in obviously non-rare settings, but always read the final `Outcome model` before interpreting the ratio scale
-6. write the scientific conclusion from the actual fitted output, not from the existence of a pathway diagram or a single positive point estimate
+```{r}
+summary_table <- dplyr::bind_rows(
+  case_summary_row(res_case1, "Rare outcome + continuous mediator"),
+  case_summary_row(res_case2, "Rare outcome + binary mediator"),
+  case_summary_row(res_case3, "Common outcome + continuous mediator")
+)
+
+knitr::kable(
+  summary_table,
+  caption = "How the same scientific question changes across three advanced mediation settings"
+)
+```
+
+Lined up this way, the methodological lesson becomes much cleaner:
+
+- changing the mediator encoding changes the mediator model and the meaning of
+  `x_med_cde`
+- changing the event frequency can change the outcome-model family
+- neither change is cosmetic; both alter how the effect sizes should be read
+
+For many students, that is the real turning point of the advanced tutorial.
+The lesson is not "there are more abbreviations now." It is that almost every
+column in the advanced result table is helping determine whether the final
+sentence will be scientifically correct.
+
+## Draw the advanced pathway figure
+
+```{r}
+leo_cox_mediation_plot(
+  x = res_case1,
+  exposure_label = "Metabolic\nrisk",
+  mediator_label = "Inflammation\nscore",
+  outcome_label = "Incident\noutcome",
+  language = "en",
+  palette = "lancet"
+)
+```
+
+For the advanced route, the plot is most useful after you have already read the
+evaluation table. Otherwise the labels look tidy but the scientific comparison
+remains under-specified.
+
+## What Step 3.1 should leave you with
+
+The advanced route is not "better" because it is longer. It is better only
+when the question actually requires it.
+
+Use `method = "regmedint"` when you need to say all of the following with a
+straight face:
+
+1. which exposure contrast is being decomposed
+2. which mediator value defines the controlled direct effect
+3. which covariate profile defines the evaluation point
+4. whether the outcome-model scale is Cox HR or AFT time ratio
+
+If you do not need all four, Step 3.0 is often the more disciplined analysis.
+If you do need them, Step 3.1 is where the decomposition becomes explicit
+enough for a serious methods paragraph.

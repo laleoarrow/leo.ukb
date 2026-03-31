@@ -112,7 +112,11 @@ knitr::kable(
 ```
 
 如果这一步不先分清，中介分析最常见的误区就是把它写成“换了一种形式的
-interaction analysis”。
+交互分析”。
+
+真正有经验的老师听学生汇报时，往往先问的不是“结果显不显著”，而是“你现在
+讲的是异质性，还是路径分解？”这一步如果答不清，后面的 `ACME`、`ADE` 再整齐
+也会失去解释坐标。
 
 # 先搭一个教学用队列，再看变量角色
 
@@ -131,12 +135,12 @@ set.seed(20260329)
 n <- 500
 age <- rnorm(n, 60, 8)
 bmi <- rnorm(n, 26, 4)
-smoking <- factor(sample(c("Never", "Ever"), n, replace = TRUE))
+smoking <- factor(sample(c("从不", "曾经或当前"), n, replace = TRUE))
 exposure_num <- rbinom(n, 1, plogis(-0.2 + 0.02 * (age - 60)))
 mediator_num <- rbinom(n, 1, plogis(-0.5 + 0.9 * exposure_num + 0.02 * (bmi - 26)))
 hazard_rate <- exp(
   -5.8 + 0.55 * exposure_num + 0.40 * mediator_num +
-    0.02 * (age - 60) + 0.03 * (bmi - 26) + 0.20 * (smoking == "Ever")
+    0.02 * (age - 60) + 0.03 * (bmi - 26) + 0.20 * (smoking == "曾经或当前")
 )
 event_time <- rexp(n, rate = hazard_rate)
 censor_time <- rexp(n, rate = 0.08)
@@ -144,11 +148,11 @@ censor_time <- rexp(n, rate = 0.08)
 med_df <- data.frame(
   outcome = as.integer(event_time <= censor_time),
   outcome_censor = pmax(pmin(event_time, censor_time), 0.2),
-  exposure = factor(exposure_num, levels = c(0, 1), labels = c("Low risk", "High risk")),
+  exposure = factor(exposure_num, levels = c(0, 1), labels = c("低风险", "高风险")),
   mediator = factor(
     mediator_num,
     levels = c(0, 1),
-    labels = c("Low inflammation", "High inflammation")
+    labels = c("低炎症", "高炎症")
   ),
   age = age,
   bmi = bmi,
@@ -292,6 +296,10 @@ res_med$evaluation[, c(
 - `x_cov_cond = NA` 在这个默认示例里是正常现象，表示 average-effect 的
   `mediation` 路线没有要求你先把结果钉在一个显式命名的人群画像上
 
+把这张 evaluation 表读熟，其实是在替后面的结果解读立规矩。老师通常会要求先
+把“引擎是什么、尺度是什么、有没有指定 profile”三件事说完整，再去碰效应估计。
+不然同样一个数字，今天被讲成时间差，明天又被误讲成 HR，是很常见的初学者错误。
+
 # ACME、ADE、ATE、PM 应该怎么读
 
 第一层读法先记住名称：
@@ -345,6 +353,10 @@ knitr::kable(
 2. 再看 `Exposure contrast`，确认每一行都在比较同一个 exposure 对比
 3. 最后才看 `Estimate`、`95% CI` 和 `P value`
 
+顺序为什么这么重要？因为中介分析里最常见的误读，不是算错，而是读错。只要把
+尺度和 exposure contrast 先交代清楚，后面的数字才真正有位置；否则一个看起
+来很漂亮的 `ACME`，也可能只是被说成了错误的临床语言。
+
 这次运行里，ACME 是 `r fmt_num(effect_value(res_med, "acme"))`，ADE 是
 `r fmt_num(effect_value(res_med, "ade"))`，ATE 是
 `r fmt_num(effect_value(res_med, "ate"))`。因为 outcome model 是
@@ -373,7 +385,7 @@ covariate profile。只要 `x_cov_cond` 留空，报告出来的 ACME/ADE/ATE/PM
 明确写出 `x_cov_cond` 时，分解结果才会被锚定到某个具体 profile 上。
 
 一旦 `x_cov` 里放进 factor，这点就更值得主动写清楚，因为“adjusted for
-smoking”和“在 age = 60、smoking = Never 这个 profile 下评价”并不是同一
+smoking”和“在 age = 60、smoking = 从不 这个 profile 下评价”并不是同一
 个科学表述。
 
 ```{r}
@@ -383,7 +395,7 @@ res_med_profile <- leo_cox_mediation(
   x_exp = "exposure",
   x_med = "mediator",
   x_cov = c("age", "smoking"),
-  x_cov_cond = list(age = 60, smoking = "Never"),
+  x_cov_cond = list(age = 60, smoking = "从不"),
   verbose = FALSE
 )
 
@@ -397,9 +409,13 @@ dplyr::select(
 )
 ```
 
-这一步的重要性首先是科学层面的。你一旦把 `smoking = "Never"` 明确写进
+这一步的重要性首先是科学层面的。你一旦把 `smoking = "从不"` 明确写进
 `x_cov_cond`，结果就不再是含糊的“adjusted for smoking”，而是更接近
 “在 60 岁、从不吸烟这类人群画像下，中介分解结果如何”。
+
+这也是论文写作里很容易被忽略、但老师通常最在意的地方之一。`adjusted for`
+只说明模型里放了这个变量；它并不自动告诉读者你把效应评价在谁身上。把
+`x_cov_cond` 说清楚，本质上是在把“统计调整”翻译回“具体 profile”。
 
 # Bootstrap 是选项，不是唯一正确姿势
 
@@ -473,10 +489,10 @@ interaction 情况完整表达清楚了。
 ```{r}
 leo_cox_mediation_plot(
   x = res_med,
-  exposure_label = "Metabolic\nrisk",
-  mediator_label = "Inflammation",
-  outcome_label = "Incident\noutcome",
-  language = "en",
+  exposure_label = "代谢\n风险",
+  mediator_label = "炎症",
+  outcome_label = "事件\n结局",
+  language = "zh",
   palette = "jama"
 )
 ```
@@ -484,7 +500,7 @@ leo_cox_mediation_plot(
 图下方那几行注释不是装饰，而是在固定三件最容易被写漏的事：
 
 - 暴露比较到底是哪个 contrast
-- 效应是在哪个 covariate profile 下评价的
+- 效应是在哪个协变量画像下评价的
 - 中介比例是否被自动标记为不稳定
 
 # 内置期刊风格配色示例
@@ -499,10 +515,10 @@ graphics::par(mfrow = c(2, 2), mar = c(1.2, 1.2, 2.2, 1.2))
 for (pal in c("jama", "jco", "lancet", "nejm")) {
   leo_cox_mediation_plot(
     x = res_med,
-    exposure_label = "Metabolic\nrisk",
-    mediator_label = "Inflammation",
-    outcome_label = "Incident\noutcome",
-    language = "en",
+    exposure_label = "代谢\n风险",
+    mediator_label = "炎症",
+    outcome_label = "事件\n结局",
+    language = "zh",
     palette = pal,
     add_note = FALSE
   )

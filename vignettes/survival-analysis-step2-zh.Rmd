@@ -79,7 +79,7 @@ dplyr::glimpse(lung_df)
 
 Table: Step 2 教学数据中的变量角色
 
-| Variable | Type | Teaching role |
+| 变量 | 类型 | 教学角色 |
 | --- | --- | --- |
 | `outcome` | 二分类事件指标 | 结局事件 |
 | `outcome_censor` | 按年计的随访时间 | 结局时间 |
@@ -114,27 +114,27 @@ knitr::kable(
 
 ```{r}
 decision_table <- data.frame(
-  Goal = c(
+  目标 = c(
     "正式乘性交互检验",
-    "subgroup 展示",
+    "亚组展示",
     "加性交互"
   ),
-  Exposure_types = c(
+  暴露类型 = c(
     "连续、二分类、多分类都可以",
     "连续、二分类、多分类都可以",
     "当前建议二分类"
   ),
-  Modifier_types = c(
+  修饰变量类型 = c(
     "连续、二分类、多分类都可以",
     "二分类或多分类",
     "当前建议二分类"
   ),
-  Main_function = c(
+  主要函数 = c(
     "leo_cox_interaction()",
     "leo_cox_subgroup()",
     "leo_cox_add_interaction()"
   ),
-  Main_question = c(
+  主要问题 = c(
     "效应是否在 HR 尺度上发生改变？",
     "每一层内部的 HR 模式是什么？",
     "联合效应是否超过相加预期？"
@@ -152,6 +152,10 @@ knitr::kable(
 - 乘性交互最通用
 - subgroup 表要求 modifier 是分类变量，因为它需要显式分层
 - 加性交互最严格，当前最适合 binary-binary 对比
+
+课堂上最常见的错误，不是不会调用函数，而是还没把科学问题想清楚，就把三种
+输出都跑一遍。更稳的习惯是先问自己：我现在到底想证明“效应有异质性”，还是
+只是想把各层的模式展示得更清楚？这个问题想清楚了，函数选择就会简单很多。
 
 如果 modifier 是连续变量，`leo_cox_interaction()` 仍然可以做正式检验；
 但 `leo_cox_subgroup()` 通常要等你先定义一个有临床意义的分组之后才适合用。
@@ -234,6 +238,7 @@ res_sub_ecog <- leo_cox_subgroup(
   x_exp = "age",
   x_subgroup = "ecog_group3",
   x_cov = list("Crude" = NULL),
+  add_heterogeneity = TRUE,
   verbose = FALSE
 )
 
@@ -247,6 +252,10 @@ res_sub_ecog$result
 - 在 `ECOG2plus` 组中，HR 也接近于 `0.994`
 - 同时表里附的 `P for interaction = 0.037` 提醒我们：
   这些 subgroup HR 要放在正式 interaction test 的背景下解读
+- 现在多出来的 `P for heterogeneity = r unique(res_sub_ecog$result$`P for heterogeneity`)[1]`
+  是根据各 subgroup summary estimates 计算出的伴随指标，它能帮助你看这些
+  subgroup HR 彼此分得有多开，但主线推断仍应以 interaction model 的
+  `P for interaction` 为先
 
 所以更稳妥的论文表述应当是：
 
@@ -255,6 +264,39 @@ res_sub_ecog$result
 > `ECOG2plus` 中更接近于零效应。
 
 这比“一个 subgroup 显著、另一个不显著”要科学得多。
+
+如果老师在组会上听到“ECOG0 显著、ECOG1 不显著，所以存在交互”，通常会立刻
+打断。真正能支持交互的，不是两个 subgroup 各自的显著性标签，而是 formal
+interaction test 本身，再配合 subgroup pattern 去帮助理解方向和层次。
+
+```{r}
+subgroup_plot_df <- res_sub_ecog$result
+subgroup_ci <- do.call(rbind, strsplit(subgroup_plot_df$`95% CI`, ", ", fixed = TRUE))
+subgroup_plot_df$HR <- as.numeric(subgroup_plot_df$HR)
+subgroup_plot_df$ci_l <- as.numeric(subgroup_ci[, 1])
+subgroup_plot_df$ci_u <- as.numeric(subgroup_ci[, 2])
+subgroup_plot_df$Level <- factor(subgroup_plot_df$Level, levels = rev(subgroup_plot_df$Level))
+
+ggplot2::ggplot(subgroup_plot_df, ggplot2::aes(x = HR, y = Level)) +
+  ggplot2::geom_vline(xintercept = 1, linetype = 2, color = "#8F8F8F") +
+  ggplot2::geom_segment(
+    ggplot2::aes(x = ci_l, xend = ci_u, y = Level, yend = Level),
+    color = "#4E79A7",
+    linewidth = 0.8
+  ) +
+  ggplot2::geom_point(size = 2.8, color = "#C44E52") +
+  ggplot2::labs(
+    x = "Hazard ratio",
+    y = NULL,
+    title = "不同 ECOG 亚组内 age 与结局关联的 HR"
+  ) +
+  ggplot2::theme_minimal(base_size = 12)
+```
+
+把 subgroup 表画成这类图以后，学生通常会马上看懂两层信息：`ECOG0` 的点更偏
+离 1，说明效应方向更明确；而 `ECOG1` 与 `ECOG2plus` 的点几乎贴着 1，说明
+这些层里年龄效应接近零。图形在这里不是装饰，而是帮你把 interaction result
+和 subgroup pattern 放到同一张心理地图里。
 
 # 加性交互：回答的是另一类问题
 
@@ -293,6 +335,9 @@ res_add$result
 
 - `Reference group`：哪一个联合组被当成参考组
 - `Recode applied`：函数是否为了更清楚的参考结构做了内部重编码
+
+如果 `Recode applied = TRUE`，先别急着讨论 `RERI` 或 `AP`，要先把参考组是谁
+重新读一遍。加性交互最怕的不是公式不会背，而是连联合组对比方向都看反。
 
 再看核心指标：
 
@@ -343,6 +388,9 @@ HR，而是：
 这正好说明了一个教学重点：
 
 > 同一组数据在乘法尺度和加法尺度上的答案，可能并不完全一致。
+
+这也是 Step 2 最值得学生建立的意识之一：交互不是一个单一名词，而是和尺度绑
+在一起的统计判断。你换了尺度，问题就已经变了，答案也完全可能跟着变。
 
 # 常见结果组合应该怎么解读
 

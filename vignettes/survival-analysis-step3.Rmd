@@ -121,6 +121,11 @@ That distinction matters because a mediation result is not a dressed-up
 interaction test. Once the two ideas are mixed, the interpretation usually
 starts drifting.
 
+A seasoned supervisor often asks a different first question from a beginner.
+Not "is it significant?", but "are you talking about heterogeneity or pathway
+decomposition?" If that anchor is missing, even a neat ACME/ADE table quickly
+loses its interpretive coordinates.
+
 # Build one teaching cohort and inspect the roles first
 
 We will use a synthetic cohort with:
@@ -304,6 +309,12 @@ This small evaluation table is worth reading before the effect table:
   `mediation` route does not force you to pin the decomposition to an explicit
   named profile unless you choose to do so
 
+Learning to read this evaluation table is really about setting rules for the
+rest of the interpretation. A good teacher would insist that you state the
+engine, the scale, and the presence or absence of an explicit profile before
+you say anything about the estimates. Otherwise the same number gets narrated
+as a time difference one day and a hazard ratio the next.
+
 # How to read ACME, ADE, ATE, and PM
 
 The first pass should be simple:
@@ -360,6 +371,11 @@ whiteboard:
    same comparison
 3. only then move to `Estimate`, `95% CI`, and `P value`
 
+That order matters because the most common mediation error is not a failed
+model fit. It is a failed reading. Once the scale and the exposure contrast
+have been stated first, the estimate has a location. Without that, even a very
+clean ACME can still be translated into the wrong scientific language.
+
 In this run, the ACME is `r fmt_num(effect_value(res_med, "acme"))`, the ADE is
 `r fmt_num(effect_value(res_med, "ade"))`, and the ATE is
 `r fmt_num(effect_value(res_med, "ate"))`. Because the outcome model is
@@ -382,7 +398,7 @@ with a 95% CI of `r effect_text(res_med, "pm")`. The wrapper also checks
 whether the total-effect interval crosses the null. Here
 `r if (isTRUE(eval_value(res_med, "pm_unstable"))) "it does, so the proportion mediated is flagged as unstable and should be treated cautiously." else "it does not, so the PM is not automatically flagged as unstable."`
 
-# Add a factor covariate when you want to name the evaluation profile
+# Name the evaluation profile explicitly when you need it
 
 The default `method = "mediation"` route does not manufacture a named
 covariate profile for you. When `x_cov_cond` is omitted, the reported
@@ -418,6 +434,12 @@ This matters scientifically, not just technically. Once you add
 `smoking = "Never"` to `x_cov_cond`, the mediation effects are being reported
 for that covariate profile. That is usually much easier to defend in writing
 than a vague statement such as "adjusted for smoking."
+
+This is one of the details teachers usually care about most. "Adjusted for"
+only tells the reader that a variable entered the model. It does not, by
+itself, tell them on whom the effect is being evaluated. Making `x_cov_cond`
+explicit is how statistical adjustment is translated back into a recognizable
+human profile.
 
 # Bootstrap is an option, not the only route
 

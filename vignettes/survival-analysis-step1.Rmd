@@ -125,6 +125,13 @@ knitr::kable(
 These quick checks already tell us whether the event rate, subgroup size, and
 follow-up scale look plausible enough for a first-pass Cox analysis.
 
+A careful supervisor would still pause here before touching the hazard ratio.
+The first question is whether this looks like a cohort that can support
+interpretation at all: are the events too sparse, is the follow-up too thin,
+or are some cells already so small that they can only support a directional
+reading? This quiet step prevents a surprising amount of over-interpretation
+later.
+
 # Choose the exposure scale before fitting
 
 Before fitting anything, decide whether your exposure is being treated as
@@ -190,16 +197,22 @@ res_cox
 
 # How to read the main Cox result
 
-This output is already paper-oriented:
+This output is already close to a manuscript table, but it is worth slowing
+down for one extra pass:
 
-- `Case N`, `Control N`, and `Person-years` tell you how much information went
-  into the fitted model
+- `Case N`, `Control N`, and `Person-years` first tell you that the three
+  models are being compared on the same complete-case cohort, not on three
+  shifting samples
 - `Class` tells you whether the exposure was treated as continuous or
   categorical
-- each model block gives `HR`, `95% CI`, and `P value`
+- the `HR`, `95% CI`, and `P value` columns are the final layer of evidence,
+  not the first one
 
-For a continuous exposure, the hazard ratio is interpreted per one-unit
-increase in the exposure. Here that means per one-year increase in age.
+For a continuous exposure, the hazard ratio is interpreted as the relative
+hazard change per one-unit increase in the exposure. Here that means per
+one-year increase in age. A value such as `HR = 1.011` should therefore be
+read as about a 1.1% relative hazard increase, not as a 1.1 percentage-point
+absolute risk increase.
 
 To get the tidy table for downstream programming, set `simplify = "tidy"` or
 set `simplify = FALSE` and use `leo_cox_format()`:
@@ -221,14 +234,27 @@ age_model_b
 In this teaching example, the Model B estimate is `HR = 1.011`, meaning that
 after adjustment for sex and ECOG status, the estimated hazard is about
 `r sprintf("%.1f", 100 * (age_model_b$HR - 1))`% higher per one-year increase
-in age. The confidence interval, however, includes 1, so the adjusted evidence
-for a main age-outcome association is limited in this small example.
+in age. If you translate that into a more intuitive contrast, a 10-year age
+difference corresponds to about `r sprintf("%.1f", 100 * (age_model_b$HR^10 - 1))`%
+relative hazard difference. That translation helps build intuition, but the
+model is still a per-year Cox coefficient.
+
+The confidence interval, however, includes 1, so the adjusted evidence for a
+main age-outcome association is limited in this small example. A professor
+reading this line aloud would not stop at `1.011`; they would immediately add
+"directionally positive, but still imprecise."
 
 That is exactly how a main Cox result should be interpreted:
 
 - first the direction and size of the point estimate
 - then the uncertainty
 - then the scientific caution
+
+Beginners often reverse that order by asking "is it significant?" before they
+ask whether the effect size is even meaningful. The stronger habit is the
+opposite one: first ask how large the association appears to be, then ask how
+stable that estimate is, and only then decide how strong the written claim can
+be.
 
 # Use tidy output when you need programmable rows
 
@@ -270,10 +296,19 @@ res_cox_cat
 
 This table is read differently from the age model:
 
-- `ECOG0` is the reference level
+- the `Exposure` column now prints `ECOG0 (Ref)` explicitly, so the reference
+  row is not hidden in the formatting
 - each other row compares one ECOG level with `ECOG0`
+- the `Level` column keeps the original subgroup label, which helps later when
+  you filter, merge, or plot results
 - the interpretation is therefore level-versus-reference rather than per-unit
   increase
+
+If you were reading this as a classroom exercise, the right order would be:
+lock onto the reference group first, then move down row by row asking "how far
+is this level from the reference", "how stable is that contrast", and "could
+this apparently large estimate still be a sparse-cell exaggeration?" That is
+how a table starts training judgment rather than merely showing output.
 
 ```{r}
 ecog_tidy <- leo_cox(
@@ -290,6 +325,37 @@ dplyr::select(
   Model, Exposure, Level, HR, `95% CI`, `P value`
 )
 ```
+
+```{r}
+ecog_plot_df <- dplyr::filter(ecog_tidy, Model == "Model A", Level != "ECOG0")
+ecog_ci <- do.call(rbind, strsplit(ecog_plot_df$`95% CI`, ", ", fixed = TRUE))
+ecog_plot_df$HR <- as.numeric(ecog_plot_df$HR)
+ecog_plot_df$ci_l <- as.numeric(ecog_ci[, 1])
+ecog_plot_df$ci_u <- as.numeric(ecog_ci[, 2])
+ecog_plot_df$Level <- factor(ecog_plot_df$Level, levels = rev(ecog_plot_df$Level))
+
+ggplot2::ggplot(ecog_plot_df, ggplot2::aes(x = HR, y = Level)) +
+  ggplot2::geom_vline(xintercept = 1, linetype = 2, color = "#8F8F8F") +
+  ggplot2::geom_segment(
+    ggplot2::aes(x = ci_l, xend = ci_u, y = Level, yend = Level),
+    color = "#4E79A7",
+    linewidth = 0.8
+  ) +
+  ggplot2::geom_point(size = 2.8, color = "#C44E52") +
+  ggplot2::scale_x_log10() +
+  ggplot2::labs(
+    x = "Hazard ratio (log scale)",
+    y = NULL,
+    title = "Model A hazard ratios for ECOG levels versus the reference"
+  ) +
+  ggplot2::theme_minimal(base_size = 12)
+```
+
+The table and figure together usually teach faster than either one alone. The
+farther a point sits from the vertical null line at 1, the stronger the point
+estimate departs from the null; the longer the horizontal segment, the more
+uncertainty that estimate carries. That is why `ECOG2` looks both strong and
+reasonably stable here, while `ECOG3` looks dramatic but highly fragile.
 
 In this example, the adjusted Model A hazard ratios suggest that worse
 performance status is associated with a higher incident hazard:
@@ -320,6 +386,11 @@ For the main Cox model, the usual interpretation logic is:
 
 Step 1 is therefore not only about “running Cox”. It is about learning how to
 separate signal, uncertainty, and sparse-data artifacts.
+
+That is often the real mark of maturity in result reading. When a very large
+HR appears, the first instinct should not be admiration. It should be the
+question: is this a strong signal, or is this the kind of estimate that gets
+stretched by too few events in one stratum?
 
 # How to write Step 1 results in a paper
 

@@ -1,6 +1,6 @@
 ---
 title: "生存分析 Step 3.1：中介分析案例教程"
-description: "通过稀有/常见结局与连续/二分类中介的案例，学习中介分析的实际使用。"
+description: "从默认 mediation 路线走向高级 regmedint 路线，系统理解生存结局中介分析。"
 output:
   rmarkdown::html_vignette:
     highlight: default
@@ -24,26 +24,47 @@ has_regmedint <- requireNamespace("regmedint", quietly = TRUE)
 if (!has_regmedint) {
   knitr::opts_chunk$set(eval = FALSE)
 }
-fmt_num <- function(x, digits = 3) sprintf(paste0("%.", digits, "f"), x)
-fmt_pct <- function(x, digits = 1) sprintf(paste0("%.", digits, "f%%"), 100 * x)
+fmt_num <- function(x, digits = 3) {
+  if (length(x) == 0 || all(is.na(x))) return("NA")
+  sprintf(paste0("%.", digits, "f"), x[1])
+}
+fmt_pct <- function(x, digits = 1) {
+  if (length(x) == 0 || all(is.na(x))) return("NA")
+  sprintf(paste0("%.", digits, "f%%"), 100 * x[1])
+}
+effect_row <- function(res, code) {
+  if (is.null(res)) return(data.frame())
+  dplyr::filter(res$result, `Effect code` == code)
+}
+effect_value <- function(res, code, column = "Estimate") {
+  row <- effect_row(res, code)
+  if (!nrow(row) || !column %in% names(row)) return(NA_real_)
+  row[[column]][1]
+}
+effect_text <- function(res, code, column = "95% CI") {
+  row <- effect_row(res, code)
+  if (!nrow(row) || !column %in% names(row)) return("NA")
+  as.character(row[[column]][1])
+}
+eval_value <- function(res, column) {
+  if (is.null(res) || !column %in% names(res$evaluation)) return(NA)
+  res$evaluation[[column]][1]
+}
 fmt_pct_ci <- function(ci_text, digits = 1) {
   ci_num <- suppressWarnings(as.numeric(trimws(strsplit(ci_text, ",", fixed = TRUE)[[1]])))
   if (length(ci_num) != 2 || anyNA(ci_num)) return(ci_text)
   paste(sprintf(paste0("%.", digits, "f%%"), 100 * ci_num), collapse = ", ")
 }
-get_effect_row <- function(res, code) {
-  dplyr::filter(res$result, `Effect code` == code)
-}
 case_summary_row <- function(res, scenario) {
-  te <- get_effect_row(res, "te")
-  tnie <- get_effect_row(res, "tnie")
-  pm <- get_effect_row(res, "pm")
+  te <- effect_row(res, "te")
+  tnie <- effect_row(res, "tnie")
+  pm <- effect_row(res, "pm")
   data.frame(
     场景 = scenario,
-    `事件率` = fmt_pct(res$evaluation$event_rate[1]),
-    `结局模型` = res$evaluation$yreg[1],
-    `总效应` = sprintf("%s (%s)", fmt_num(te$Estimate[1]), te$`95% CI`[1]),
-    `间接效应` = sprintf("%s (%s)", fmt_num(tnie$Estimate[1]), tnie$`95% CI`[1]),
+    `事件率` = fmt_pct(eval_value(res, "event_rate")),
+    `结局模型` = eval_value(res, "yreg"),
+    `总效应` = sprintf("%s (%s)", te$Estimate[1], te$`95% CI`[1]),
+    `间接效应` = sprintf("%s (%s)", tnie$Estimate[1], tnie$`95% CI`[1]),
     `中介比例` = sprintf("%s (%s)", fmt_pct(pm$Estimate[1]), fmt_pct_ci(pm$`95% CI`[1])),
     check.names = FALSE
   )
@@ -82,49 +103,57 @@ draw_mediation_map <- function(language = c("en", "zh")) {
   graphics::text(5.0, 1.55, cde_label, cex = 0.92)
   graphics::box()
 }
+res_case1 <- NULL
+res_case2 <- NULL
+res_case3 <- NULL
 ```
 
-## 为什么需要这篇案例教程
+## 为什么还需要 Step 3.1 这篇高级教程
 
-Step 3.0 主要回答“中介分析是什么”。Step 3.1 的重点是把它真正用起来。
+Step 3.0 的任务，是把默认 `method = "mediation"` 路线讲稳，重点在平均效应、
+time-difference 尺度，以及 ACME/ADE/ATE/PM 的基本读法。Step 3.1 则是
+真正进入高级中介分解的地方。
 
-这里我们不只是演示怎么调用 `leo_cox_mediation()`，而是要把 5 个最容易卡住的问题讲清楚：
+只有当你明确需要下面这些东西时，才值得切到 `method = "regmedint"`：
 
-1. 现在到底在问什么科学问题？
-2. `x_exp_a0`、`x_exp_a1`、`x_med_cde`、`x_cov_cond` 怎么映射到这个问题？
-3. 什么时候应该用 `mreg = "linear"`，什么时候应该用 `mreg = "logistic"`？
-4. 当 `yreg = "auto"` 从 `survCox` 切到 `survAFT_weibull` 时，结果应该怎么读？
-5. 不同场景下，科学解释为什么会变？
+1. 你要的是 `TE / TNIE / PNDE / PM`，而不是 `ACME / ADE / ATE`
+2. 你需要一个由 `x_med_cde` 明确定义的 controlled direct effect
+3. 你关心 `survCox` 和 `survAFT_*` 之间到底发生了什么切换
+4. 你希望把 exposure contrast、covariate profile、mediator reference
+   都讲得非常具体
+
+换句话说，这篇文章更像是 methods 写作前的训练，而不是默认入门路线的延长版。
 
 ```{r, echo = FALSE, results = "asis"}
 if (!has_regmedint) {
   cat(
-    "> 说明：当前构建环境没有安装 regmedint，因此下方代码会保留展示但不会执行。若要完整运行本案例教程，请先在本地安装 regmedint。\n\n",
+    "> 说明：当前构建环境没有安装 `regmedint`，因此下方代码会保留展示但不会执行。若要完整运行本案例教程，请先在本地安装 `regmedint`。\n\n",
     sep = ""
   )
 }
 ```
 
-## 先固定一条科学主线，再改变分析场景
+## 保持科学问题不变，只改变分析压力
 
-整篇案例围绕同一个问题：
+整篇案例都围绕同一个科学问题：
 
-> 更高代谢风险与事件结局的关联，是否有一部分是通过炎症路径传递的？
+> 更高代谢风险与 incident outcome 的关联里，有没有一部分与炎症路径相一致？
 
-我们只改变两件事：
+我们只改变三类分析压力：
 
-- 中介变量是按连续生物标志物，还是按阈值状态定义
-- 结局是稀有事件，还是相对常见事件
+- mediator 是连续变量还是二分类变量
+- 结局是 rare outcome 还是较常见 outcome
+- 因而 outcome model 是继续走 Cox 还是切到 AFT
 
 ```{r}
-set.seed(20260324)
+set.seed(20260330)
 
-make_mediation_case <- function(n = 1500, base_log_hazard = -5.8, censor_rate = 0.06) {
+make_mediation_case <- function(n = 1200, base_log_hazard = -5.8, censor_rate = 0.06) {
   age <- rnorm(n, 60, 8)
   sex <- factor(sample(c("女性", "男性"), n, replace = TRUE))
-  smoking <- factor(sample(c("从不", "曾经当前"), n, replace = TRUE, prob = c(0.6, 0.4)))
+  smoking <- factor(sample(c("从不", "曾经或当前"), n, replace = TRUE, prob = c(0.6, 0.4)))
   sex_num <- as.integer(sex == "男性")
-  smoking_num <- as.integer(smoking == "曾经当前")
+  smoking_num <- as.integer(smoking == "曾经或当前")
   metabolic_risk_num <- rbinom(
     n, 1,
     plogis(-0.3 + 0.03 * (age - 60) + 0.30 * sex_num + 0.35 * smoking_num)
@@ -167,206 +196,114 @@ make_mediation_case <- function(n = 1500, base_log_hazard = -5.8, censor_rate = 
 rare_case <- make_mediation_case(base_log_hazard = -5.8, censor_rate = 0.06)
 common_case <- make_mediation_case(base_log_hazard = -4.6, censor_rate = 0.06)
 
-data.frame(
-  场景 = c("稀有结局场景", "常见结局场景"),
+scenario_overview <- data.frame(
+  场景 = c("稀有结局队列", "较常见结局队列"),
   样本量 = c(nrow(rare_case), nrow(common_case)),
   事件数 = c(sum(rare_case$incident_event), sum(common_case$incident_event)),
-  `事件率` = c(fmt_pct(mean(rare_case$incident_event)), fmt_pct(mean(common_case$incident_event)))
+  `事件率` = c(
+    sprintf("%.1f%%", 100 * mean(rare_case$incident_event)),
+    sprintf("%.1f%%", 100 * mean(common_case$incident_event))
+  )
+)
+
+knitr::kable(
+  scenario_overview,
+  caption = "Step 3.1 案例中使用的两类核心队列"
 )
 ```
 
-其中稀有结局场景会让 `yreg = "auto"` 继续走 `survCox`，因为过滤并完成
-complete-case 之后的分析集事件率仍不超过 10%；常见结局场景则是故意让
-同一条科学问题切换到 AFT 路线。
+## 在看数字之前，先把 effect map 放在脑子里
 
-## 案例 1：把炎症当作连续生物标志物
+```{r, echo = FALSE}
+draw_mediation_map("zh")
+```
 
-这是最符合“炎症是一个连续生物学过程”这一设定的场景。
+这张图的意义不是装饰，而是帮你在不同情景之间保持同一套术语：
+
+- `TE`：总体 exposure contrast
+- `TNIE`：最常先看的间接路径
+- `PNDE`：绕开 mediator 的直接路径
+- `CDE`：只有当你显式指定 `x_med_cde` 时才真正有解释内容
+
+这正是高级路线和默认路线最本质的区别之一。
+
+所以老师通常会要求学生先把这些缩写讲顺，再去碰数字。术语都还没站稳，就急着
+解释 `TNIE` 或 `PM`，最后往往会把“路径名字”误当成“已经完成了解释”。
+
+## 案例 1：稀有结局 + 连续 mediator + 明确评价点
+
+这是高级路线里最常见的一种情形：连续生物标志物 mediator、rare outcome，
+并且明确写出 exposure contrast 与 covariate profile。
 
 ```{r}
-x_med_cde_case1 <- stats::median(rare_case$inflammation_score, na.rm = TRUE)
-
 res_case1 <- leo_cox_mediation(
   df = rare_case,
   y_out = c("incident_event", "followup_years"),
   x_exp = "metabolic_risk",
   x_med = "inflammation_score",
   x_cov = c("age", "sex", "smoking"),
+  method = "regmedint",
   x_exp_a0 = 0,
   x_exp_a1 = 1,
-  x_med_cde = x_med_cde_case1,
+  x_med_cde = stats::median(rare_case$inflammation_score, na.rm = TRUE),
   x_cov_cond = list(age = 60, sex = "女性", smoking = "从不"),
   mreg = "linear",
   yreg = "auto",
-  interaction = TRUE,
   verbose = FALSE
 )
 
-case1_eval <- res_case1$evaluation
-case1_te <- get_effect_row(res_case1, "te")
-case1_tnie <- get_effect_row(res_case1, "tnie")
-case1_pm <- get_effect_row(res_case1, "pm")
-case1_te_ci <- case1_te[["95% CI"]][1]
-case1_tnie_ci <- case1_tnie[["95% CI"]][1]
-case1_pm_ci <- case1_pm[["95% CI"]][1]
-```
-
-### 先把评价点和模型设定读成人话
-
-```{r}
 res_case1$evaluation[, c(
   "exposure_contrast", "x_exp_a0", "x_exp_a1",
-  "mediator_reference", "x_med_cde", "x_cov_cond",
-  "mreg", "yreg", "interaction"
+  "x_med_cde", "x_cov_cond", "mreg", "yreg", "interaction"
 )]
 ```
 
-这张表其实已经把 3 个最重要的用户参数解释清楚了：
-
-- `x_exp_a0 = 0`、`x_exp_a1 = 1` 表示这里比较的是 `较低风险 -> 较高风险`
-- `x_med_cde = `r fmt_num(case1_eval$x_med_cde[1])`` 表示 CDE 是在炎症评分中位数这个位置上评价的
-- `x_cov_cond = age=60; sex=女性; smoking=从不` 表示这些效应是对这个协变量画像来算的，而不是一个“脱离人群背景”的抽象数值
-
-所以这里的 CDE 可以直接翻成人话：
-
-> 如果我们比较两个其他条件相同的 60 岁、女性、从不吸烟者，只让她们的代谢风险从较低风险变成较高风险，同时把炎症评分都固定在 `r fmt_num(case1_eval$x_med_cde[1])`，那么还剩下多大的直接效应？
-
-### 先记住这张最简的指标地图
-
-```{r, echo = FALSE}
-knitr::kable(
-  data.frame(
-    缩写 = c("TE", "TNIE", "PNDE", "PM", "CDE", "TNDE", "PNIE"),
-    全称 = c(
-      "Total Effect",
-      "Total Natural Indirect Effect",
-      "Pure Natural Direct Effect",
-      "Proportion Mediated",
-      "Controlled Direct Effect",
-      "Total Natural Direct Effect",
-      "Pure Natural Indirect Effect"
-    ),
-    `在教程里怎么读` = c(
-      "总关联有多大",
-      "通过中介路径传递了多少",
-      "不经过中介还剩多少",
-      "总效应里有多少比例像是经过中介",
-      "把中介固定在 x_med_cde 后还剩多少直接效应",
-      "另一种 natural 直接效应定义",
-      "另一种 natural 间接效应定义"
-    ),
-    check.names = FALSE
-  ),
-  align = c("l", "l", "l")
-)
-```
-
-大多数论文第一次读结果时，通常先看 `TE`、`TNIE`、`PNDE` 和 `PM`。
-`CDE` 只有在科学问题明确关心“把中介固定在某个水平”时才会成为重点。
-
-这也就是为什么结果表里的 `Mediator reference` 只会出现在 `cde` 行：只有
-controlled direct effect 需要先指定一个固定的中介值。
-
-```{r, echo = FALSE, fig.width = 7.5, fig.height = 4.6}
-draw_mediation_map("zh")
-```
-
-### 在解释中介分解前，先看数据是不是支持这条生物学故事
-
-先看连续炎症评分在两组暴露人群里的分布。
-
-```{r, fig.width = 7.2, fig.height = 5.2}
-ggplot2::ggplot(
-  rare_case,
-  ggplot2::aes(x = metabolic_risk, y = inflammation_score, fill = metabolic_risk)
-) +
-  ggplot2::geom_violin(trim = FALSE, alpha = 0.35, color = NA) +
-  ggplot2::geom_boxplot(width = 0.16, outlier.alpha = 0.15, color = "#1f1f1f") +
-  ggplot2::scale_fill_manual(values = c("#5B8FF9", "#D14A61")) +
-  ggplot2::labs(
-    title = "较高风险组的炎症评分整体更高",
-    x = "代谢风险分组",
-    y = "炎症评分"
-  ) +
-  ggplot2::theme_minimal(base_size = 12) +
-  ggplot2::theme(legend.position = "none")
-```
-
-再看用阈值化炎症分组后，粗事件率在 joint stratum 里是不是也有一致方向。
-
-```{r, fig.width = 7.4, fig.height = 5.1}
-joint_event_case1 <- dplyr::summarise(
-  dplyr::group_by(rare_case, metabolic_risk, inflammation_group),
-  n = dplyr::n(),
-  event_rate = mean(incident_event),
-  .groups = "drop"
-)
-
-ggplot2::ggplot(
-  joint_event_case1,
-  ggplot2::aes(x = inflammation_group, y = event_rate, fill = metabolic_risk)
-) +
-  ggplot2::geom_col(position = ggplot2::position_dodge(width = 0.7), width = 0.62) +
-  ggplot2::geom_text(
-    ggplot2::aes(label = paste0(fmt_pct(event_rate), "\n(n=", n, ")")),
-    position = ggplot2::position_dodge(width = 0.7),
-    vjust = -0.15,
-    size = 3.3
-  ) +
-  ggplot2::scale_fill_manual(values = c("#5B8FF9", "#D14A61")) +
-  ggplot2::scale_y_continuous(
-    labels = function(x) paste0(round(100 * x), "%"),
-    limits = c(0, max(joint_event_case1$event_rate) * 1.18)
-  ) +
-  ggplot2::labs(
-    title = "较高风险且较高炎症组的粗事件率最高",
-    x = "炎症分组",
-    y = "观察到的事件率",
-    fill = "代谢风险"
-  ) +
-  ggplot2::theme_minimal(base_size = 12)
-```
-
-这张图本身并不能“证明交互”，但它说明为什么这里把 `interaction = TRUE`
-作为默认设定是合理的：我们没有强行假设代谢风险的效应在所有炎症水平上都完全一样。
-
-### 只解读真正跑出来的中介结果
+这里先出现一个和 Step 3.0 不同的默认设定：由于 `interaction = NULL`
+在 `method = "regmedint"` 下会默认解析成 `TRUE`，高级路线会天然更接近
+interaction-ready 的分解框架。如果你的科学问题不想允许这一点，就应当
+显式写 `interaction = FALSE`。
 
 ```{r}
-dplyr::filter(res_case1$result, `Effect code` %in% c("te", "tnie", "pm"))
+res_case1$result[res_case1$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ]
 ```
 
-因为这是稀有结局场景，所以这里的比值尺度应读作危险比（hazard ratio）。
-
-对这个拟合结果，更稳妥的人话解读是：
-
-- 总效应 `te = `r fmt_num(case1_te$Estimate[1])``（`r case1_te_ci`）提示较高风险组总体事件瞬时风险更高
-- 通过连续炎症评分这条路径的间接效应 `tnie = `r fmt_num(case1_tnie$Estimate[1])``（`r case1_tnie_ci`）也指向同方向风险升高
-- 中介比例 `pm = `r fmt_pct(case1_pm$Estimate[1])``（`r case1_pm_ci`）说明在这个模拟队列里，炎症可能解释了总关联中相当可观的一部分
-
-这里 `pm` 的置信区间整体仍在 `0` 以上，因此这个模拟示例更接近“存在正向中介占比”的模式，而不是“中介比例可能为 0”的不确定场景。
-
-更接近论文语言的一句话可以写成：
-
-> 在这组模拟数据中，较高代谢风险与更高事件瞬时风险相关，并且结果与“炎症评分承担了其中一部分路径”这一解释一致。
-
-路径图可以把同样的结果更直观地展示出来。
-
-```{r, fig.width = 8.6, fig.height = 5.8, dev.args = list(bg = "white")}
-leo_cox_mediation_plot(
-  x = res_case1,
-  exposure_label = "代谢风险",
-  mediator_label = "炎症评分",
-  outcome_label = "结局事件",
-  language = "zh",
-  palette = "jama"
+```{r}
+dplyr::select(
+  res_case1$result[res_case1$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ],
+  `Effect code`, Scale, `Exposure contrast`, `Covariate profile`,
+  `Mediator reference`, Estimate, `95% CI`
 )
 ```
 
-## 案例 2：把同一条炎症路径改成阈值型中介
+这一组结果最值得先抓住三行：
 
-有时研究问题并不是“炎症越高越危险”，而是“是否进入高炎症状态”。这时
-中介变量就更像一个阈值型状态，`mreg` 也应切到 `logistic`。
+- 总效应 `TE` 是 `r fmt_num(effect_value(res_case1, "te"))`
+  （`r effect_text(res_case1, "te")`）
+- 间接效应 `TNIE` 是 `r fmt_num(effect_value(res_case1, "tnie"))`
+  （`r effect_text(res_case1, "tnie")`）
+- 中介比例 `PM` 是 `r fmt_pct(effect_value(res_case1, "pm"))`
+  （`r fmt_pct_ci(effect_text(res_case1, "pm"))`）
+
+由于这里的 `yreg = survCox`，所以非 PM 行应该按 hazard-ratio 尺度来读。
+也就是说，在这个场景下，较高代谢风险和更高 hazard 相一致，而且其中一部分
+关联与炎症路径相一致。
+
+真正教学生时，我会要求先把 `Exposure contrast`、`Covariate profile` 和
+`Scale` 三列读完，再去解释 `TE`、`TNIE` 和 `PNDE`。高级路线里，这三列
+决定的是“你究竟在讲哪一个比较”，而不是仅仅在装饰表格。
+
+换句话说，如果一个学生一上来就说“TNIE 是多少”，却说不清比较的是谁和谁、在
+谁的 covariate profile 下、又是在什么尺度上，那这段答案在方法学上还不能算
+及格。高级路线最值钱的地方，从来不是符号更多，而是比较对象被交代得更清楚。
+
+当然，统计边界和点估计同样重要。这个 Cox 分解更适合在事件相对稀少时解读；
+本例中的事件率是 `r fmt_pct(eval_value(res_case1, "event_rate"))`，所以
+`yreg = "auto"` 才会继续停留在 `survCox`。
+
+## 案例 2：同样的稀有结局，但把 mediator 二分类化
+
+很多 biomarker paper 最终会把 mediator 变成临床上更容易说的二分类状态。
+一旦这样做，最重要的新义务就是：`x_med_cde` 必须在原始观察编码上被明确给出。
 
 ```{r}
 res_case2 <- leo_cox_mediation(
@@ -375,40 +312,47 @@ res_case2 <- leo_cox_mediation(
   x_exp = "metabolic_risk",
   x_med = "inflammation_group",
   x_cov = c("age", "sex", "smoking"),
+  method = "regmedint",
   x_exp_a0 = 0,
   x_exp_a1 = 1,
   x_med_cde = "较高炎症",
   x_cov_cond = list(age = 60, sex = "女性", smoking = "从不"),
   mreg = "logistic",
   yreg = "auto",
-  interaction = TRUE,
   verbose = FALSE
 )
 
-case2_tnie <- get_effect_row(res_case2, "tnie")
-case2_pm <- get_effect_row(res_case2, "pm")
+res_case2$evaluation[, c(
+  "exposure_contrast", "x_med_cde", "mediator_reference",
+  "mreg", "yreg", "interaction"
+)]
+```
 
-dplyr::bind_rows(
-  case_summary_row(res_case1, "案例 1：稀有结局 + 连续中介"),
-  case_summary_row(res_case2, "案例 2：稀有结局 + 二分类中介")
+```{r}
+res_case2$result[res_case2$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ]
+```
+
+```{r}
+dplyr::select(
+  res_case2$result[res_case2$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ],
+  `Effect code`, `Mediator reference`, Estimate, `95% CI`
 )
 ```
 
-这里最值得学习的不是“谁更显著”，而是科学问题怎么变了。对于
-`logistic` 中介，`x_med_cde` 现在应该写原始观测水平，而不是内部
-`0/1` 编码：
+这个场景里，`CDE` 就比连续 mediator 情况下更容易讲成人话。它可以被理解成：
 
-- 案例 1 问的是连续生物标志物路径，所以间接效应为 `r fmt_num(case1_tnie$Estimate[1])`，中介比例为 `r fmt_pct(case1_pm$Estimate[1])`
-- 案例 2 问的是阈值状态路径，所以同一条大方向故事会变成更弱、也更不精确的结果（`tnie` = `r fmt_num(case2_tnie$Estimate[1])`，`pm` = `r fmt_pct(case2_pm$Estimate[1])`）
+> 如果两位其他条件相似的参与者都被固定在 “较高炎症”
+> 这个 mediator 水平，那么 exposure 的直接差异看起来会有多大？
 
-这并不表示二分类中介一定不好，而是说明：
+所以 `x_med_cde` 从来不只是“模型参数”。它其实是科学问题的一部分。
 
-- 如果生物学过程本来就是连续梯度，二分法可能会损失路径信息
-- 如果你的科学问题本来就是“是否进入高炎症状态”，那二分类中介反而更贴题
+也正因为如此，`x_med_cde` 不能写得含糊。你把它固定在什么 mediator 水平上，
+其实就是在决定“这个 direct effect 到底对应哪一种临床或生物学情景”。
 
-## 案例 3：同一条路径问题，但结局不再稀有
+## 案例 3：较常见结局把同一个问题推到 AFT 路线
 
-现在只改变一件事：让结局更常见，看看 `yreg = "auto"` 会发生什么。
+现在我们保持同一个生物学故事，回到连续 mediator，但让结局更常见一些，
+看看 `yreg = "auto"` 如何不再停留在 Cox。
 
 ```{r}
 res_case3 <- leo_cox_mediation(
@@ -417,61 +361,89 @@ res_case3 <- leo_cox_mediation(
   x_exp = "metabolic_risk",
   x_med = "inflammation_score",
   x_cov = c("age", "sex", "smoking"),
+  method = "regmedint",
   x_exp_a0 = 0,
   x_exp_a1 = 1,
   x_med_cde = stats::median(common_case$inflammation_score, na.rm = TRUE),
   x_cov_cond = list(age = 60, sex = "女性", smoking = "从不"),
   mreg = "linear",
   yreg = "auto",
-  interaction = TRUE,
   verbose = FALSE
 )
 
-case3_te <- get_effect_row(res_case3, "te")
-case3_tnie <- get_effect_row(res_case3, "tnie")
-case3_pm <- get_effect_row(res_case3, "pm")
-
-res_case3$evaluation[, c("event_rate", "mreg", "yreg", "interaction", "x_cov_cond")]
-dplyr::filter(res_case3$result, `Effect code` %in% c("te", "tnie", "pm"))
+res_case3$evaluation[, c("event_rate", "yreg", "outcome_distribution", "interaction")]
 ```
 
-这里事件率是 `r fmt_pct(res_case3$evaluation$event_rate[1])`，所以
-`yreg = "auto"` 自动切到了 `r res_case3$evaluation$yreg[1]`。
-
-这时最关键的不是数值大小，而是解释尺度已经变了：
-
-- `te` = `r fmt_num(case3_te$Estimate[1])` 现在应读作时间比，而不是风险比
-- 因为它小于 1，所以含义是较高风险组的无事件生存时间更短
-- `tnie` = `r fmt_num(case3_tnie$Estimate[1])` 说明炎症路径同样在指向更短的无事件时间
-
-也就是说，生物学故事还是那条故事，但统计语言必须跟着 `yreg` 一起变：
-
-- `survCox`：说事件瞬时风险更高/更低
-- `survAFT_weibull`：说无事件时间更短/更长
-
-## 把 3 个场景放在一起看
+```{r}
+res_case3$result[res_case3$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ]
+```
 
 ```{r}
-dplyr::bind_rows(
-  case_summary_row(res_case1, "案例 1：稀有结局 + 连续中介"),
-  case_summary_row(res_case2, "案例 2：稀有结局 + 二分类中介"),
-  case_summary_row(res_case3, "案例 3：常见结局 + 连续中介")
+dplyr::select(
+  res_case3$result[res_case3$result$`Effect code` %in% c("cde", "pnde", "tnie", "te", "pm"), ],
+  `Effect code`, Scale, `Outcome model`, Estimate, `95% CI`
 )
 ```
 
-把这 3 个场景放在一起看，你会更容易区分 3 类不同决策：
+这一段最容易把人绕晕。只要 `yreg = auto` 切换成 `survAFT_weibull`，非 PM
+行就不再读 HR，而改读 **time ratio**：
 
-1. 中介变量在科学上应该被理解成连续量，还是阈值状态
-2. 把连续中介二分类后会不会损失路径信息
-3. 结局不再稀有以后，结果应不应该继续按风险比去读
+- `TR > 1`：与更长的事件前无病时间相一致
+- `TR < 1`：与更短的事件前无病时间相一致
 
-## 本节小结
+所以这里不是“模型突然算错了”，而是同一个科学问题换到了另一种
+outcome-model 尺度上。
 
-这篇案例教程最希望你带走 6 条实践规则：
+## 把三种案例放在一张表里看
 
-1. `x_exp_a0` 和 `x_exp_a1` 应该对应你在结果段里真正想比较的暴露对比
-2. `x_med_cde` 决定 CDE 是在什么中介水平上被解释的；对连续生物标志物来说，中位数通常是一个干净的起点
-3. `x_cov_cond` 决定这些效应是对哪一类人算的；当 `x_cov` 里有分类变量时尤其要显式给
-4. 如果中介在科学上是连续生物标志物，更适合先用 `mreg = "linear"`；如果问题本来就是阈值状态，再考虑 `mreg = "logistic"`
-5. `yreg = "auto"` 会帮你避开明显不适合继续用 `survCox` 的高事件率场景，但最终解释前仍然要先看实际输出里的 `Outcome model`
-6. 中介分析的结论必须来自真实拟合结果本身，而不是来自“画了一张路径图”或者“某个点估计看起来不错”
+```{r}
+summary_table <- dplyr::bind_rows(
+  case_summary_row(res_case1, "稀有结局 + 连续 mediator"),
+  case_summary_row(res_case2, "稀有结局 + 二分类 mediator"),
+  case_summary_row(res_case3, "较常见结局 + 连续 mediator")
+)
+
+knitr::kable(
+  summary_table,
+  caption = "同一个科学问题在三种高级中介设定下的变化"
+)
+```
+
+把这三种情景并排放在一起后，方法学逻辑就会清楚得多：
+
+- mediator 编码方式会改变 mediator model，也会改变 `x_med_cde` 的解释
+- 事件频率会影响 outcome model 家族
+- 这些都不是“表面设定差异”，而是真正改变 effect size 读法的关键点
+
+学生读到这里时，最重要的收获通常不是“我又学了三个缩写”，而是终于意识到：
+高级中介分析里，结果表上的每一列设定几乎都在决定你最后能不能把一句话讲对。
+
+## 画出高级路线下的路径图
+
+```{r}
+leo_cox_mediation_plot(
+  x = res_case1,
+  exposure_label = "代谢\n风险",
+  mediator_label = "炎症\n评分",
+  outcome_label = "事件\n结局",
+  language = "zh",
+  palette = "lancet"
+)
+```
+
+在高级路线里，这张图最有价值的前提，是你已经先把 evaluation table 读完。
+否则图上标签再整洁，真正的 scientific contrast 还是不够明确。
+
+## Step 3.1 最后应该带走什么
+
+高级路线并不因为更复杂就自动更好。只有当问题确实需要它时，它才更合适。
+
+当你准备使用 `method = "regmedint"` 时，最好能把下面四件事都讲清楚：
+
+1. 正在分解的是哪个 exposure contrast
+2. `x_med_cde` 对应的 mediator 固定值是什么
+3. `x_cov_cond` 对应的人群画像是什么
+4. 当前 outcome scale 到底是 Cox HR 还是 AFT time ratio
+
+如果这四件事里你并不真的需要全部明确，Step 3.0 往往反而更稳。只有当你
+确实需要把它们全都说清楚时，Step 3.1 才是该走的路线。
