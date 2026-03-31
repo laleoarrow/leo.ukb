@@ -40,10 +40,9 @@ Suggests:
     gtsummary,
     jsonlite,
     knitr,
+    mediation,
     regmedint,
-    rmarkdown,
-    testthat (>= 3.0.0)
-Config/testthat/edition: 3
+    rmarkdown
 Remotes: 
     github::laleoarrow/leo.basic
 Depends: 

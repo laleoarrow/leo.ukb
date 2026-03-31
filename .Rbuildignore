@@ -11,6 +11,7 @@
 ^project$
 ^AGENTS\.md$
 ^README\.md$
+^tests$
 ^_pkgdown\.yml$
 ^docs$
 ^docs-site$
