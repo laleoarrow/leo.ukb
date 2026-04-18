@@ -78,7 +78,11 @@ levels. If \code{x_exp} is character, supply both explicitly. For numeric
 values remain after filtering; otherwise, supply both explicitly.}
 
 \item{x_cov_cond}{Covariate values for effect evaluation. Named list/vector for
-non-numeric covariates; defaults to medians. Required for factor/binary covariates.}
+non-numeric covariates; defaults to medians. For \code{method = "regmedint"},
+explicit values are required when \code{x_cov} contains factor covariates or
+binary numeric covariates. For \code{method = "mediation"}, this is optional;
+if omitted, \code{mediation::mediate()} reports effects averaged over the
+observed covariate distribution.}
 
 \item{interaction}{Include \code{x_exp:x_med} interaction in the outcome model?
 If \code{NULL}, defaults to \code{TRUE} for \code{method = "regmedint"} and \code{FALSE} for
@@ -135,7 +139,7 @@ When \code{simplify = FALSE}, a \code{leo_cox_mediation} object with \verb{$resu
 
 For \code{leo_cox_mediation()}, a \code{leo_cox_mediation} object containing a
 display table in \verb{$result}, a detailed mediation table in
-\verb{$result_detail}, a tidy mediation table in \verb{$result_tidy}, and an
+\verb{$result_detail}, the tidy row-level table in \verb{$result_tidy}, and an
 evaluation summary in \verb{$evaluation}. For \code{leo_cox_mediation_plot()}, an
 invisible \code{recordedplot} object after drawing the pathway figure on the
 active graphics device.

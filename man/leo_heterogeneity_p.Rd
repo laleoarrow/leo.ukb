@@ -4,7 +4,14 @@
 \alias{leo_heterogeneity_p}
 \title{Calculate P-value for Heterogeneity from Subgroup Summary Statistics}
 \usage{
-leo_heterogeneity_p(hrs, p_values, subgroup_names = NULL)
+leo_heterogeneity_p(
+  hrs = NULL,
+  p_values = NULL,
+  betas = NULL,
+  ses = NULL,
+  subgroup_names = NULL,
+  verbose = TRUE
+)
 }
 \arguments{
 \item{hrs}{A numeric vector of Hazard Ratios (HR) for each subgroup.}

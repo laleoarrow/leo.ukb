@@ -484,6 +484,7 @@ dx_extract <- function(field_id = NULL,
 #' }
 dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
   t0 <- Sys.time()
+
   # --- 1. Single Job Mode (If job_id is provided) ---
   if (!is.null(job_id)) {
     if (is.list(job_id) && !is.null(job_id$job_id)) job_id <- job_id$job_id
@@ -501,17 +502,24 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
     state <- if (length(matches[[1]]) > 1) matches[[1]][2] else NA_character_
 
     if (!is.na(state)) {
-      color_map <- list("done"="success", "failed"="danger", "running"="info", "runnable"="warning", "terminated"="danger")
+      state_label <- switch(state,
+                            "waiting" = "waiting",
+                            "runnable" = "queued",
+                            "waiting_on_input" = "waiting input",
+                            "waiting_on_output" = "waiting output",
+                            state)
+      color_map <- list("done" = "success", "failed" = "danger", "running" = "info", "waiting" = "warning", "runnable" = "warning", "waiting_on_input" = "warning", "waiting_on_output" = "warning", "terminated" = "danger")
       lvl <- if (!is.null(color_map[[state]])) color_map[[state]] else "info"
-      leo.basic::leo_log("Job {job_id} is: {state}", level = lvl)
+      if (state_label == state) {
+        leo.basic::leo_log("Job {job_id} is: {state_label}", level = lvl)
+      } else {
+        leo.basic::leo_log("Job {job_id} is: {state_label} (raw: {state})", level = lvl)
+      }
     }
     return(state)
   }
 
   # --- 2. Dashboard Mode (If job_id is NULL) ---
-  status_id <- cli::cli_status("Fetching DNAnexus data...")
-  on.exit(cli::cli_status_clear(status_id), add = TRUE)
-
   # Get environment info (contains user and project)
   env_info <- tryCatch(dx_run("env", intern = TRUE, ignore.stderr = TRUE, verbose = FALSE), error = function(e) NULL)
   if (is.null(env_info) || length(env_info) == 0) {
@@ -610,11 +618,10 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
     return(paste0(round(as.numeric(age, units="days")), "d"))
   })
 
-  # Clear status right before printing the table
-  cli::cli_status_clear(status_id)
-
   # Header
   cols <- c("Job ID", "Status", "Project", "Cost", "Owner", "Since", "Duration", "Name")
+  is_rstudio <- nzchar(Sys.getenv("RSTUDIO"))
+  note_lines <- character(0)
 
   # Custom alignment function for Multi-byte (Chinese) and ANSI strings
   align_ansi <- function(x, width, side = "left") {
@@ -626,7 +633,7 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
   }
 
   # Unify Header and Data column widths
-  w <- c(id=28, status=12, project=20, cost=8, owner=8, since=7, dur=8)
+  w <- c(id = 28, status = 16, project = 20, cost = 8, owner = 8, since = 7, dur = 8, name = 35)
 
   header_str <- paste(
     align_ansi(cols[1], w["id"]),
@@ -636,23 +643,34 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
     align_ansi(cols[5], w["owner"]),
     align_ansi(cols[6], w["since"]),
     align_ansi(cols[7], w["dur"]),
-    cols[8],
+    align_ansi(cols[8], w["name"]),
     sep = " | "
   )
-  cat(cli::style_bold(header_str), "\n")
-  cat(paste(rep("-", 140), collapse = ""), "\n")
+  cat(header_str, "\n")
+  cat(strrep("-", sum(w) + 3 * (length(w) - 1)), "\n")
 
   for (i in seq_len(nrow(jobs))) {
     s <- jobs$state[i]
+    status_str <- switch(s,
+                         "done" = "✔ done",
+                         "failed" = "✖ failed",
+                         "running" = "● running",
+                         "waiting" = "◌ waiting",
+                         "runnable" = "○ queued",
+                         "waiting_on_input" = "◌ waiting input",
+                         "waiting_on_output" = "◌ waiting output",
+                         "terminated" = "⚑ terminated",
+                         s)
     st_color <- switch(s,
-                       "done" = cli::col_green(paste0("✔ ", s)),
-                       "failed" = cli::col_red(paste0("✖ ", s)),
-                       "running" = cli::col_blue(paste0("● ", s)),
-                       "runnable" = cli::col_yellow(paste0("○ ", s)),
-                       "waiting" = cli::col_yellow(paste0("○ ", s)),
-                       "terminated" = cli::col_red(paste0("⚑ ", s)),
-                       s
-    )
+                       "done" = cli::col_green(status_str),
+                       "failed" = cli::col_red(status_str),
+                       "running" = cli::col_blue(status_str),
+                       "waiting" = cli::col_yellow(status_str),
+                       "runnable" = cli::col_yellow(status_str),
+                       "waiting_on_input" = cli::col_yellow(status_str),
+                       "waiting_on_output" = cli::col_yellow(status_str),
+                       "terminated" = cli::col_red(status_str),
+                       status_str)
 
     owner <- sub("user-", "", jobs$launchedBy[i])
     pname <- if (!is.null(proj_map[[jobs$project[i]]])) proj_map[[jobs$project[i]]] else jobs$project[i]
@@ -673,30 +691,45 @@ dx_status <- function(all_projects = TRUE, job_id = NULL, limit = 5) {
       if (!is.null(sym) && !is.na(sym)) row_currency <- sym
     }
 
-    if (s %in% c("running", "runnable", "waiting") && (is.na(cost_val) || cost_val == 0)) {
+    if (s %in% c("running", "runnable", "waiting", "waiting_on_input", "waiting_on_output") && (is.na(cost_val) || cost_val == 0)) {
       cost_str <- "Pending"
-      p_color <- cli::style_italic
+      p_color <- cli::col_yellow
     } else {
       if (is.na(cost_val)) cost_val <- 0
       cost_str <- sprintf("%s%.2f", row_currency, cost_val)
       p_color <- cli::col_green
     }
 
+    age_styled <- cli::style_italic(jobs$age_str[i])
+    dur_styled <- cli::col_cyan(jobs$dur_str[i])
+    cost_styled <- p_color(cost_str)
+
+    if (is_rstudio) {
+      st_color <- cli::ansi_strip(st_color)
+      cost_styled <- cli::ansi_strip(cost_styled)
+      age_styled <- cli::ansi_strip(age_styled)
+      dur_styled <- cli::ansi_strip(dur_styled)
+    }
+
     cat(align_ansi(jobs$id[i], w["id"]), " | ", sep="")
     cat(align_ansi(st_color, w["status"]), " | ", sep="")
     cat(align_ansi(cli::ansi_strtrim(pname, w["project"]), w["project"]), " | ", sep="")
-    cat(align_ansi(p_color(cost_str), w["cost"]), " | ", sep="")
+    cat(align_ansi(cost_styled, w["cost"]), " | ", sep="")
     cat(align_ansi(cli::ansi_strtrim(owner, w["owner"]), w["owner"]), " | ", sep="")
-
-    age_styled <- cli::style_italic(jobs$age_str[i])
-    dur_styled <- cli::col_cyan(jobs$dur_str[i])
-
     cat(align_ansi(age_styled, w["since"]), " | ", sep="")
     cat(align_ansi(dur_styled, w["dur"]), " | ", sep="")
-    cat(cli::ansi_strtrim(jobs$name[i], 35))
+    cat(align_ansi(cli::ansi_strtrim(jobs$name[i], w["name"]), w["name"]))
     cat("\n")
+
+    if (s == "waiting_on_output" && !any(grepl("^Note: waiting output", note_lines))) {
+      note_lines <- c(note_lines, "Note: waiting output = The compute step has finished, but DNAnexus is still waiting for child jobs or output objects to close.")
+    }
+    if (s == "waiting_on_input" && !any(grepl("^Note: waiting input", note_lines))) {
+      note_lines <- c(note_lines, "Note: waiting input = DNAnexus is waiting for inputs, upstream job references, or open data objects to become ready.")
+    }
   }
-  cat(paste(rep("-", 140), collapse = ""), "\n")
+  cat(strrep("-", sum(w) + 3 * (length(w) - 1)), "\n")
+  if (length(note_lines) > 0) cat(paste0(note_lines, "\n"), sep = "")
 
   leo.basic::leo_time_elapsed(t0)
   return(invisible(jobs))
